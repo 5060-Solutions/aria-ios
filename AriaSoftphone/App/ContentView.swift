@@ -36,7 +36,7 @@ struct ContentView: View {
                     }
                     .tag(Tab.settings)
             }
-            .tint(.blue)
+            .tint(.ariaIndigo)
 
             // Full-screen call overlay
             if callManager.activeCall != nil {

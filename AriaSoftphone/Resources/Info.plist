@@ -48,6 +48,8 @@
     <string>Aria needs access to your contacts to show caller names and enable quick dialing.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Aria needs microphone access for voice calls.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Aria needs camera access to scan QR codes for account setup.</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
@@ -57,6 +59,7 @@
             <array>
                 <string>tel</string>
                 <string>sip</string>
+                <string>aria</string>
             </array>
         </dict>
     </array>
