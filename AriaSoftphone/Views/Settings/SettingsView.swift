@@ -99,12 +99,14 @@ struct SettingsView: View {
 
     private var ariaHeader: some View {
         HStack(spacing: 10) {
-            Image(systemName: "phone.circle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.ariaIndigo)
+            Image("AriaLogo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 36, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             Text("Aria")
                 .font(.system(size: 28, weight: .light))
-                .foregroundStyle(.ariaIndigo)
+                .foregroundColor(.ariaIndigo)
                 .tracking(2)
         }
         .padding(.vertical, 8)
@@ -294,7 +296,7 @@ struct SettingsView: View {
         Text(title)
             .font(.subheadline)
             .fontWeight(.semibold)
-            .foregroundStyle(.ariaIndigo)
+            .foregroundColor(.ariaIndigo)
             .padding(.leading, 4)
     }
 
@@ -317,7 +319,9 @@ struct SettingsView: View {
     private func handleQRScanned(_ credentials: ProvisioningCredentials) {
         sipUsername = credentials.username
         sipPassword = credentials.password
-        sipDomain = credentials.server
+        // SIP domain = tenant domain (used in From/To headers for auth)
+        // SIP registrar = server address (where to send REGISTER)
+        sipDomain = credentials.tenantDomain.isEmpty ? credentials.server : credentials.tenantDomain
         sipRegistrar = credentials.server
         sipPort = credentials.port
         sipDisplayName = credentials.displayName
@@ -365,14 +369,16 @@ struct SettingsView: View {
                     platform: "ios"
                 )
 
+                let gwUrl = deviceResult.gatewayUrl.isEmpty ? "https://push.ariaroute.com" : deviceResult.gatewayUrl
+                let gwToken = deviceResult.gatewayToken.isEmpty ? loginResult.jwt : deviceResult.gatewayToken
+
                 await MainActor.run {
                     pbxDeviceId = deviceResult.deviceId
-                    gatewayUrl = deviceResult.gatewayUrl
+                    gatewayUrl = gwUrl
                 }
 
-                // Step 3: Initialize SIP engine with gateway for push
-                let gwUrl = deviceResult.gatewayUrl.isEmpty ? "https://push.ariaroute.com" : deviceResult.gatewayUrl
-                sipEngine.configure(gatewayUrl: gwUrl, apiKey: loginResult.jwt)
+                // Step 3: Initialize SIP engine with gateway token (not API JWT)
+                sipEngine.configure(gatewayUrl: gwUrl, apiKey: gwToken)
 
                 let credentials = SipCredentials(
                     username: sipUsername,

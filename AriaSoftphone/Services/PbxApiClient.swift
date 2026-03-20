@@ -23,6 +23,7 @@ class PbxApiClient {
         let deviceId: String
         let sipDomain: String
         let gatewayUrl: String
+        let gatewayToken: String
     }
 
     // MARK: - API Errors
@@ -95,8 +96,9 @@ class PbxApiClient {
 
         let sipDomain = json["sip_domain"] as? String ?? ""
         let gatewayUrl = json["gateway_url"] as? String ?? ""
+        let gatewayToken = json["gateway_token"] as? String ?? ""
 
-        return DeviceResponse(deviceId: deviceId, sipDomain: sipDomain, gatewayUrl: gatewayUrl)
+        return DeviceResponse(deviceId: deviceId, sipDomain: sipDomain, gatewayUrl: gatewayUrl, gatewayToken: gatewayToken)
     }
 
     // MARK: - POST /api/v1/devices/unregister

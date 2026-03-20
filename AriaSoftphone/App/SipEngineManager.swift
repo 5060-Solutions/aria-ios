@@ -25,6 +25,8 @@ class SipEngineManager: ObservableObject {
         )
         engine = AriaMobileEngine(gatewayConfig: config)
         engine?.setEventHandler(handler: eventHandler)
+        engine?.setAudioBridge(bridge: iOSAudioBridge())
+        startRemoteHangupPolling()
     }
 
     /// Register this device with the push gateway.
@@ -129,6 +131,42 @@ class SipEngineManager: ObservableObject {
     func getActiveCall() -> CallInfo? {
         return engine?.getActiveCall()
     }
+
+    /// Get media stats.
+    func getMediaStats(callId: String) -> MediaStats? {
+        return engine?.getMediaStats(callId: callId)
+    }
+
+    /// Get RX audio level.
+    func getRxAudioLevel(callId: String) -> Float {
+        return engine?.getRxAudioLevel(callId: callId) ?? 0.0
+    }
+
+    /// Get TX audio level.
+    func getTxAudioLevel(callId: String) -> Float {
+        return engine?.getTxAudioLevel(callId: callId) ?? 0.0
+    }
+
+    /// Check if remote party hung up.
+    func checkRemoteHangup() -> String? {
+        return engine?.checkRemoteHangup()
+    }
+
+    /// Start polling for remote hangup. Call once when engine is configured.
+    func startRemoteHangupPolling() {
+        remoteHangupTimer?.invalidate()
+        remoteHangupTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if let callId = self.checkRemoteHangup() {
+                print("Remote hangup detected: \(callId)")
+                DispatchQueue.main.async {
+                    CallManager.shared.handleRemoteHangup()
+                }
+            }
+        }
+    }
+
+    private var remoteHangupTimer: Timer?
 }
 
 // MARK: - UniFFI Event Handler Bridge

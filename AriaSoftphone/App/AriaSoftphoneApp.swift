@@ -25,7 +25,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         // Initialize the Rust runtime
-        AriaMobileCore.initRuntime()
+        initRuntime()
 
         // Register for VoIP pushes
         pushRegistry.delegate = PushHandler.shared
@@ -45,6 +45,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        AriaMobileCore.shutdownRuntime()
+        shutdownRuntime()
     }
 }

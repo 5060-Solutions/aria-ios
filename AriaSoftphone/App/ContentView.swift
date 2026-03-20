@@ -3,6 +3,120 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
+    @AppStorage("sipUsername") private var sipUsername = ""
+
+    var body: some View {
+        if sipUsername.isEmpty {
+            SetupView()
+        } else {
+            MainTabView()
+        }
+    }
+}
+
+// MARK: - Setup View (shown when no credentials)
+
+struct SetupView: View {
+    @EnvironmentObject var sipEngine: SipEngineManager
+    @State private var showQRScanner = false
+    @State private var showManualSetup = false
+
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Aria branding
+            VStack(spacing: 12) {
+                Image("AriaLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+
+                Text("Aria")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundColor(.ariaIndigo)
+                    .tracking(4)
+
+                Text("Softphone")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            // Setup options
+            VStack(spacing: 16) {
+                Text("Get started by scanning your provisioning QR code")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+
+                Button {
+                    showQRScanner = true
+                } label: {
+                    HStack {
+                        Image(systemName: "qrcode.viewfinder")
+                        Text("Scan QR Code")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.ariaIndigo)
+                .padding(.horizontal, 32)
+
+                Button {
+                    showManualSetup = true
+                } label: {
+                    Text("Manual Setup")
+                        .font(.subheadline)
+                        .foregroundColor(.ariaIndigo)
+                }
+            }
+
+            Spacer()
+                .frame(height: 60)
+        }
+        .sheet(isPresented: $showQRScanner) {
+            QRScannerView { credentials in
+                handleQRScanned(credentials)
+                showQRScanner = false
+            }
+        }
+        .sheet(isPresented: $showManualSetup) {
+            NavigationStack {
+                SettingsView()
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Cancel") { showManualSetup = false }
+                        }
+                    }
+            }
+        }
+    }
+
+    private func handleQRScanned(_ credentials: ProvisioningCredentials) {
+        UserDefaults.standard.set(credentials.username, forKey: "sipUsername")
+        UserDefaults.standard.set(credentials.password, forKey: "sipPassword_temp")
+        let domain = credentials.tenantDomain.isEmpty ? credentials.server : credentials.tenantDomain
+        UserDefaults.standard.set(domain, forKey: "sipDomain")
+        UserDefaults.standard.set(credentials.server, forKey: "sipRegistrar")
+        UserDefaults.standard.set(credentials.port, forKey: "sipPort")
+        UserDefaults.standard.set(credentials.displayName, forKey: "sipDisplayName")
+        UserDefaults.standard.set(credentials.transport.lowercased(), forKey: "sipTransport")
+        UserDefaults.standard.set(credentials.apiUrl, forKey: "apiUrl")
+    }
+}
+
+// MARK: - Main Tab View (shown after setup)
+
+struct MainTabView: View {
+    @EnvironmentObject var callManager: CallManager
+    @EnvironmentObject var sipEngine: SipEngineManager
     @State private var selectedTab: Tab = .dialer
 
     enum Tab {

@@ -142,6 +142,14 @@ class CallManager: NSObject, ObservableObject {
         callController.request(transaction) { _ in }
     }
 
+    /// Handle remote hangup detected by polling.
+    func handleRemoteHangup() {
+        guard let call = activeCall else { return }
+        provider.reportCall(with: call.uuid, endedAt: Date(), reason: .remoteEnded)
+        activeCall = nil
+        incomingOffer = nil
+    }
+
     // MARK: - State Updates
 
     func updateCallState(info: CallInfo) {

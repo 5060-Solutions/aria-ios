@@ -20,17 +20,31 @@ struct ContactsView: View {
         NavigationStack {
             Group {
                 if !hasPermission {
-                    ContentUnavailableView(
-                        "No Access",
-                        systemImage: "person.crop.circle.badge.exclamationmark",
-                        description: Text("Grant Contacts access in Settings to see your contacts here.")
-                    )
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.badge.exclamationmark")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No Access")
+                            .font(.headline)
+                        Text("Grant Contacts access in Settings to see your contacts here.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
                 } else if contacts.isEmpty {
-                    ContentUnavailableView(
-                        "No Contacts",
-                        systemImage: "person.crop.circle",
-                        description: Text("Your contacts will appear here.")
-                    )
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No Contacts")
+                            .font(.headline)
+                        Text("Your contacts will appear here.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
                 } else {
                     List(filteredContacts) { contact in
                         ContactRow(contact: contact) { number in

@@ -1,0 +1,42 @@
+name: AriaSoftphone
+options:
+  bundleIdPrefix: com.solutions5060
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+targets:
+  AriaSoftphone:
+    type: application
+    platform: iOS
+    sources:
+      - path: AriaSoftphone
+        excludes:
+          - "Aria Softphone/**"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria
+        INFOPLIST_FILE: AriaSoftphone/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AriaSoftphone/Resources/AriaSoftphone.entitlements
+        DEVELOPMENT_TEAM: ""
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: false
+    dependencies:
+      - framework: AriaMobileCore.xcframework
+        embed: true
+        optional: true
+    info:
+      path: AriaSoftphone/Resources/Info.plist
+      properties:
+        NSCameraUsageDescription: "Aria needs camera access to scan your provisioning QR code."
+        NSMicrophoneUsageDescription: "Aria needs microphone access to make and receive phone calls."
+        NSContactsUsageDescription: "Aria uses your contacts to display caller names and enable quick dialing."
+        UIBackgroundModes:
+          - voip
+          - audio
+    preBuildScripts:
+      - name: Build Rust Library
+        script: |
+          if [ -f "${SRCROOT}/build-rust.sh" ]; then
+            echo "note: Run ./build-rust.sh manually before building"
+          fi
+        basedOnDependencyAnalysis: false

@@ -15,6 +15,7 @@ struct ProvisioningCredentials {
     let transport: String
     let voicemail: String
     let apiUrl: String
+    let tenantDomain: String
 }
 
 func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
@@ -47,6 +48,7 @@ func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
     let transport = params["transport"] ?? "udp"
     let voicemail = params["vm"] ?? ""
     let apiUrl = params["api"] ?? ""
+    let tenantDomain = params["tenant"] ?? ""
 
     return ProvisioningCredentials(
         server: server,
@@ -56,7 +58,8 @@ func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
         displayName: displayName,
         transport: transport,
         voicemail: voicemail,
-        apiUrl: apiUrl
+        apiUrl: apiUrl,
+        tenantDomain: tenantDomain
     )
 }
 

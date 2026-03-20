@@ -1,0 +1,4 @@
+module aria_mobileFFI {
+    header "aria_mobileFFI.h"
+    export *
+}

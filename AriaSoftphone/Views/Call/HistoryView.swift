@@ -9,11 +9,18 @@ struct HistoryView: View {
         NavigationStack {
             Group {
                 if callHistory.isEmpty {
-                    ContentUnavailableView(
-                        "No Call History",
-                        systemImage: "clock",
-                        description: Text("Your recent calls will appear here.")
-                    )
+                    VStack(spacing: 12) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No Call History")
+                            .font(.headline)
+                        Text("Your recent calls will appear here.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
                 } else {
                     List {
                         ForEach(callHistory) { entry in
