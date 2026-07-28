@@ -198,7 +198,7 @@ extension CallManager: CXProviderDelegate {
                 // Credentials are loaded from the registered SIP account
                 let credentials = SipCredentials(
                     username: UserDefaults.standard.string(forKey: "sipUsername") ?? "",
-                    password: "", // Retrieved from Keychain in production
+                    password: KeychainStore.get(KeychainStore.sipPasswordKey) ?? "",
                     domain: UserDefaults.standard.string(forKey: "sipDomain") ?? "",
                     registrar: nil,
                     transport: UserDefaults.standard.string(forKey: "sipTransport") ?? "udp",

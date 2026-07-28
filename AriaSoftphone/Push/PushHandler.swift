@@ -29,7 +29,7 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             .map { String(format: "%02x", $0) }
             .joined()
 
-        print("VoIP push token: \(token)")
+        // Do not log the VoIP push token.
         pushToken = token
 
         // If already registered, update the token with the gateway
@@ -58,7 +58,8 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             return
         }
 
-        print("Received VoIP push: \(payload.dictionaryPayload)")
+        // Do not log the full push payload — it contains the call token.
+        print("Received VoIP push")
 
         // Parse the push payload
         guard let data = payload.dictionaryPayload as? [String: Any],

@@ -613,6 +613,12 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
     /**
+     * Notify the core of a network connectivity change.
+     * Call this from the platform when WiFi/cellular changes, or after reconnect.
+     */
+    func notifyNetworkChange() 
+    
+    /**
      * Register this device with the push gateway.
      * Returns device_id and auth token.
      */
@@ -828,6 +834,16 @@ open func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [A
         FfiConverterSequenceTypeAudioCodec.lower(preferredCodecs),$0
     )
 })
+}
+    
+    /**
+     * Notify the core of a network connectivity change.
+     * Call this from the platform when WiFi/cellular changes, or after reconnect.
+     */
+open func notifyNetworkChange() {try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_notify_network_change(self.uniffiClonePointer(),$0
+    )
+}
 }
     
     /**
@@ -2650,6 +2666,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call() != 192) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_notify_network_change() != 62643) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_register_device() != 16233) {

@@ -20,7 +20,9 @@ struct SettingsView: View {
     @AppStorage("apiUrl") private var apiUrl = ""
 
     // PBX auth state
-    @AppStorage("jwt") private var jwt = ""
+    // JWT is a bearer credential — stored in the Keychain, not UserDefaults.
+    // Held in @State for UI binding and loaded/persisted via KeychainStore.
+    @State private var jwt = ""
     @AppStorage("extensionId") private var extensionId = ""
     @AppStorage("tenantId") private var tenantId = ""
     @AppStorage("pbxDeviceId") private var pbxDeviceId = ""
@@ -92,7 +94,24 @@ struct SettingsView: View {
             } message: {
                 Text("Are you sure you want to sign out? You will need to scan a QR code again to reconnect.")
             }
+            .onAppear { loadSecrets() }
         }
+    }
+
+    // MARK: - Secret Loading / Persistence
+
+    /// Load secrets (JWT, SIP password) from the Keychain into view state.
+    private func loadSecrets() {
+        jwt = KeychainStore.get(KeychainStore.jwtKey) ?? ""
+        if sipPassword.isEmpty {
+            sipPassword = KeychainStore.get(KeychainStore.sipPasswordKey) ?? ""
+        }
+    }
+
+    /// Update the JWT in both view state and the Keychain (single source of truth).
+    private func setJwt(_ value: String) {
+        jwt = value
+        KeychainStore.set(value, forKey: KeychainStore.jwtKey)
     }
 
     // MARK: - Aria Branding Header
@@ -319,6 +338,9 @@ struct SettingsView: View {
     private func handleQRScanned(_ credentials: ProvisioningCredentials) {
         sipUsername = credentials.username
         sipPassword = credentials.password
+        // Persist the SIP password securely so outgoing/incoming call paths can
+        // retrieve it after relaunch (Keychain, never UserDefaults).
+        KeychainStore.set(credentials.password, forKey: KeychainStore.sipPasswordKey)
         // SIP domain = tenant domain (used in From/To headers for auth)
         // SIP registrar = server address (where to send REGISTER)
         sipDomain = credentials.tenantDomain.isEmpty ? credentials.server : credentials.tenantDomain
@@ -341,6 +363,13 @@ struct SettingsView: View {
             return
         }
 
+        // Defense in depth: never POST the extension password to a cleartext or
+        // malformed host, even if configuration was set outside the QR flow.
+        guard isValidProvisioningDestination(apiUrl: apiUrl, server: sipRegistrar.isEmpty ? sipDomain : sipRegistrar) else {
+            errorMessage = "Refusing to connect: the configured server is insecure or invalid. The API endpoint must use HTTPS."
+            return
+        }
+
         isConnecting = true
         errorMessage = nil
 
@@ -356,7 +385,7 @@ struct SettingsView: View {
                 )
 
                 await MainActor.run {
-                    jwt = loginResult.jwt
+                    setJwt(loginResult.jwt)
                     extensionId = loginResult.extensionId
                     tenantId = loginResult.tenantId
                 }
@@ -438,7 +467,9 @@ struct SettingsView: View {
         sipTransport = "udp"
         sipPassword = ""
         apiUrl = ""
-        jwt = ""
+        setJwt("")
+        // Clear secrets from the Keychain on sign-out.
+        KeychainStore.remove(KeychainStore.sipPasswordKey)
         extensionId = ""
         tenantId = ""
         pbxDeviceId = ""
