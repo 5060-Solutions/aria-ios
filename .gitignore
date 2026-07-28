@@ -18,3 +18,7 @@ Packages/
 
 # Rust build artifacts
 target/
+
+# Generated Rust xcframework — built from ../aria-mobile-core via build-rust.sh.
+# Not tracked: large build artifact that drifts from the Rust source.
+AriaMobileCore.xcframework/
