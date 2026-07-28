@@ -63,6 +63,57 @@ func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
     )
 }
 
+// MARK: - Provisioning Destination Validation
+
+/// Validates that a scanned provisioning payload points at a safe destination
+/// before any credentials are stored or sent.
+///
+/// The extension password is POSTed to `apiUrl` during login and SIP
+/// registration is directed at `server`, so a hostile QR code could otherwise
+/// redirect credentials to an attacker-controlled host. We require:
+/// - `apiUrl` to be a well-formed `https://` URL with a non-empty, valid host, and
+/// - `server` to be a non-empty, valid host.
+///
+/// Cleartext (`http://`) or malformed destinations are rejected.
+func isValidProvisioningDestination(apiUrl: String, server: String) -> Bool {
+    // API endpoint must be an HTTPS URL with a valid host.
+    guard let components = URLComponents(string: apiUrl),
+          components.scheme?.lowercased() == "https",
+          let apiHost = components.host,
+          isValidHost(apiHost) else {
+        return false
+    }
+
+    // SIP server (used as the registration/SIP host) must be a valid bare host.
+    guard isValidHost(server) else {
+        return false
+    }
+
+    return true
+}
+
+/// Returns true if `host` is a plausible, non-empty hostname or IP literal:
+/// contains no whitespace, path, or scheme separators, only host-legal
+/// characters, and at least one alphanumeric.
+private func isValidHost(_ host: String) -> Bool {
+    let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, trimmed == host else { return false }
+
+    // Allowed: hostnames (letters, digits, dot, hyphen) and IPv6 literals (colon).
+    let allowed = CharacterSet(charactersIn:
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:")
+    guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+        return false
+    }
+
+    // Must contain at least one alphanumeric character.
+    guard trimmed.rangeOfCharacter(from: .alphanumerics) != nil else {
+        return false
+    }
+
+    return true
+}
+
 // MARK: - QR Scanner View
 
 struct QRScannerView: View {
@@ -173,20 +224,34 @@ struct QRScannerView: View {
         guard scannedCode == nil else { return }
         scannedCode = code
 
-        if let credentials = parseProvisioningURI(code) {
-            // Haptic feedback on success
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.success)
-            onScanned(credentials)
-        } else {
-            errorMessage = "Invalid QR code. Expected an Aria provisioning code."
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.error)
-            // Allow re-scanning after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                scannedCode = nil
-                errorMessage = nil
-            }
+        guard let credentials = parseProvisioningURI(code) else {
+            rejectScan("Invalid QR code. Expected an Aria provisioning code.")
+            return
+        }
+
+        // Do not store or send credentials to an untrusted or cleartext host.
+        guard isValidProvisioningDestination(
+            apiUrl: credentials.apiUrl,
+            server: credentials.server
+        ) else {
+            rejectScan("This provisioning code points to an insecure or invalid server and was rejected. The API endpoint must use HTTPS.")
+            return
+        }
+
+        // Haptic feedback on success
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+        onScanned(credentials)
+    }
+
+    /// Show an error, buzz, and allow re-scanning after a brief delay.
+    private func rejectScan(_ message: String) {
+        errorMessage = message
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.error)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            scannedCode = nil
+            errorMessage = nil
         }
     }
 }

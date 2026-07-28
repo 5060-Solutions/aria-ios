@@ -24,6 +24,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Migrate any secrets left in UserDefaults by older builds into the
+        // Keychain, then scrub them. Runs once; a no-op thereafter.
+        KeychainStore.migrateLegacyDefaultsIfNeeded()
+
         // Initialize the Rust runtime
         initRuntime()
 

@@ -101,7 +101,8 @@ struct SetupView: View {
 
     private func handleQRScanned(_ credentials: ProvisioningCredentials) {
         UserDefaults.standard.set(credentials.username, forKey: "sipUsername")
-        UserDefaults.standard.set(credentials.password, forKey: "sipPassword_temp")
+        // SIP password is a secret — store it in the Keychain, never UserDefaults.
+        KeychainStore.set(credentials.password, forKey: KeychainStore.sipPasswordKey)
         let domain = credentials.tenantDomain.isEmpty ? credentials.server : credentials.tenantDomain
         UserDefaults.standard.set(domain, forKey: "sipDomain")
         UserDefaults.standard.set(credentials.server, forKey: "sipRegistrar")
