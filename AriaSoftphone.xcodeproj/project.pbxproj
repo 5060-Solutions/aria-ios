@@ -10,6 +10,7 @@
 		09D6319B4286D7DBF34175AD /* aria_mobile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DF83E37DCF9E007E2250A /* aria_mobile.swift */; };
 		1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */; };
 		34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461C9F297FCCEA7348A009EA /* QRScannerView.swift */; };
+		37F9993221BC459599D7CEF5 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFEB257095314173756DA2C /* KeychainStore.swift */; };
 		4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */; };
 		79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */; };
 		8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125317FA44A9C196C3BE928E /* CallManager.swift */; };
@@ -54,6 +55,7 @@
 		977335B2802A80180636380B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		9A4869ED93080641E10B496E /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		A53C9EA5B271932D7716F16D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AFFEB257095314173756DA2C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		BA09A8B3618AFA053C391608 /* PushHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushHandler.swift; sourceTree = "<group>"; };
 		BA65EE9BC777C87EE95AB48C /* DialerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerView.swift; sourceTree = "<group>"; };
 		CE49C3F032A82A82E003483F /* aria_mobileFFI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = aria_mobileFFI.h; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 			isa = PBXGroup;
 			children = (
 				DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */,
+				AFFEB257095314173756DA2C /* KeychainStore.swift */,
 				30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */,
 			);
 			path = Services;
@@ -318,6 +321,7 @@
 				FFD3EFD07BC50CBD9FFEF8F0 /* ContentView.swift in Sources */,
 				8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */,
 				C83FF6A53FEE2BA978A2B9A7 /* HistoryView.swift in Sources */,
+				37F9993221BC459599D7CEF5 /* KeychainStore.swift in Sources */,
 				A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */,
 				BDF6DCE8A5DBABD3726D886B /* PushHandler.swift in Sources */,
 				34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */,
