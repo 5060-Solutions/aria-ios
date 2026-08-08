@@ -399,6 +399,22 @@ fileprivate class UniffiHandleMap<T> {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
+    typealias FfiType = UInt8
+    typealias SwiftType = UInt8
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt8 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: UInt8, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
     typealias FfiType = UInt16
     typealias SwiftType = UInt16
@@ -456,6 +472,22 @@ fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
     }
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
+    typealias FfiType = Int64
+    typealias SwiftType = Int64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int64, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -569,6 +601,81 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * Accept an incoming call with local SDP answer.
      */
     func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec]) throws  -> CallInfo
+    
+    /**
+     * Was this binary built with transcription support?
+     *
+     * Lets one app package probe at runtime instead of the host guessing from
+     * its build flavour.
+     */
+    func aiAvailable()  -> Bool
+    
+    func aiCancelDownload(modelId: String) 
+    
+    /**
+     * Returns how many insights were deleted.
+     */
+    func aiClearInsights()  -> UInt64
+    
+    func aiDeleteInsight(callId: String)  -> Bool
+    
+    func aiDeleteModel(modelId: String) throws 
+    
+    /**
+     * Discard a captured call without transcribing it.
+     */
+    func aiDiscardCapture(callId: String) 
+    
+    func aiDownloadProgress(modelId: String)  -> AiDownloadProgress?
+    
+    /**
+     * Prepare on-device AI, storing models under `storage_dir`.
+     *
+     * The host owns the path — iOS Application Support, Android filesDir — so
+     * nothing here hardcodes a platform location.
+     */
+    func aiInit(storageDir: String, insightKey: [UInt8]?) throws 
+    
+    /**
+     * One stored insight in full, including its transcript.
+     */
+    func aiInsight(callId: String)  -> AiCallInsight?
+    
+    /**
+     * Past insights, newest first. Empty when transcripts are not stored.
+     */
+    func aiInsights(limit: UInt32, offset: UInt32)  -> [AiInsightSummary]
+    
+    /**
+     * Models this device could install, annotated with whether it can run them.
+     */
+    func aiModels()  -> [AiModel]
+    
+    /**
+     * Begin capturing a call's audio for later transcription.
+     *
+     * Audio is tapped where it is decoded, so calling this does not move any
+     * samples across this boundary. Safe to call mid-call.
+     */
+    func aiStartCapture(callId: String) throws 
+    
+    /**
+     * Start downloading a model. Poll `ai_download_progress` for state.
+     */
+    func aiStartDownload(modelId: String) throws 
+    
+    /**
+     * Stop capturing without transcribing.
+     */
+    func aiStopCapture(callId: String) 
+    
+    /**
+     * Transcribe what was captured, and summarise it when an LLM is installed.
+     *
+     * Runs the models, so it takes seconds to minutes depending on call length
+     * and device. Call it off the UI thread.
+     */
+    func aiTranscribe(callId: String) throws  -> AiCallInsight
     
     /**
      * Check if any active call was ended by the remote party.
@@ -743,6 +850,163 @@ open func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec])th
     uniffi_aria_mobile_core_fn_method_ariamobileengine_accept_incoming_call(self.uniffiClonePointer(),
         FfiConverterString.lower(callToken),
         FfiConverterSequenceTypeAudioCodec.lower(preferredCodecs),$0
+    )
+})
+}
+    
+    /**
+     * Was this binary built with transcription support?
+     *
+     * Lets one app package probe at runtime instead of the host guessing from
+     * its build flavour.
+     */
+open func aiAvailable() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_available(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func aiCancelDownload(modelId: String) {try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_cancel_download(self.uniffiClonePointer(),
+        FfiConverterString.lower(modelId),$0
+    )
+}
+}
+    
+    /**
+     * Returns how many insights were deleted.
+     */
+open func aiClearInsights() -> UInt64 {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_clear_insights(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func aiDeleteInsight(callId: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_delete_insight(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+})
+}
+    
+open func aiDeleteModel(modelId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_delete_model(self.uniffiClonePointer(),
+        FfiConverterString.lower(modelId),$0
+    )
+}
+}
+    
+    /**
+     * Discard a captured call without transcribing it.
+     */
+open func aiDiscardCapture(callId: String) {try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_discard_capture(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+}
+}
+    
+open func aiDownloadProgress(modelId: String) -> AiDownloadProgress? {
+    return try!  FfiConverterOptionTypeAiDownloadProgress.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_download_progress(self.uniffiClonePointer(),
+        FfiConverterString.lower(modelId),$0
+    )
+})
+}
+    
+    /**
+     * Prepare on-device AI, storing models under `storage_dir`.
+     *
+     * The host owns the path — iOS Application Support, Android filesDir — so
+     * nothing here hardcodes a platform location.
+     */
+open func aiInit(storageDir: String, insightKey: [UInt8]?)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_init(self.uniffiClonePointer(),
+        FfiConverterString.lower(storageDir),
+        FfiConverterOptionSequenceUInt8.lower(insightKey),$0
+    )
+}
+}
+    
+    /**
+     * One stored insight in full, including its transcript.
+     */
+open func aiInsight(callId: String) -> AiCallInsight? {
+    return try!  FfiConverterOptionTypeAiCallInsight.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_insight(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+})
+}
+    
+    /**
+     * Past insights, newest first. Empty when transcripts are not stored.
+     */
+open func aiInsights(limit: UInt32, offset: UInt32) -> [AiInsightSummary] {
+    return try!  FfiConverterSequenceTypeAiInsightSummary.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_insights(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(limit),
+        FfiConverterUInt32.lower(offset),$0
+    )
+})
+}
+    
+    /**
+     * Models this device could install, annotated with whether it can run them.
+     */
+open func aiModels() -> [AiModel] {
+    return try!  FfiConverterSequenceTypeAiModel.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_models(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Begin capturing a call's audio for later transcription.
+     *
+     * Audio is tapped where it is decoded, so calling this does not move any
+     * samples across this boundary. Safe to call mid-call.
+     */
+open func aiStartCapture(callId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_start_capture(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+}
+}
+    
+    /**
+     * Start downloading a model. Poll `ai_download_progress` for state.
+     */
+open func aiStartDownload(modelId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_start_download(self.uniffiClonePointer(),
+        FfiConverterString.lower(modelId),$0
+    )
+}
+}
+    
+    /**
+     * Stop capturing without transcribing.
+     */
+open func aiStopCapture(callId: String) {try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_stop_capture(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+}
+}
+    
+    /**
+     * Transcribe what was captured, and summarise it when an LLM is installed.
+     *
+     * Runs the models, so it takes seconds to minutes depending on call length
+     * and device. Call it off the UI thread.
+     */
+open func aiTranscribe(callId: String)throws  -> AiCallInsight {
+    return try  FfiConverterTypeAiCallInsight.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_transcribe(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
     )
 })
 }
@@ -1004,6 +1268,541 @@ public func FfiConverterTypeAriaMobileEngine_lift(_ pointer: UnsafeMutableRawPoi
 #endif
 public func FfiConverterTypeAriaMobileEngine_lower(_ value: AriaMobileEngine) -> UnsafeMutableRawPointer {
     return FfiConverterTypeAriaMobileEngine.lower(value)
+}
+
+
+public struct AiCallInsight {
+    public var callId: String
+    public var createdAt: Int64
+    public var durationSecs: UInt32
+    public var segments: [AiTranscriptSegment]
+    public var language: String?
+    /**
+     * Present only when a summarisation model is installed and ran.
+     */
+    public var summaryHeadline: String?
+    public var summaryPoints: [String]
+    /**
+     * "pending", "transcribing", "complete", "transcript_only", "failed".
+     */
+    public var status: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(callId: String, createdAt: Int64, durationSecs: UInt32, segments: [AiTranscriptSegment], language: String?, 
+        /**
+         * Present only when a summarisation model is installed and ran.
+         */summaryHeadline: String?, summaryPoints: [String], 
+        /**
+         * "pending", "transcribing", "complete", "transcript_only", "failed".
+         */status: String) {
+        self.callId = callId
+        self.createdAt = createdAt
+        self.durationSecs = durationSecs
+        self.segments = segments
+        self.language = language
+        self.summaryHeadline = summaryHeadline
+        self.summaryPoints = summaryPoints
+        self.status = status
+    }
+}
+
+
+
+extension AiCallInsight: Equatable, Hashable {
+    public static func ==(lhs: AiCallInsight, rhs: AiCallInsight) -> Bool {
+        if lhs.callId != rhs.callId {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        if lhs.durationSecs != rhs.durationSecs {
+            return false
+        }
+        if lhs.segments != rhs.segments {
+            return false
+        }
+        if lhs.language != rhs.language {
+            return false
+        }
+        if lhs.summaryHeadline != rhs.summaryHeadline {
+            return false
+        }
+        if lhs.summaryPoints != rhs.summaryPoints {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(callId)
+        hasher.combine(createdAt)
+        hasher.combine(durationSecs)
+        hasher.combine(segments)
+        hasher.combine(language)
+        hasher.combine(summaryHeadline)
+        hasher.combine(summaryPoints)
+        hasher.combine(status)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiCallInsight: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiCallInsight {
+        return
+            try AiCallInsight(
+                callId: FfiConverterString.read(from: &buf), 
+                createdAt: FfiConverterInt64.read(from: &buf), 
+                durationSecs: FfiConverterUInt32.read(from: &buf), 
+                segments: FfiConverterSequenceTypeAiTranscriptSegment.read(from: &buf), 
+                language: FfiConverterOptionString.read(from: &buf), 
+                summaryHeadline: FfiConverterOptionString.read(from: &buf), 
+                summaryPoints: FfiConverterSequenceString.read(from: &buf), 
+                status: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiCallInsight, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.callId, into: &buf)
+        FfiConverterInt64.write(value.createdAt, into: &buf)
+        FfiConverterUInt32.write(value.durationSecs, into: &buf)
+        FfiConverterSequenceTypeAiTranscriptSegment.write(value.segments, into: &buf)
+        FfiConverterOptionString.write(value.language, into: &buf)
+        FfiConverterOptionString.write(value.summaryHeadline, into: &buf)
+        FfiConverterSequenceString.write(value.summaryPoints, into: &buf)
+        FfiConverterString.write(value.status, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiCallInsight_lift(_ buf: RustBuffer) throws -> AiCallInsight {
+    return try FfiConverterTypeAiCallInsight.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiCallInsight_lower(_ value: AiCallInsight) -> RustBuffer {
+    return FfiConverterTypeAiCallInsight.lower(value)
+}
+
+
+/**
+ * Progress of a model download, polled rather than pushed.
+ */
+public struct AiDownloadProgress {
+    public var modelId: String
+    public var downloadedBytes: UInt64
+    public var totalBytes: UInt64
+    /**
+     * "queued", "running", "verifying", "completed", "cancelled", "failed".
+     */
+    public var state: String
+    public var error: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(modelId: String, downloadedBytes: UInt64, totalBytes: UInt64, 
+        /**
+         * "queued", "running", "verifying", "completed", "cancelled", "failed".
+         */state: String, error: String?) {
+        self.modelId = modelId
+        self.downloadedBytes = downloadedBytes
+        self.totalBytes = totalBytes
+        self.state = state
+        self.error = error
+    }
+}
+
+
+
+extension AiDownloadProgress: Equatable, Hashable {
+    public static func ==(lhs: AiDownloadProgress, rhs: AiDownloadProgress) -> Bool {
+        if lhs.modelId != rhs.modelId {
+            return false
+        }
+        if lhs.downloadedBytes != rhs.downloadedBytes {
+            return false
+        }
+        if lhs.totalBytes != rhs.totalBytes {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.error != rhs.error {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(modelId)
+        hasher.combine(downloadedBytes)
+        hasher.combine(totalBytes)
+        hasher.combine(state)
+        hasher.combine(error)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiDownloadProgress: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiDownloadProgress {
+        return
+            try AiDownloadProgress(
+                modelId: FfiConverterString.read(from: &buf), 
+                downloadedBytes: FfiConverterUInt64.read(from: &buf), 
+                totalBytes: FfiConverterUInt64.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiDownloadProgress, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.modelId, into: &buf)
+        FfiConverterUInt64.write(value.downloadedBytes, into: &buf)
+        FfiConverterUInt64.write(value.totalBytes, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiDownloadProgress_lift(_ buf: RustBuffer) throws -> AiDownloadProgress {
+    return try FfiConverterTypeAiDownloadProgress.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiDownloadProgress_lower(_ value: AiDownloadProgress) -> RustBuffer {
+    return FfiConverterTypeAiDownloadProgress.lower(value)
+}
+
+
+/**
+ * The finished result for one call.
+ * A stored insight in list form, without the transcript text.
+ */
+public struct AiInsightSummary {
+    public var callId: String
+    public var createdAt: Int64
+    public var durationSecs: UInt32
+    public var status: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(callId: String, createdAt: Int64, durationSecs: UInt32, status: String) {
+        self.callId = callId
+        self.createdAt = createdAt
+        self.durationSecs = durationSecs
+        self.status = status
+    }
+}
+
+
+
+extension AiInsightSummary: Equatable, Hashable {
+    public static func ==(lhs: AiInsightSummary, rhs: AiInsightSummary) -> Bool {
+        if lhs.callId != rhs.callId {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        if lhs.durationSecs != rhs.durationSecs {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(callId)
+        hasher.combine(createdAt)
+        hasher.combine(durationSecs)
+        hasher.combine(status)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiInsightSummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiInsightSummary {
+        return
+            try AiInsightSummary(
+                callId: FfiConverterString.read(from: &buf), 
+                createdAt: FfiConverterInt64.read(from: &buf), 
+                durationSecs: FfiConverterUInt32.read(from: &buf), 
+                status: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiInsightSummary, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.callId, into: &buf)
+        FfiConverterInt64.write(value.createdAt, into: &buf)
+        FfiConverterUInt32.write(value.durationSecs, into: &buf)
+        FfiConverterString.write(value.status, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiInsightSummary_lift(_ buf: RustBuffer) throws -> AiInsightSummary {
+    return try FfiConverterTypeAiInsightSummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiInsightSummary_lower(_ value: AiInsightSummary) -> RustBuffer {
+    return FfiConverterTypeAiInsightSummary.lower(value)
+}
+
+
+/**
+ * One model the user can install.
+ */
+public struct AiModel {
+    public var id: String
+    /**
+     * Plain-language name for the picker. Never show a bare model id.
+     */
+    public var displayName: String
+    /**
+     * "stt" or "llm".
+     */
+    public var kind: String
+    public var sizeBytes: UInt64
+    /**
+     * True when this device has the memory and class to run it.
+     */
+    public var available: Bool
+    /**
+     * Why it is unavailable, in words a user can act on.
+     */
+    public var unavailableReason: String?
+    public var installed: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * Plain-language name for the picker. Never show a bare model id.
+         */displayName: String, 
+        /**
+         * "stt" or "llm".
+         */kind: String, sizeBytes: UInt64, 
+        /**
+         * True when this device has the memory and class to run it.
+         */available: Bool, 
+        /**
+         * Why it is unavailable, in words a user can act on.
+         */unavailableReason: String?, installed: Bool) {
+        self.id = id
+        self.displayName = displayName
+        self.kind = kind
+        self.sizeBytes = sizeBytes
+        self.available = available
+        self.unavailableReason = unavailableReason
+        self.installed = installed
+    }
+}
+
+
+
+extension AiModel: Equatable, Hashable {
+    public static func ==(lhs: AiModel, rhs: AiModel) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.displayName != rhs.displayName {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.sizeBytes != rhs.sizeBytes {
+            return false
+        }
+        if lhs.available != rhs.available {
+            return false
+        }
+        if lhs.unavailableReason != rhs.unavailableReason {
+            return false
+        }
+        if lhs.installed != rhs.installed {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(displayName)
+        hasher.combine(kind)
+        hasher.combine(sizeBytes)
+        hasher.combine(available)
+        hasher.combine(unavailableReason)
+        hasher.combine(installed)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiModel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModel {
+        return
+            try AiModel(
+                id: FfiConverterString.read(from: &buf), 
+                displayName: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                sizeBytes: FfiConverterUInt64.read(from: &buf), 
+                available: FfiConverterBool.read(from: &buf), 
+                unavailableReason: FfiConverterOptionString.read(from: &buf), 
+                installed: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiModel, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterUInt64.write(value.sizeBytes, into: &buf)
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterOptionString.write(value.unavailableReason, into: &buf)
+        FfiConverterBool.write(value.installed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModel_lift(_ buf: RustBuffer) throws -> AiModel {
+    return try FfiConverterTypeAiModel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModel_lower(_ value: AiModel) -> RustBuffer {
+    return FfiConverterTypeAiModel.lower(value)
+}
+
+
+/**
+ * One utterance in a transcript.
+ */
+public struct AiTranscriptSegment {
+    /**
+     * "local" (this handset) or "remote" (the far end).
+     */
+    public var speaker: String
+    public var startMs: UInt32
+    public var endMs: UInt32
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * "local" (this handset) or "remote" (the far end).
+         */speaker: String, startMs: UInt32, endMs: UInt32, text: String) {
+        self.speaker = speaker
+        self.startMs = startMs
+        self.endMs = endMs
+        self.text = text
+    }
+}
+
+
+
+extension AiTranscriptSegment: Equatable, Hashable {
+    public static func ==(lhs: AiTranscriptSegment, rhs: AiTranscriptSegment) -> Bool {
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.startMs != rhs.startMs {
+            return false
+        }
+        if lhs.endMs != rhs.endMs {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(speaker)
+        hasher.combine(startMs)
+        hasher.combine(endMs)
+        hasher.combine(text)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiTranscriptSegment: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiTranscriptSegment {
+        return
+            try AiTranscriptSegment(
+                speaker: FfiConverterString.read(from: &buf), 
+                startMs: FfiConverterUInt32.read(from: &buf), 
+                endMs: FfiConverterUInt32.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiTranscriptSegment, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterUInt32.write(value.startMs, into: &buf)
+        FfiConverterUInt32.write(value.endMs, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiTranscriptSegment_lift(_ buf: RustBuffer) throws -> AiTranscriptSegment {
+    return try FfiConverterTypeAiTranscriptSegment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiTranscriptSegment_lower(_ value: AiTranscriptSegment) -> RustBuffer {
+    return FfiConverterTypeAiTranscriptSegment.lower(value)
 }
 
 
@@ -2509,6 +3308,54 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAiCallInsight: FfiConverterRustBuffer {
+    typealias SwiftType = AiCallInsight?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAiCallInsight.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAiCallInsight.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAiDownloadProgress: FfiConverterRustBuffer {
+    typealias SwiftType = AiDownloadProgress?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAiDownloadProgress.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAiDownloadProgress.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCallInfo: FfiConverterRustBuffer {
     typealias SwiftType = CallInfo?
 
@@ -2557,6 +3404,55 @@ fileprivate struct FfiConverterOptionTypeMediaStats: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionSequenceUInt8: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt8]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceUInt8.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceUInt8.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceUInt8: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt8]
+
+    public static func write(_ value: [UInt8], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt8.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt8] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt8]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt8.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceInt16: FfiConverterRustBuffer {
     typealias SwiftType = [Int16]
 
@@ -2574,6 +3470,106 @@ fileprivate struct FfiConverterSequenceInt16: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterInt16.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAiInsightSummary: FfiConverterRustBuffer {
+    typealias SwiftType = [AiInsightSummary]
+
+    public static func write(_ value: [AiInsightSummary], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAiInsightSummary.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AiInsightSummary] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AiInsightSummary]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAiInsightSummary.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAiModel: FfiConverterRustBuffer {
+    typealias SwiftType = [AiModel]
+
+    public static func write(_ value: [AiModel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAiModel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AiModel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AiModel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAiModel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAiTranscriptSegment: FfiConverterRustBuffer {
+    typealias SwiftType = [AiTranscriptSegment]
+
+    public static func write(_ value: [AiTranscriptSegment], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAiTranscriptSegment.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AiTranscriptSegment] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AiTranscriptSegment]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAiTranscriptSegment.read(from: &buf))
         }
         return seq
     }
@@ -2642,6 +3638,51 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_accept_incoming_call() != 41420) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_available() != 61142) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_cancel_download() != 31065) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_clear_insights() != 22485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_delete_insight() != 11113) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_delete_model() != 63945) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_discard_capture() != 53187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_download_progress() != 32712) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_init() != 26795) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_insight() != 35675) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_insights() != 27091) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_models() != 23891) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_start_capture() != 46631) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_start_download() != 2761) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_stop_capture() != 47303) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_transcribe() != 4868) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_check_remote_hangup() != 44253) {

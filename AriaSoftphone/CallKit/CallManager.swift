@@ -146,6 +146,11 @@ class CallManager: NSObject, ObservableObject {
     func handleRemoteHangup() {
         guard let call = activeCall else { return }
         provider.reportCall(with: call.uuid, endedAt: Date(), reason: .remoteEnded)
+        // Runs on its own queue and only if the user opted in, so a slow
+        // transcription cannot hold up tearing the call down.
+        if let callId = call.callId {
+            CallTranscription.shared.onCallEnded(callId: callId)
+        }
         activeCall = nil
         incomingOffer = nil
     }
@@ -160,9 +165,12 @@ class CallManager: NSObject, ObservableObject {
             call.state = .connected
             call.connectedAt = Date()
             provider.reportOutgoingCall(with: call.uuid, connectedAt: call.connectedAt)
+            // A no-op unless transcription is on and a speech model is present.
+            CallTranscription.shared.onCallStarted(callId: info.callId)
         case .ended:
             call.state = .ended
             provider.reportCall(with: call.uuid, endedAt: Date(), reason: .remoteEnded)
+            CallTranscription.shared.onCallEnded(callId: info.callId)
             activeCall = nil
             return
         case .onHold:
@@ -250,6 +258,7 @@ extension CallManager: CXProviderDelegate {
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         // Hang up via Rust engine
         if let callId = activeCall?.callId {
+            CallTranscription.shared.onCallEnded(callId: callId)
             try? SipEngineManager.shared.hangup(callId: callId)
         } else if let callToken = activeCall?.callToken {
             try? SipEngineManager.shared.rejectCall(callToken: callToken)

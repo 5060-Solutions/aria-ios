@@ -147,6 +147,75 @@ class SipEngineManager: ObservableObject {
         return engine?.getTxAudioLevel(callId: callId) ?? 0.0
     }
 
+    // MARK: - On-device AI
+    //
+    // Wrapped here like everything else so `engine` stays private: callers get
+    // a nil-safe surface and no way to hold the engine past its lifetime.
+
+    /// True when this build has the models compiled in. The simulator slice is
+    /// built without them, so this is false there and true on device.
+    func aiAvailable() -> Bool {
+        return engine?.aiAvailable() ?? false
+    }
+
+    func aiInit(storageDir: String, insightKey: [UInt8]?) throws {
+        try engine?.aiInit(storageDir: storageDir, insightKey: insightKey)
+    }
+
+    func aiModels() -> [AiModel] {
+        return engine?.aiModels() ?? []
+    }
+
+    func aiStartDownload(modelId: String) throws {
+        try engine?.aiStartDownload(modelId: modelId)
+    }
+
+    func aiDownloadProgress(modelId: String) -> AiDownloadProgress? {
+        return engine?.aiDownloadProgress(modelId: modelId)
+    }
+
+    func aiCancelDownload(modelId: String) {
+        engine?.aiCancelDownload(modelId: modelId)
+    }
+
+    func aiDeleteModel(modelId: String) throws {
+        try engine?.aiDeleteModel(modelId: modelId)
+    }
+
+    func aiStartCapture(callId: String) throws {
+        try engine?.aiStartCapture(callId: callId)
+    }
+
+    func aiStopCapture(callId: String) {
+        engine?.aiStopCapture(callId: callId)
+    }
+
+    /// Runs inference, so this blocks for seconds to minutes. Never call it on
+    /// the main queue.
+    func aiTranscribe(callId: String) throws -> AiCallInsight? {
+        return try engine?.aiTranscribe(callId: callId)
+    }
+
+    func aiDiscardCapture(callId: String) {
+        engine?.aiDiscardCapture(callId: callId)
+    }
+
+    func aiInsights(limit: UInt32, offset: UInt32) -> [AiInsightSummary] {
+        return engine?.aiInsights(limit: limit, offset: offset) ?? []
+    }
+
+    func aiInsight(callId: String) -> AiCallInsight? {
+        return engine?.aiInsight(callId: callId)
+    }
+
+    func aiDeleteInsight(callId: String) -> Bool {
+        return engine?.aiDeleteInsight(callId: callId) ?? false
+    }
+
+    func aiClearInsights() -> UInt64 {
+        return engine?.aiClearInsights() ?? 0
+    }
+
     /// Check if remote party hung up.
     func checkRemoteHangup() -> String? {
         return engine?.checkRemoteHangup()

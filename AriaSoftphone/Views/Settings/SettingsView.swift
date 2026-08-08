@@ -66,6 +66,9 @@ struct SettingsView: View {
                         connectButton
                     }
 
+                    // On-device transcription
+                    transcriptionLink
+
                     // About section
                     aboutCard
 
@@ -148,6 +151,31 @@ struct SettingsView: View {
                 Divider().padding(.leading, 16)
                 settingsRow("Port", "\(sipPort)")
             }
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    // MARK: - Transcription
+
+    private var transcriptionLink: some View {
+        NavigationLink {
+            TranscriptionView()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("On-device transcription")
+                        .foregroundStyle(.primary)
+                    Text("Transcribe calls on this phone. Nothing is uploaded.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(16)
             .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }

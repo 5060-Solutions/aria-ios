@@ -12,10 +12,12 @@
 		34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461C9F297FCCEA7348A009EA /* QRScannerView.swift */; };
 		37F9993221BC459599D7CEF5 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFEB257095314173756DA2C /* KeychainStore.swift */; };
 		4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */; };
+		5CD9C9891C5EFDEDE1EA8586 /* CallTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */; };
 		79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */; };
 		8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125317FA44A9C196C3BE928E /* CallManager.swift */; };
 		84CD09B2ACAF2E30E4FDEF37 /* AriaMobileCore.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA65EE9BC777C87EE95AB48C /* DialerView.swift */; };
+		8EE5391150E82870C4019140 /* TranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F853B949444400FBD15B95AE /* TranscriptionView.swift */; };
 		9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977335B2802A80180636380B /* SettingsView.swift */; };
 		A0085E00B369764DA6AF026C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */; };
 		A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */; };
@@ -52,6 +54,7 @@
 		576DF83E37DCF9E007E2250A /* aria_mobile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = aria_mobile.swift; sourceTree = "<group>"; };
 		7FD9B9788212C3083231C8D0 /* AriaSoftphone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AriaSoftphone.entitlements; sourceTree = "<group>"; };
 		8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
+		96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTranscription.swift; sourceTree = "<group>"; };
 		977335B2802A80180636380B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		9A4869ED93080641E10B496E /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		A53C9EA5B271932D7716F16D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -64,6 +67,7 @@
 		DC8D92A5630AD126518BFFE3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBridge.swift; sourceTree = "<group>"; };
 		EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SipEngineManager.swift; sourceTree = "<group>"; };
+		F853B949444400FBD15B95AE /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */,
+				96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */,
 				AFFEB257095314173756DA2C /* KeychainStore.swift */,
 				30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */,
 			);
@@ -178,6 +183,7 @@
 			children = (
 				461C9F297FCCEA7348A009EA /* QRScannerView.swift */,
 				977335B2802A80180636380B /* SettingsView.swift */,
+				F853B949444400FBD15B95AE /* TranscriptionView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -316,6 +322,7 @@
 				1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */,
 				AD294B76D2C8420FF343DEB7 /* AudioBridge.swift in Sources */,
 				8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */,
+				5CD9C9891C5EFDEDE1EA8586 /* CallTranscription.swift in Sources */,
 				A0085E00B369764DA6AF026C /* CallView.swift in Sources */,
 				4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */,
 				FFD3EFD07BC50CBD9FFEF8F0 /* ContentView.swift in Sources */,
@@ -327,6 +334,7 @@
 				34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */,
 				9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */,
 				79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */,
+				8EE5391150E82870C4019140 /* TranscriptionView.swift in Sources */,
 				09D6319B4286D7DBF34175AD /* aria_mobile.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -414,6 +422,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "-lc++ -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.solutions5060.aria;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
@@ -438,6 +447,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "-lc++ -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.solutions5060.aria;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;

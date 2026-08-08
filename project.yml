@@ -20,6 +20,15 @@ targets:
         DEVELOPMENT_TEAM: ""
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: false
+        # A Rust staticlib carries its own objects but not the system libraries
+        # its C dependencies need — those arrive as cargo link directives that
+        # only apply when cargo itself links, which it does not for a staticlib.
+        # So Xcode has to name them:
+        #   libc++      whisper.cpp and ggml are C++ (std::runtime_error, ...)
+        #   Accelerate  ggml-blas calls vDSP for its BLAS kernels
+        # Both are harmless in a build without the AI feature: nothing
+        # references them and the linker drops them.
+        OTHER_LDFLAGS: -lc++ -framework Accelerate
     dependencies:
       - framework: AriaMobileCore.xcframework
         embed: true

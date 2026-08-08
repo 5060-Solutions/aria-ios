@@ -27,9 +27,34 @@ fi
 
 export CMAKE_POLICY_VERSION_MINIMUM=3.5
 
+# ── On-device transcription ─────────────────────────────────────────────────
+#
+# Off unless AI=1, because it pulls whisper.cpp (and with AI=2, llama.cpp) — a
+# slow C++ build a plain SIP build should not pay for.
+#
+#   AI=1 ./build-rust.sh    transcription
+#   AI=2 ./build-rust.sh    transcription + on-device summaries
+#
+# Device only. The simulator stays a plain SIP build: it is x86-or-arm on a Mac,
+# nobody benchmarks a model there, and `ai_available()` reports false at runtime.
+AI="${AI:-0}"
+case "$AI" in
+    2) AI_FEATURES="--features ai-summaries" ;;
+    1) AI_FEATURES="--features ai" ;;
+    *) AI_FEATURES="" ;;
+esac
+if [ -n "$AI_FEATURES" ]; then
+    echo "On-device AI enabled for device build: $AI_FEATURES"
+    # Rust defaults aarch64-apple-ios to a 10.0 deployment target, but
+    # whisper.cpp compiles against the current SDK and emits __chkstk_darwin,
+    # which does not exist that far back — the link then fails with
+    # "Undefined symbols for architecture arm64". The app targets iOS 16.
+    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
+fi
+
 # Build static libraries for all iOS targets
 echo "Building aarch64-apple-ios (device)..."
-cargo rustc $CARGO_FLAGS --manifest-path "$RUST_DIR/Cargo.toml" \
+cargo rustc $CARGO_FLAGS $AI_FEATURES --manifest-path "$RUST_DIR/Cargo.toml" \
     --target aarch64-apple-ios --lib --crate-type staticlib
 
 echo "Building aarch64-apple-ios-sim (simulator ARM64)..."
