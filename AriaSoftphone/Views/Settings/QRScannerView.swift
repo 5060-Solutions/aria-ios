@@ -45,7 +45,9 @@ func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
 
     let port = Int(params["port"] ?? "5060") ?? 5060
     let displayName = params["name"] ?? user
-    let transport = params["transport"] ?? "udp"
+    // Normalised; an unrecognised value is refused below rather than falling
+    // through to the weakest option.
+    let transport = (params["transport"] ?? "udp").lowercased()
     let voicemail = params["vm"] ?? ""
     let apiUrl = params["api"] ?? ""
     let tenantDomain = params["tenant"] ?? ""
@@ -75,6 +77,19 @@ func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
 /// - `server` to be a non-empty, valid host.
 ///
 /// Cleartext (`http://`) or malformed destinations are rejected.
+/// The transports this client implements. Anything else is a provisioning
+/// error, not a reason to fall back.
+let allowedTransports: Set<String> = ["udp", "tcp", "tls"]
+
+/// Whether a provisioned SIP transport is one we support.
+///
+/// This was the one provisioning field taken verbatim: an unrecognised value
+/// fell through to "udp", so a QR could quietly downgrade signalling to
+/// cleartext.
+func isValidTransport(_ transport: String) -> Bool {
+    allowedTransports.contains(transport.lowercased())
+}
+
 func isValidProvisioningDestination(apiUrl: String, server: String) -> Bool {
     // API endpoint must be an HTTPS URL with a valid host.
     guard let components = URLComponents(string: apiUrl),
@@ -235,6 +250,11 @@ struct QRScannerView: View {
             server: credentials.server
         ) else {
             rejectScan("This provisioning code points to an insecure or invalid server and was rejected. The API endpoint must use HTTPS.")
+            return
+        }
+
+        guard isValidTransport(credentials.transport) else {
+            rejectScan("This provisioning code requests an unsupported SIP transport and was rejected.")
             return
         }
 
