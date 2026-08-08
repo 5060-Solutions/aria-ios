@@ -602,12 +602,6 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      */
     func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
-    /**
-     * Was this binary built with transcription support?
-     *
-     * Lets one app package probe at runtime instead of the host guessing from
-     * its build flavour.
-     */
     func aiAvailable()  -> Bool
     
     func aiCancelDownload(modelId: String) 
@@ -676,6 +670,19 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * and device. Call it off the UI thread.
      */
     func aiTranscribe(callId: String) throws  -> AiCallInsight
+    
+    /**
+     * Was this binary built with transcription support?
+     *
+     * Lets one app package probe at runtime instead of the host guessing from
+     * its build flavour.
+     * Whether media on this call is actually encrypted.
+     *
+     * Reports what SRTP negotiation produced, not what was configured — a UI
+     * that derives a padlock from settings lies whenever the peer declines
+     * the crypto line.
+     */
+    func callIsEncrypted(callId: String)  -> Bool
     
     /**
      * Check if any active call was ended by the remote party.
@@ -854,12 +861,6 @@ open func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec])th
 })
 }
     
-    /**
-     * Was this binary built with transcription support?
-     *
-     * Lets one app package probe at runtime instead of the host guessing from
-     * its build flavour.
-     */
 open func aiAvailable() -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_available(self.uniffiClonePointer(),$0
@@ -1006,6 +1007,25 @@ open func aiStopCapture(callId: String) {try! rustCall() {
 open func aiTranscribe(callId: String)throws  -> AiCallInsight {
     return try  FfiConverterTypeAiCallInsight.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_ai_transcribe(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+})
+}
+    
+    /**
+     * Was this binary built with transcription support?
+     *
+     * Lets one app package probe at runtime instead of the host guessing from
+     * its build flavour.
+     * Whether media on this call is actually encrypted.
+     *
+     * Reports what SRTP negotiation produced, not what was configured — a UI
+     * that derives a padlock from settings lies whenever the peer declines
+     * the crypto line.
+     */
+open func callIsEncrypted(callId: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_call_is_encrypted(self.uniffiClonePointer(),
         FfiConverterString.lower(callId),$0
     )
 })
@@ -3683,6 +3703,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_ai_transcribe() != 4868) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_call_is_encrypted() != 12431) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_check_remote_hangup() != 44253) {
