@@ -443,7 +443,10 @@ class SipEngineManager: ObservableObject {
     }
 
     /// Make an outgoing call.
-    func makeCall(uri: String, credentials: SipCredentials, codecs: [AudioCodec] = []) throws -> CallInfo {
+    ///
+    /// `callId` comes from `newOutgoingCallId()`, chosen before dialing so the
+    /// call can be hung up at any point.
+    func makeCall(callId: String, uri: String, credentials: SipCredentials, codecs: [AudioCodec] = []) throws -> CallInfo {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
@@ -451,7 +454,7 @@ class SipEngineManager: ObservableObject {
         // Ringing and Ended for the attempt, so a retry would be a new call
         // behind the user's back. Renew so the next attempt works.
         do {
-            return try engine.makeCall(uri: uri, credentials: credentials, preferredCodecs: codecs)
+            return try engine.makeCallWithId(callId: callId, uri: uri, credentials: credentials, preferredCodecs: codecs)
         } catch where Self.isAuthFailure(error) {
             GatewayTokenRenewer.shared.renewInBackground()
             throw error
@@ -619,15 +622,6 @@ class SwiftEventHandler: MobileEventHandler {
     }
 
     func onCallStateChanged(info: CallInfo) {
-        // Read on the calling thread: makeCall reports Ringing on the thread
-        // it runs on, which has its attempt's UUID parked.
-        if info.direction == .outbound, info.state == .ringing,
-           let uuid = OutgoingAttempts.shared.current {
-            DispatchQueue.main.async {
-                CallManager.shared.outgoingCallRinging(uuid: uuid, info: info)
-            }
-            return
-        }
         DispatchQueue.main.async {
             CallManager.shared.updateCallState(info: info)
         }
@@ -645,6 +639,10 @@ class SwiftEventHandler: MobileEventHandler {
 
     func onError(context: String, message: String) {
         print("Aria error [\(context)]: \(message)")
+        // A hangup the gateway did not confirm: the call is over here, but
+        // the other party may still be connected. Nothing the user can act
+        // on, and not a registration problem, so it is only logged.
+        guard context != "hangup" else { return }
         DispatchQueue.main.async {
             self.manager?.registrationError = "\(context): \(message)"
         }

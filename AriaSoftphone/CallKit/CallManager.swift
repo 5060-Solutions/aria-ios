@@ -232,8 +232,10 @@ class CallManager: NSObject, ObservableObject {
         guard activeCall == nil else { return }
 
         let uuid = UUID()
-        // Set before the request so the start action finds it.
-        activeCall = ActiveCall(
+        // Set before the request so the start action finds it. The engine's
+        // id is chosen now, before dialing, so the call can be hung up by it
+        // at any point — even before makeCallWithId has run.
+        var call = ActiveCall(
             uuid: uuid,
             callToken: nil,
             remoteUri: uri,
@@ -241,6 +243,8 @@ class CallManager: NSObject, ObservableObject {
             direction: .outbound,
             state: .connecting
         )
+        call.engineCallId = newOutgoingCallId()
+        activeCall = call
 
         let handle = CXHandle(type: .generic, value: uri)
         let startCallAction = CXStartCallAction(call: uuid, handle: handle)
@@ -354,8 +358,11 @@ class CallManager: NSObject, ObservableObject {
     ///
     /// Both directions come through here, so transcription capture starts for
     /// inbound calls as well as outbound ones.
+    ///
+    /// Reached from the `Connected` event or from makeCallWithId / accept
+    /// returning, in whichever order they arrive; the second is a no-op.
     private func callDidConnect(callId: String) {
-        guard var call = activeCall else { return }
+        guard var call = activeCall, call.connectedAt == nil else { return }
         let now = Date()
         call.callId = callId
         call.state = .connected
@@ -416,21 +423,6 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
-    /// The engine reported Ringing for the outgoing attempt `uuid`. Records
-    /// the call's id, or hangs it up if the user ended the call first.
-    func outgoingCallRinging(uuid: UUID, info: CallInfo) {
-        if activeCall?.uuid == uuid {
-            if activeCall?.engineCallId == nil {
-                activeCall?.engineCallId = info.callId
-            }
-            return
-        }
-        // Ended before its id was known: cancel it at the gateway now.
-        DispatchQueue.global(qos: .userInitiated).async {
-            try? SipEngineManager.shared.hangup(callId: info.callId)
-        }
-    }
-
     /// Call-state events from the engine, matched to the call by id.
     ///
     /// Connects are handled where `makeCall` / `acceptCall` return, since
@@ -442,17 +434,6 @@ class CallManager: NSObject, ObservableObject {
     /// gone and matches nothing.
     func updateCallState(info: CallInfo) {
         guard var call = activeCall else { return }
-
-        // The first event for an outgoing call is `.ringing`, emitted before
-        // the gateway is contacted: that is where its id is learnt. Normally
-        // `outgoingCallRinging` has done this; this covers a Ringing that
-        // arrived without its attempt's UUID.
-        if call.engineCallId == nil, call.direction == .outbound,
-           info.direction == .outbound, info.state == .ringing {
-            call.engineCallId = info.callId
-            activeCall = call
-            return
-        }
 
         guard call.engineCallId == info.callId else { return }
 
@@ -473,6 +454,13 @@ class CallManager: NSObject, ObservableObject {
         case .onHold:
             call.state = .onHold
         case .connected:
+            if call.connectedAt == nil {
+                // Events are the source of truth; the method's return may
+                // arrive before or after this.
+                callDidConnect(callId: info.callId)
+                guard let connected = activeCall, connected.uuid == call.uuid else { return }
+                call = connected
+            }
             call.state = .connected
         default:
             break
@@ -522,17 +510,26 @@ extension CallManager: CXProviderDelegate {
         let uuid = call.uuid
         let uri = action.handle.value
         let credentials = account.sipCredentials(password: password)
+        guard let callId = call.engineCallId else {
+            provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+            finishCall(call, outcome: .failed)
+            return
+        }
 
         // Make the call via Rust engine on a background thread
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try SipEngineManager.shared.ensureReady()
-                // Ended while the engine was being readied: never dial.
-                guard OutgoingAttempts.shared.begin(uuid) else {
+                // Ended while the engine was being readied, when there may
+                // have been no engine to take the hangup: never dial. From
+                // here the engine exists, so a hangup by id cancels the call
+                // whether it lands before or during makeCallWithId.
+                let stillWanted = DispatchQueue.main.sync { self.activeCall?.uuid == uuid }
+                guard stillWanted else {
                     throw MobileError.Cancelled(message: "ended before dialling")
                 }
-                defer { OutgoingAttempts.shared.end(uuid) }
                 let info = try SipEngineManager.shared.makeCall(
+                    callId: callId,
                     uri: uri,
                     credentials: credentials
                 )
@@ -640,9 +637,9 @@ extension CallManager: CXProviderDelegate {
 
     /// Release a call the user ended here.
     ///
-    /// A connected call, or an outgoing call that is still ringing, is hung
-    /// up by the id its events carry: the core cancels a ringing call at the
-    /// gateway, and the blocked `makeCall` then throws `Cancelled`. An
+    /// A connected call, or an outgoing call at any stage, is hung up by its
+    /// id: the core cancels a ringing call at the gateway (or never dials
+    /// one not yet sent) and `makeCallWithId` throws `Cancelled`. An
     /// incoming call that was never answered is rejected instead. Runs off
     /// the main queue, since it waits on the network.
     private func hangUpInEngine(_ call: ActiveCall) {
@@ -656,11 +653,6 @@ extension CallManager: CXProviderDelegate {
                 try? SipEngineManager.shared.ensureReady()
                 try? SipEngineManager.shared.rejectCall(callToken: callToken)
             }
-        case .cancelBeforeRinging:
-            // The engine has not reported an id yet. Either makeCall has not
-            // started, and now will not, or its Ringing is on the way and is
-            // hung up on arrival (`outgoingCallRinging`).
-            OutgoingAttempts.shared.abandon(call.uuid)
         case .none:
             break
         }
@@ -775,8 +767,6 @@ struct ActiveCall: Identifiable {
     enum EngineRelease: Equatable {
         case hangup(callId: String)
         case reject(callToken: String)
-        /// An outgoing call whose Ringing (and so its id) has not arrived.
-        case cancelBeforeRinging
         case none
     }
 
@@ -784,8 +774,9 @@ struct ActiveCall: Identifiable {
         if let callId = callId { return .hangup(callId: callId) }
         switch direction {
         case .outbound:
-            // Ringing: the core cancels it at the gateway by this id.
-            return engineCallId.map { .hangup(callId: $0) } ?? .cancelBeforeRinging
+            // Chosen before dialing, so valid before, during and after it:
+            // the core cancels a ringing call at the gateway by this id.
+            return engineCallId.map { .hangup(callId: $0) } ?? .none
         case .inbound:
             return callToken.map { .reject(callToken: $0) } ?? .none
         }
@@ -833,50 +824,6 @@ enum CallOutcome: String, Codable {
         case .inbound: return endedLocally ? .rejected : .missed
         case .outbound: return endedLocally ? .cancelled : .failed
         }
-    }
-}
-
-/// Outgoing attempts in flight, so the Ringing event for one can be tied to
-/// its CallKit UUID even after the user has ended the call.
-///
-/// `makeCall` reports Ringing on the thread that called it, before it
-/// contacts the gateway, so the attempt's UUID is parked in that thread's
-/// dictionary for the event handler to read.
-final class OutgoingAttempts {
-    static let shared = OutgoingAttempts()
-
-    private static let threadKey = "com.5060.aria.outgoingAttempt"
-    private let lock = NSLock()
-    private var abandoned: Set<UUID> = []
-
-    /// Mark an attempt as ended by the user.
-    func abandon(_ uuid: UUID) {
-        lock.lock()
-        abandoned.insert(uuid)
-        lock.unlock()
-    }
-
-    /// About to call `makeCall` on this thread. False if the user has
-    /// already ended the call, in which case do not dial.
-    func begin(_ uuid: UUID) -> Bool {
-        lock.lock()
-        let wasAbandoned = abandoned.remove(uuid) != nil
-        lock.unlock()
-        guard !wasAbandoned else { return false }
-        Thread.current.threadDictionary[Self.threadKey] = uuid
-        return true
-    }
-
-    func end(_ uuid: UUID) {
-        Thread.current.threadDictionary.removeObject(forKey: Self.threadKey)
-        lock.lock()
-        abandoned.remove(uuid)
-        lock.unlock()
-    }
-
-    /// The attempt `makeCall` is running for on the current thread.
-    var current: UUID? {
-        Thread.current.threadDictionary[Self.threadKey] as? UUID
     }
 }
 
