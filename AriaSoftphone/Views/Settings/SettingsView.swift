@@ -14,10 +14,10 @@ struct SettingsView: View {
     // SIP credentials (from QR scan)
     @AppStorage("sipUsername") private var sipUsername = ""
     @AppStorage("sipDomain") private var sipDomain = ""
-    @AppStorage("sipPort") private var sipPort = 5060
+    @AppStorage("sipPort") private var sipPort = 0
     @AppStorage("sipDisplayName") private var sipDisplayName = ""
     @AppStorage("sipRegistrar") private var sipRegistrar = ""
-    @AppStorage("sipTransport") private var sipTransport = "udp"
+    @AppStorage("sipTransport") private var sipTransport = AccountSettings.defaultTransport
     @AppStorage("apiUrl") private var apiUrl = ""
 
     // PBX auth state. The JWT itself lives in the Keychain; `session`
@@ -82,7 +82,7 @@ struct SettingsView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Settings")
             .sheet(isPresented: $showQRScanner) {
-                QRScannerView { credentials in
+                ProvisioningFlowView { credentials in
                     handleQRScanned(credentials)
                 }
             }
@@ -127,13 +127,21 @@ struct SettingsView: View {
                 Divider().padding(.leading, 16)
                 settingsRow("Domain", sipDomain)
                 Divider().padding(.leading, 16)
-                settingsRow("Transport", sipTransport.uppercased())
+                settingsRow("Transport", currentAccount.effectiveTransport.uppercased())
                 Divider().padding(.leading, 16)
-                settingsRow("Port", "\(sipPort)")
+                settingsRow("Port", "\(currentAccount.effectivePort)")
             }
             .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+    }
+
+    /// The stored account with the defaults the call path applies.
+    private var currentAccount: AccountSettings {
+        var account = AccountSettings.load()
+        account.transport = sipTransport
+        account.port = sipPort
+        return account
     }
 
     // MARK: - Transcription
@@ -347,7 +355,7 @@ struct SettingsView: View {
         session.applyProvisioning(credentials)
         showQRScanner = false
 
-        // Auto-trigger PBX login after QR scan
+        // Log in now the user has confirmed where the code points.
         performLogin()
     }
 

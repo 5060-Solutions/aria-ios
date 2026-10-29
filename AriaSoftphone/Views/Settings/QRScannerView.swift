@@ -43,11 +43,13 @@ func parseProvisioningURI(_ urlString: String) -> ProvisioningCredentials? {
         return nil
     }
 
-    let port = Int(params["port"] ?? "5060") ?? 5060
-    let displayName = params["name"] ?? user
     // Normalised; an unrecognised value is refused below rather than falling
-    // through to the weakest option.
-    let transport = (params["transport"] ?? "udp").lowercased()
+    // through to the weakest option. With no transport given, signal over TLS:
+    // an omitted field must not mean cleartext.
+    let transport = (params["transport"] ?? AccountSettings.defaultTransport).lowercased()
+    let defaultPort = transport == "tls" ? 5061 : 5060
+    let port = params["port"].flatMap { Int($0) } ?? defaultPort
+    let displayName = params["name"] ?? user
     let voicemail = params["vm"] ?? ""
     let apiUrl = params["api"] ?? ""
     let tenantDomain = params["tenant"] ?? ""

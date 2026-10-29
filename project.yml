@@ -27,6 +27,14 @@ targets:
         # Both are harmless in a build without the AI feature: nothing
         # references them and the linker drops them.
         OTHER_LDFLAGS: -lc++ -framework Accelerate
+      # Expanded into aps-environment in the entitlements file: APNs rejects a
+      # development-environment token sent to the production service and vice
+      # versa, so a Release build must ask for production.
+      configs:
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
     dependencies:
       - framework: AriaMobileCore.xcframework
         embed: true

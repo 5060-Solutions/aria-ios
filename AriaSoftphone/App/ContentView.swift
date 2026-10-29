@@ -81,7 +81,7 @@ struct SetupView: View {
                 .frame(height: 60)
         }
         .sheet(isPresented: $showQRScanner) {
-            QRScannerView { credentials in
+            ProvisioningFlowView { credentials in
                 handleQRScanned(credentials)
                 showQRScanner = false
             }

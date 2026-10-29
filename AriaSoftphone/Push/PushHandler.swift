@@ -5,6 +5,21 @@ import PushKit
 ///
 /// When a push arrives, iOS wakes the app and we must immediately
 /// report an incoming call to CallKit (iOS 13+ requirement).
+/// Whether a push's `gateway_url` names the gateway this device registered
+/// with: HTTPS, and the same host and port as the configured URL.
+func isTrustedGatewayURL(_ pushed: String, configured: String) -> Bool {
+    guard let pushedURL = URLComponents(string: pushed),
+          let configuredURL = URLComponents(string: configured),
+          pushedURL.scheme?.lowercased() == "https",
+          configuredURL.scheme?.lowercased() == "https",
+          let pushedHost = pushedURL.host?.lowercased(), !pushedHost.isEmpty,
+          let configuredHost = configuredURL.host?.lowercased(), !configuredHost.isEmpty,
+          pushedURL.user == nil, pushedURL.password == nil else {
+        return false
+    }
+    return pushedHost == configuredHost && (pushedURL.port ?? 443) == (configuredURL.port ?? 443)
+}
+
 class PushHandler: NSObject, PKPushRegistryDelegate {
     static let shared = PushHandler()
 
@@ -66,6 +81,16 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
               let gatewayUrl = data["gateway_url"] as? String else {
             print("Invalid VoIP push payload")
             // MUST report a call to CallKit even on failure (iOS 13+)
+            CallManager.shared.reportAndEndInvalidPush(completion: completion)
+            return
+        }
+
+        // The payload names the gateway to fetch the call from. Only the one
+        // this device registered with is trusted; anything else is reported
+        // (PushKit requires it) and ended without contacting it.
+        let configuredGateway = UserDefaults.standard.string(forKey: AccountSettings.Key.gatewayUrl) ?? ""
+        guard isTrustedGatewayURL(gatewayUrl, configured: configuredGateway) else {
+            print("Rejected VoIP push from an unexpected gateway")
             CallManager.shared.reportAndEndInvalidPush(completion: completion)
             return
         }

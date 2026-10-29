@@ -21,6 +21,7 @@
 		84CD09B2ACAF2E30E4FDEF37 /* AriaMobileCore.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA65EE9BC777C87EE95AB48C /* DialerView.swift */; };
 		8EE5391150E82870C4019140 /* TranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F853B949444400FBD15B95AE /* TranscriptionView.swift */; };
+		9223B14C13B80FC194F9C1C8 /* ProvisioningFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FDA7AC1B4EEFB1DC5DCBF07 /* ProvisioningFlowView.swift */; };
 		9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977335B2802A80180636380B /* SettingsView.swift */; };
 		A0085E00B369764DA6AF026C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */; };
 		A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */; };
@@ -53,6 +54,7 @@
 		1925854638E35A495F340AE4 /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
 		265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AriaMobileCore.xcframework; sourceTree = "<group>"; };
 		2B38590F217DB8452C47ADF6 /* AccountSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSession.swift; sourceTree = "<group>"; };
+		2FDA7AC1B4EEFB1DC5DCBF07 /* ProvisioningFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvisioningFlowView.swift; sourceTree = "<group>"; };
 		30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PbxApiClient.swift; sourceTree = "<group>"; };
 		31A81048D28AF4D85B189D2B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4020AF8C411533A96DA54A99 /* aria_mobileFFI.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = aria_mobileFFI.modulemap; sourceTree = "<group>"; };
@@ -203,6 +205,7 @@
 		CCCD6BC84B5F06E942B405FC /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				2FDA7AC1B4EEFB1DC5DCBF07 /* ProvisioningFlowView.swift */,
 				461C9F297FCCEA7348A009EA /* QRScannerView.swift */,
 				977335B2802A80180636380B /* SettingsView.swift */,
 				F853B949444400FBD15B95AE /* TranscriptionView.swift */,
@@ -356,6 +359,7 @@
 				C83FF6A53FEE2BA978A2B9A7 /* HistoryView.swift in Sources */,
 				37F9993221BC459599D7CEF5 /* KeychainStore.swift in Sources */,
 				A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */,
+				9223B14C13B80FC194F9C1C8 /* ProvisioningFlowView.swift in Sources */,
 				BDF6DCE8A5DBABD3726D886B /* PushHandler.swift in Sources */,
 				34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */,
 				9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */,
@@ -436,6 +440,7 @@
 		8DE0684C83B80A42C707A4A1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = AriaSoftphone/Resources/AriaSoftphone.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -461,6 +466,7 @@
 		C135834999690DDF75B6CB31 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = AriaSoftphone/Resources/AriaSoftphone.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
