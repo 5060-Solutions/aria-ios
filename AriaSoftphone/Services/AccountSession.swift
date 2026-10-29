@@ -127,6 +127,7 @@ final class AccountSession: ObservableObject {
         KeychainStore.remove(KeychainStore.gatewayTokenKey)
         // History belongs to the account; the next one should not see it.
         CallHistoryStore.shared.clear()
+        VoicemailService.shared.reset()
         hasSession = false
         errorMessage = nil
     }

@@ -110,10 +110,11 @@ struct SetupView: View {
 struct MainTabView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
+    @ObservedObject private var voicemail = VoicemailService.shared
     @State private var selectedTab: Tab = .dialer
 
     enum Tab {
-        case dialer, contacts, history, settings
+        case dialer, contacts, history, voicemail, settings
     }
 
     var body: some View {
@@ -136,6 +137,13 @@ struct MainTabView: View {
                         Label("History", systemImage: "clock.fill")
                     }
                     .tag(Tab.history)
+
+                VoicemailView()
+                    .tabItem {
+                        Label("Voicemail", systemImage: "recordingtape")
+                    }
+                    .tag(Tab.voicemail)
+                    .badge(voicemail.unreadCount)
 
                 SettingsView()
                     .tabItem {
