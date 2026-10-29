@@ -125,6 +125,8 @@ final class AccountSession: ObservableObject {
         KeychainStore.remove(KeychainStore.jwtKey)
         KeychainStore.remove(KeychainStore.sipPasswordKey)
         KeychainStore.remove(KeychainStore.gatewayTokenKey)
+        // History belongs to the account; the next one should not see it.
+        CallHistoryStore.shared.clear()
         hasSession = false
         errorMessage = nil
     }

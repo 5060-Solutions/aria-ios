@@ -236,6 +236,8 @@ class CallManager: NSObject, ObservableObject {
             guard let error = error else { return }
             print("Failed to start call: \(error)")
             DispatchQueue.main.async {
+                // CallKit refused the call outright (e.g. during a cellular
+                // call); it was never placed, so it is not history.
                 if self.activeCall?.uuid == uuid {
                     self.activeCall = nil
                 }
@@ -318,6 +320,8 @@ class CallManager: NSObject, ObservableObject {
     /// Tear down local state for a call that has ended, however it ended.
     /// CallKit must already have been told (by an action or `reportCall`).
     private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
+        CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
+
         // Runs on its own queue and only if the user opted in, so a slow
         // transcription cannot hold up tearing the call down.
         if let callId = call.callId {
@@ -337,7 +341,16 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
+    /// Record an incoming call that never became the active call.
     private func recordMissedCall(remoteUri: String, remoteName: String?) {
+        CallHistoryStore.shared.add(CallRecord(
+            direction: .inbound,
+            remoteUri: remoteUri,
+            remoteName: remoteName,
+            startedAt: Date(),
+            duration: 0,
+            outcome: .missed
+        ))
     }
 
     // MARK: - State Updates

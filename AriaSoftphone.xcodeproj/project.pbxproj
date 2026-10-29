@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02B0E2997105BA1BE223C0EC /* CallHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */; };
 		09D6319B4286D7DBF34175AD /* aria_mobile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DF83E37DCF9E007E2250A /* aria_mobile.swift */; };
 		19B126C073701906B6E7C230 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1925854638E35A495F340AE4 /* AccountSettings.swift */; };
 		1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */; };
@@ -56,6 +57,7 @@
 		461C9F297FCCEA7348A009EA /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		557297B649EDAE0B0C3B837E /* AriaSoftphone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AriaSoftphone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		576DF83E37DCF9E007E2250A /* aria_mobile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = aria_mobile.swift; sourceTree = "<group>"; };
+		5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryStore.swift; sourceTree = "<group>"; };
 		7FD9B9788212C3083231C8D0 /* AriaSoftphone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AriaSoftphone.entitlements; sourceTree = "<group>"; };
 		8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTranscription.swift; sourceTree = "<group>"; };
@@ -136,6 +138,7 @@
 				2B38590F217DB8452C47ADF6 /* AccountSession.swift */,
 				1925854638E35A495F340AE4 /* AccountSettings.swift */,
 				DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */,
+				5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */,
 				96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */,
 				AFFEB257095314173756DA2C /* KeychainStore.swift */,
 				30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */,
@@ -329,6 +332,7 @@
 				19B126C073701906B6E7C230 /* AccountSettings.swift in Sources */,
 				1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */,
 				AD294B76D2C8420FF343DEB7 /* AudioBridge.swift in Sources */,
+				02B0E2997105BA1BE223C0EC /* CallHistoryStore.swift in Sources */,
 				8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */,
 				5CD9C9891C5EFDEDE1EA8586 /* CallTranscription.swift in Sources */,
 				A0085E00B369764DA6AF026C /* CallView.swift in Sources */,
