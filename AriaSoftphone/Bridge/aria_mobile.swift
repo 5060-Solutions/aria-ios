@@ -598,7 +598,13 @@ fileprivate struct FfiConverterString: FfiConverter {
 public protocol AriaMobileEngineProtocol : AnyObject {
     
     /**
-     * Accept an incoming call with local SDP answer.
+     * Accept an incoming call with local SDP answer. Reports `Connected`.
+     *
+     * If the gateway refuses (an HTTP error), the call stays offered and
+     * nothing is reported. If the outcome is unknown (`Timeout` or
+     * `NetworkError`: the gateway may have accepted it anyway), `Ended` is
+     * reported for `incoming-<call_token>`, and the core hangs the call up
+     * if it was accepted or rejects it if it still rings.
      */
     func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
@@ -767,6 +773,9 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     /**
      * Notify the core of a network connectivity change.
      * Call this from the platform when WiFi/cellular changes, or after reconnect.
+     * Returns at once. The gateway heartbeat it triggers runs in the
+     * background, and a burst of changes is coalesced: at most one heartbeat
+     * is in flight, followed by one more if changes arrived meanwhile.
      */
     func notifyNetworkChange() 
     
@@ -820,15 +829,25 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     
     /**
      * Blind-transfer an active call to `target` (a dial string such as
-     * "1002" or a "sip:" URI). The PBX takes the call over; on success the
-     * local call and its media end, and `on_call_state_changed` reports
-     * `Ended` for `call_id`, exactly as for a remote hangup.
+     * "1002" or a "sip:" URI), and wait for the outcome. On success the PBX
+     * has taken the call over: the local call and its media end, and
+     * `on_call_state_changed` reports `Ended` for `call_id`.
      *
-     * Errors leave the call up: `InvalidTarget` for a target rejected locally
-     * or by the gateway, `InvalidState` for an unknown call or one that is not
-     * active yet (still ringing), or a gateway without the transfer route,
-     * `CallFailed` when the PBX refused the transfer, `Timeout` when the PBX
-     * did not answer it. The call can block for up to about 8 s.
+     * After the PBX accepts the REFER, the core polls the call's status
+     * every 300 ms until it shows the outcome, for up to 30 s.
+     *
+     * These errors leave the call fully up: `InvalidTarget` for a target
+     * rejected locally or by the gateway; `InvalidState` for an unknown call,
+     * one that is not active yet (still ringing), or a gateway without the
+     * transfer route; `CallFailed` when the PBX refused the REFER or reported
+     * the transfer failed (the message carries the SIP status, such as 486);
+     * `Timeout` when the PBX did not answer the REFER, or no outcome arrived
+     * within 30 s; `AuthenticationError` for a rejected token.
+     *
+     * `InvalidState` after the REFER was accepted means the call ended for
+     * another reason meanwhile; `Ended` has been reported. A gateway that
+     * does not report transfer outcomes ends the call on acceptance, as
+     * before. Blocks for up to about 40 s; call it off the UI thread.
      */
     func transferCall(callId: String, target: String) throws 
     
@@ -909,7 +928,13 @@ public convenience init(gatewayConfig: GatewayConfig) {
 
     
     /**
-     * Accept an incoming call with local SDP answer.
+     * Accept an incoming call with local SDP answer. Reports `Connected`.
+     *
+     * If the gateway refuses (an HTTP error), the call stays offered and
+     * nothing is reported. If the outcome is unknown (`Timeout` or
+     * `NetworkError`: the gateway may have accepted it anyway), `Ended` is
+     * reported for `incoming-<call_token>`, and the core hangs the call up
+     * if it was accepted or rejects it if it still rings.
      */
 open func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec])throws  -> CallInfo {
     return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
@@ -1229,6 +1254,9 @@ open func makeCallWithId(callId: String, uri: String, credentials: SipCredential
     /**
      * Notify the core of a network connectivity change.
      * Call this from the platform when WiFi/cellular changes, or after reconnect.
+     * Returns at once. The gateway heartbeat it triggers runs in the
+     * background, and a burst of changes is coalesced: at most one heartbeat
+     * is in flight, followed by one more if changes arrived meanwhile.
      */
 open func notifyNetworkChange() {try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_notify_network_change(self.uniffiClonePointer(),$0
@@ -1335,15 +1363,25 @@ open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(Ffi
     
     /**
      * Blind-transfer an active call to `target` (a dial string such as
-     * "1002" or a "sip:" URI). The PBX takes the call over; on success the
-     * local call and its media end, and `on_call_state_changed` reports
-     * `Ended` for `call_id`, exactly as for a remote hangup.
+     * "1002" or a "sip:" URI), and wait for the outcome. On success the PBX
+     * has taken the call over: the local call and its media end, and
+     * `on_call_state_changed` reports `Ended` for `call_id`.
      *
-     * Errors leave the call up: `InvalidTarget` for a target rejected locally
-     * or by the gateway, `InvalidState` for an unknown call or one that is not
-     * active yet (still ringing), or a gateway without the transfer route,
-     * `CallFailed` when the PBX refused the transfer, `Timeout` when the PBX
-     * did not answer it. The call can block for up to about 8 s.
+     * After the PBX accepts the REFER, the core polls the call's status
+     * every 300 ms until it shows the outcome, for up to 30 s.
+     *
+     * These errors leave the call fully up: `InvalidTarget` for a target
+     * rejected locally or by the gateway; `InvalidState` for an unknown call,
+     * one that is not active yet (still ringing), or a gateway without the
+     * transfer route; `CallFailed` when the PBX refused the REFER or reported
+     * the transfer failed (the message carries the SIP status, such as 486);
+     * `Timeout` when the PBX did not answer the REFER, or no outcome arrived
+     * within 30 s; `AuthenticationError` for a rejected token.
+     *
+     * `InvalidState` after the REFER was accepted means the call ended for
+     * another reason meanwhile; `Ended` has been reported. A gateway that
+     * does not report transfer outcomes ends the call on acceptance, as
+     * before. Blocks for up to about 40 s; call it off the UI thread.
      */
 open func transferCall(callId: String, target: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_transfer_call(self.uniffiClonePointer(),
@@ -2980,6 +3018,10 @@ public enum MobileError {
     
     case RegistrationFailed(message: String)
     
+    /**
+     * The call or a call operation failed; the message says why, for
+     * example the SIP status of a failed transfer.
+     */
     case CallFailed(message: String)
     
     case MediaError(message: String)
