@@ -114,6 +114,19 @@ final class CallWaitingTests: XCTestCase {
         XCTAssertEqual(CallRegistry.holdRequest(for: talking.uuid, onHold: false, in: calls), .none)
     }
 
+    func testSwapIsOnlyFromTheTalkingCallToAHeldOne() {
+        let held = inbound("a", held: true)
+        let talking = outbound("outgoing-x")
+        let calls = registry(held, talking)
+        XCTAssertTrue(calls.canSwap(active: talking.uuid, held: held.uuid))
+        XCTAssertFalse(calls.canSwap(active: held.uuid, held: talking.uuid))
+        XCTAssertFalse(calls.canSwap(active: talking.uuid, held: talking.uuid))
+
+        // Both held: nothing is talking, so there is nothing to swap.
+        let bothHeld = registry(inbound("a", held: true), outbound("outgoing-x", held: true))
+        XCTAssertFalse(bothHeld.canSwap(active: bothHeld.calls[1].uuid, held: bothHeld.calls[0].uuid))
+    }
+
     func testResumingTheOnlyCallIsAPlainResume() {
         let held = inbound("a", held: true)
         XCTAssertEqual(CallRegistry.holdRequest(for: held.uuid, onHold: false, in: registry(held)),

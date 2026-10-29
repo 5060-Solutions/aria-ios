@@ -258,10 +258,10 @@ struct CallView: View {
 
     // MARK: - Call waiting
 
-    /// Swap is offered between two connected calls, from the call on screen.
+    /// Swap is offered from the talking call on screen to a held one.
     private func canSwap(with other: ActiveCall) -> Bool {
         guard let current = callManager.activeCall else { return false }
-        return current.isConnected && other.isConnected && other.isOnHold
+        return callManager.registry.canSwap(active: current.uuid, held: other.uuid)
     }
 
     /// Join the caller to the consulted party and drop out of both calls.

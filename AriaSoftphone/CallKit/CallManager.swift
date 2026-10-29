@@ -425,9 +425,9 @@ class CallManager: NSObject, ObservableObject {
     /// then passed on to CallKit (see `syncHoldWithCallKit`). Nothing happens
     /// unless the two are still talking and held.
     func swapCalls(active: UUID, held: UUID) {
-        guard let talking = registry.talking, talking.uuid == active, let activeId = talking.callId,
-              let held = registry[held], held.uuid != active, held.isConnected, held.isOnHold,
-              let heldId = held.callId else { return }
+        guard registry.canSwap(active: active, held: held),
+              let talking = registry[active], let activeId = talking.callId,
+              let held = registry[held], let heldId = held.callId else { return }
         do {
             try SipEngineManager.shared.swapCalls(activeCallId: activeId, heldCallId: heldId)
             registry.modify(uuid: talking.uuid) { $0.setHeld(true) }
@@ -1258,6 +1258,15 @@ struct CallRegistry {
     var background: [ActiveCall] {
         let foregroundId = foreground?.uuid
         return calls.filter { $0.uuid != foregroundId }
+    }
+
+    /// Whether `swapCalls` can hold `active` and resume `held`: the first is
+    /// the talking call and the second a different connected call on hold.
+    /// With both held there is nothing to swap; the screen offers Resume.
+    func canSwap(active: UUID, held: UUID) -> Bool {
+        guard let talking = talking, talking.uuid == active,
+              let other = self[held], other.uuid != active else { return false }
+        return other.isConnected && other.isOnHold
     }
 
     /// Room for another call, and none still ringing or being set up.
