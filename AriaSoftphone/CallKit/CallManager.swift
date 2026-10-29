@@ -295,6 +295,9 @@ class CallManager: NSObject, ObservableObject {
             pushReportedTokens.remove(token)
         }
         SipEngineManager.shared.stopCallMonitoring()
+        // Normally CallKit's deactivation already did this; stopping here too
+        // means a call never inherits the last one's engine or buffers.
+        SipEngineManager.shared.audioBridge.stop()
 
         if activeCall?.uuid == call.uuid {
             activeCall = nil
@@ -496,26 +499,29 @@ extension CallManager: CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        // Audio session activated by CallKit — RTP can now use hardware audio
-        print("Audio session activated")
+        // CallKit has activated the session: the hardware is ours until it
+        // deactivates it. Only now may the audio engine start.
+        SipEngineManager.shared.audioBridge.start()
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        print("Audio session deactivated")
+        SipEngineManager.shared.audioBridge.stop()
     }
 
     // MARK: - Audio Session
 
+    /// Set the category for a call. CallKit activates the session itself
+    /// (then calls `didActivate`); activating it here as well raced CallKit
+    /// and could leave the session at normal priority. Output starts on the
+    /// receiver — the speaker is the user's choice, not a default.
     private func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [
-                .allowBluetoothA2DP,
-                .defaultToSpeaker,
+                .allowBluetoothHFP,
             ])
             try session.setPreferredSampleRate(48000)
             try session.setPreferredIOBufferDuration(0.02) // 20ms
-            try session.setActive(true)
         } catch {
             print("Failed to configure audio session: \(error)")
         }
