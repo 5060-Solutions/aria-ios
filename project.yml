@@ -35,6 +35,9 @@ targets:
           APS_ENVIRONMENT: development
         Release:
           APS_ENVIRONMENT: production
+    scheme:
+      testTargets:
+        - AriaSoftphoneTests
     dependencies:
       - framework: AriaMobileCore.xcframework
         embed: true
@@ -55,3 +58,16 @@ targets:
             echo "note: Run ./build-rust.sh manually before building"
           fi
         basedOnDependencyAnalysis: false
+
+  AriaSoftphoneTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AriaSoftphoneTests
+    dependencies:
+      - target: AriaSoftphone
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria.tests

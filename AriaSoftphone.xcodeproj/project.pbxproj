@@ -8,8 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		02B0E2997105BA1BE223C0EC /* CallHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */; };
+		087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */; };
 		09D6319B4286D7DBF34175AD /* aria_mobile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DF83E37DCF9E007E2250A /* aria_mobile.swift */; };
+		1719C006774A2B24D586E561 /* CallStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */; };
 		19B126C073701906B6E7C230 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1925854638E35A495F340AE4 /* AccountSettings.swift */; };
+		1AC1F17DB93780A10AC66F65 /* ProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */; };
 		1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */; };
 		30A7E7C7875C7524F241921B /* VoicemailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF467C7C5DBB5F4CF9BB338 /* VoicemailService.swift */; };
 		34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461C9F297FCCEA7348A009EA /* QRScannerView.swift */; };
@@ -17,6 +20,7 @@
 		4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */; };
 		5CD9C9891C5EFDEDE1EA8586 /* CallTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */; };
 		79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */; };
+		80FC14C0EB49B84D765A0887 /* AudioConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */; };
 		8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125317FA44A9C196C3BE928E /* CallManager.swift */; };
 		84CD09B2ACAF2E30E4FDEF37 /* AriaMobileCore.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA65EE9BC777C87EE95AB48C /* DialerView.swift */; };
@@ -29,11 +33,23 @@
 		AD294B76D2C8420FF343DEB7 /* AudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */; };
 		BDF6DCE8A5DBABD3726D886B /* PushHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA09A8B3618AFA053C391608 /* PushHandler.swift */; };
 		BE8191D0406DE3070E720DA0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A53C9EA5B271932D7716F16D /* Assets.xcassets */; };
+		C0ACA95616AB1C59C2494CB3 /* PushGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */; };
 		C83FF6A53FEE2BA978A2B9A7 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4869ED93080641E10B496E /* HistoryView.swift */; };
 		D27BE0A8ECBE26473F9EEAE6 /* AccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B38590F217DB8452C47ADF6 /* AccountSession.swift */; };
 		E8B63C7CA74C0374F1190497 /* AriaMobileCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; };
+		FB3672C722B0F56396E61092 /* CallHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */; };
 		FFD3EFD07BC50CBD9FFEF8F0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8D92A5630AD126518BFFE3 /* ContentView.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		439987BD70172AACB8DC7904 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B4A707710EEB2195642159DC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 421F06353A13FE37BB11223E;
+			remoteInfo = AriaSoftphone;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		2696185CDAF49497133B61D2 /* Embed Frameworks */ = {
@@ -50,10 +66,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryStoreTests.swift; sourceTree = "<group>"; };
 		125317FA44A9C196C3BE928E /* CallManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallManager.swift; sourceTree = "<group>"; };
 		1925854638E35A495F340AE4 /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
 		265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AriaMobileCore.xcframework; sourceTree = "<group>"; };
 		2B38590F217DB8452C47ADF6 /* AccountSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSession.swift; sourceTree = "<group>"; };
+		2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvisioningTests.swift; sourceTree = "<group>"; };
 		2FDA7AC1B4EEFB1DC5DCBF07 /* ProvisioningFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvisioningFlowView.swift; sourceTree = "<group>"; };
 		30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PbxApiClient.swift; sourceTree = "<group>"; };
 		31A81048D28AF4D85B189D2B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -62,6 +80,8 @@
 		557297B649EDAE0B0C3B837E /* AriaSoftphone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AriaSoftphone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		576DF83E37DCF9E007E2250A /* aria_mobile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = aria_mobile.swift; sourceTree = "<group>"; };
 		5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryStore.swift; sourceTree = "<group>"; };
+		6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
+		7FCAF29FDDD3647DD5435D32 /* AriaSoftphoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AriaSoftphoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FD9B9788212C3083231C8D0 /* AriaSoftphone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AriaSoftphone.entitlements; sourceTree = "<group>"; };
 		8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTranscription.swift; sourceTree = "<group>"; };
@@ -71,7 +91,9 @@
 		AFFEB257095314173756DA2C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		BA09A8B3618AFA053C391608 /* PushHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushHandler.swift; sourceTree = "<group>"; };
 		BA65EE9BC777C87EE95AB48C /* DialerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerView.swift; sourceTree = "<group>"; };
+		BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PbxApiDecodingTests.swift; sourceTree = "<group>"; };
 		CAF467C7C5DBB5F4CF9BB338 /* VoicemailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailService.swift; sourceTree = "<group>"; };
+		CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushGatewayTests.swift; sourceTree = "<group>"; };
 		CE49C3F032A82A82E003483F /* aria_mobileFFI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = aria_mobileFFI.h; sourceTree = "<group>"; };
 		D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsView.swift; sourceTree = "<group>"; };
 		DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AriaSoftphoneApp.swift; sourceTree = "<group>"; };
@@ -79,6 +101,7 @@
 		DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBridge.swift; sourceTree = "<group>"; };
 		EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SipEngineManager.swift; sourceTree = "<group>"; };
 		F853B949444400FBD15B95AE /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
+		FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallStateTests.swift; sourceTree = "<group>"; };
 		FE9BAB46772E8DA53C11AF76 /* VoicemailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -108,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				557297B649EDAE0B0C3B837E /* AriaSoftphone.app */,
+				7FCAF29FDDD3647DD5435D32 /* AriaSoftphoneTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -118,6 +142,19 @@
 				BA09A8B3618AFA053C391608 /* PushHandler.swift */,
 			);
 			path = Push;
+			sourceTree = "<group>";
+		};
+		4673075F20BDA2019463BC31 /* AriaSoftphoneTests */ = {
+			isa = PBXGroup;
+			children = (
+				6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */,
+				06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */,
+				FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */,
+				BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */,
+				2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */,
+				CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */,
+			);
+			path = AriaSoftphoneTests;
 			sourceTree = "<group>";
 		};
 		64D4F5CD744BE03DD8B4DD29 /* Bridge */ = {
@@ -237,6 +274,7 @@
 			isa = PBXGroup;
 			children = (
 				8B1EA6F586C49356A8BCB5E6 /* AriaSoftphone */,
+				4673075F20BDA2019463BC31 /* AriaSoftphoneTests */,
 				E28A16E8B1013B69598EE289 /* Frameworks */,
 				1E1162A619C283414BA43EFA /* Products */,
 			);
@@ -253,6 +291,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		29D5A76DDAAB5DD8733DF979 /* AriaSoftphoneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9C2A946EFCE117C04FFDF7C1 /* Build configuration list for PBXNativeTarget "AriaSoftphoneTests" */;
+			buildPhases = (
+				376B61697117C3241D65CD15 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECC7E324CD63E8572EAABBB3 /* PBXTargetDependency */,
+			);
+			name = AriaSoftphoneTests;
+			packageProductDependencies = (
+			);
+			productName = AriaSoftphoneTests;
+			productReference = 7FCAF29FDDD3647DD5435D32 /* AriaSoftphoneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		421F06353A13FE37BB11223E /* AriaSoftphone */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B7237885FDD9DBA2EAB70262 /* Build configuration list for PBXNativeTarget "AriaSoftphone" */;
@@ -303,6 +359,7 @@
 			projectRoot = "";
 			targets = (
 				421F06353A13FE37BB11223E /* AriaSoftphone */,
+				29D5A76DDAAB5DD8733DF979 /* AriaSoftphoneTests */,
 			);
 		};
 /* End PBXProject section */
@@ -341,6 +398,19 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		376B61697117C3241D65CD15 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				80FC14C0EB49B84D765A0887 /* AudioConversionTests.swift in Sources */,
+				FB3672C722B0F56396E61092 /* CallHistoryStoreTests.swift in Sources */,
+				1719C006774A2B24D586E561 /* CallStateTests.swift in Sources */,
+				087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */,
+				1AC1F17DB93780A10AC66F65 /* ProvisioningTests.swift in Sources */,
+				C0ACA95616AB1C59C2494CB3 /* PushGatewayTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A87392A7FC5318B519E6C866 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -372,6 +442,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ECC7E324CD63E8572EAABBB3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 421F06353A13FE37BB11223E /* AriaSoftphone */;
+			targetProxy = 439987BD70172AACB8DC7904 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13ED6C7ED4933EA2730B9616 /* Debug */ = {
@@ -436,6 +514,42 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
+		};
+		1A5413A48FE9F0168D72F78B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.solutions5060.aria.tests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AriaSoftphone.app/AriaSoftphone";
+			};
+			name = Debug;
+		};
+		6F6D8BC62C25B31FF35368FE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.solutions5060.aria.tests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AriaSoftphone.app/AriaSoftphone";
+			};
+			name = Release;
 		};
 		8DE0684C83B80A42C707A4A1 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -548,6 +662,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		9C2A946EFCE117C04FFDF7C1 /* Build configuration list for PBXNativeTarget "AriaSoftphoneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A5413A48FE9F0168D72F78B /* Debug */,
+				6F6D8BC62C25B31FF35368FE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		B4435EF097151C5B9E929F87 /* Build configuration list for PBXProject "AriaSoftphone" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
