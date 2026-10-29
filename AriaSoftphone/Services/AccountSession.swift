@@ -108,13 +108,13 @@ final class AccountSession: ObservableObject {
                     let deviceId = defaults.string(forKey: AccountSettings.Key.pbxDeviceId) ?? ""
                     gatewayToken = try await client.renewGatewayToken(jwt: loginResult.jwt, deviceId: deviceId)
                 }
-                // Persisted so the engine can be rebuilt at launch and inside a
-                // VoIP push without another interactive login.
-                KeychainStore.set(gatewayToken, forKey: KeychainStore.gatewayTokenKey)
-
                 // Step 3: Build the SIP engine from what was just stored and
                 // register with the gateway (gateway token, not the API JWT).
-                SipEngineManager.shared.reset()
+                // setGatewayToken also persists the token, so the engine can
+                // be rebuilt at launch and inside a VoIP push without another
+                // interactive login.
+                await SipEngineManager.shared.reset()
+                SipEngineManager.shared.setGatewayToken(gatewayToken)
                 try await SipEngineManager.shared.ensureReadyAsync()
 
                 isConnecting = false

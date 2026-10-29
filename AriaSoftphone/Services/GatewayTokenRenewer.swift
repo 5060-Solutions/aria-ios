@@ -104,7 +104,7 @@ extension GatewayTokenRenewer.Dependencies {
             }
         },
         apply: { token in
-            KeychainStore.set(token, forKey: KeychainStore.gatewayTokenKey)
+            // Persists it too: SipEngineManager holds the one copy.
             SipEngineManager.shared.setGatewayToken(token)
         }
     )

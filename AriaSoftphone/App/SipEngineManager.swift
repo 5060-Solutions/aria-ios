@@ -16,9 +16,17 @@ class SipEngineManager: ObservableObject {
     /// Gateway device id from the last successful registration. Kept beside
     /// the engine because a rebuilt engine has not registered yet.
     private var _registeredDeviceId: String?
-    /// What the current engine was built with, so a restore can tell whether
-    /// the stored account still matches it.
-    private var configuredWith: (gatewayUrl: String, apiKey: String)?
+    /// The gateway the current engine was built for.
+    private var configuredGatewayUrl: String?
+    /// The gateway token, and the one place it is held in memory. Every new
+    /// engine is built with it and every renewal goes through
+    /// `setGatewayToken`, so an engine can never be built with a token that
+    /// a concurrent renewal has already replaced. The Keychain only persists
+    /// it across launches.
+    private var _gatewayToken: String?
+    /// A login asked for a fresh engine while a call was up; rebuild once
+    /// the call has ended.
+    private var rebuildPending = false
     private let stateLock = NSLock()
 
     /// Serialises configure/register so a launch-time restore, a VoIP push
@@ -61,8 +69,16 @@ class SipEngineManager: ObservableObject {
         stateLock.lock()
         _engine = newEngine
         _registeredDeviceId = nil
-        configuredWith = (gatewayUrl, apiKey)
+        configuredGatewayUrl = gatewayUrl
+        _gatewayToken = apiKey
+        rebuildPending = false
         stateLock.unlock()
+    }
+
+    /// Whether the engine has a call in any state. The engine is never
+    /// rebuilt while it does: a new engine would drop the call's media.
+    private func engineHasCall(_ engine: AriaMobileEngine?) -> Bool {
+        engine?.getActiveCall() != nil
     }
 
     // MARK: - Session restore
@@ -84,24 +100,44 @@ class SipEngineManager: ObservableObject {
             guard account.isProvisioned, !account.gatewayUrl.isEmpty else {
                 throw SipError.notConfigured
             }
-            // Only a PBX-issued gateway token will do. With none stored (an
-            // older install, or one cleared after a failed renewal), get one.
-            if KeychainStore.get(KeychainStore.gatewayTokenKey) == nil {
-                try GatewayTokenRenewer.shared.renewBlocking()
+            stateLock.lock()
+            if _gatewayToken == nil {
+                _gatewayToken = KeychainStore.get(KeychainStore.gatewayTokenKey)
             }
-            guard let apiKey = KeychainStore.get(KeychainStore.gatewayTokenKey) else {
-                throw SipError.notConfigured
+            let haveToken = _gatewayToken != nil
+            stateLock.unlock()
+
+            // Only a PBX-issued gateway token will do. With none stored (an
+            // older install, or one cleared after a failed renewal), get one;
+            // the renewal hands it to `setGatewayToken`.
+            if !haveToken {
+                try GatewayTokenRenewer.shared.renewBlocking()
             }
 
             stateLock.lock()
-            let current = configuredWith
-            let alreadyRegistered = _engine != nil && _registeredDeviceId != nil
+            let engine = _engine
+            let builtFor = configuredGatewayUrl
+            let registered = _engine != nil && _registeredDeviceId != nil
+            let wantsRebuild = rebuildPending
+            let token = _gatewayToken
             stateLock.unlock()
 
-            let sameConfig = current?.gatewayUrl == account.gatewayUrl && current?.apiKey == apiKey
-            if sameConfig && alreadyRegistered { return }
-            if !sameConfig {
+            guard let apiKey = token else { throw SipError.notConfigured }
+
+            switch Self.setupStep(
+                hasEngine: engine != nil,
+                builtFor: builtFor,
+                gatewayUrl: account.gatewayUrl,
+                rebuildPending: wantsRebuild,
+                hasCall: engineHasCall(engine),
+                registered: registered
+            ) {
+            case .ready:
+                return
+            case .rebuild:
                 configure(gatewayUrl: account.gatewayUrl, apiKey: apiKey)
+            case .register:
+                break
             }
 
             guard let password = KeychainStore.get(KeychainStore.sipPasswordKey),
@@ -120,6 +156,33 @@ class SipEngineManager: ObservableObject {
         }
     }
 
+    enum SetupStep: Equatable {
+        /// Nothing to do.
+        case ready
+        /// Keep the engine; register it.
+        case register
+        /// Build a new engine, then register it.
+        case rebuild
+    }
+
+    /// What `ensureReady` must do. An engine carrying a call is never
+    /// replaced, even when the account or gateway has changed: that would
+    /// drop the call. The rebuild happens on the first restore after it.
+    static func setupStep(
+        hasEngine: Bool,
+        builtFor: String?,
+        gatewayUrl: String,
+        rebuildPending: Bool,
+        hasCall: Bool,
+        registered: Bool
+    ) -> SetupStep {
+        let wantsNewEngine = !hasEngine || builtFor != gatewayUrl || rebuildPending
+        if wantsNewEngine && !(hasEngine && hasCall) {
+            return .rebuild
+        }
+        return registered ? .ready : .register
+    }
+
     // MARK: - Gateway token
 
     /// Hand the engine a renewed gateway token. Safe mid-call: the engine
@@ -127,9 +190,8 @@ class SipEngineManager: ObservableObject {
     func setGatewayToken(_ token: String) {
         stateLock.lock()
         let engine = _engine
-        if let current = configuredWith {
-            configuredWith = (current.gatewayUrl, token)
-        }
+        _gatewayToken = token
+        KeychainStore.set(token, forKey: KeychainStore.gatewayTokenKey)
         stateLock.unlock()
         engine?.setGatewayToken(token: token)
     }
@@ -195,17 +257,35 @@ class SipEngineManager: ObservableObject {
 
     /// Drop the engine so the next `ensureReady()` builds it from the stored
     /// account — used when a login changes it.
-    func reset() {
-        setupQueue.sync {
-            stateLock.lock()
-            _engine = nil
-            _registeredDeviceId = nil
-            configuredWith = nil
-            stateLock.unlock()
-        }
-        DispatchQueue.main.async {
-            self.isRegistered = false
-            self.deviceId = nil
+    ///
+    /// Async: it waits its turn on the setup queue, which may be busy with a
+    /// registration on the network, and must not block the caller doing so.
+    /// With a call up the engine is kept and rebuilt once the call has ended.
+    func reset() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            setupQueue.async {
+                self.stateLock.lock()
+                let engine = self._engine
+                self.stateLock.unlock()
+
+                self.stateLock.lock()
+                if self.engineHasCall(engine) {
+                    self.rebuildPending = true
+                } else {
+                    self._engine = nil
+                    self._registeredDeviceId = nil
+                    self.configuredGatewayUrl = nil
+                }
+                // The stored token may have changed with the login.
+                self._gatewayToken = nil
+                self.stateLock.unlock()
+
+                DispatchQueue.main.async {
+                    self.isRegistered = false
+                    self.deviceId = nil
+                }
+                continuation.resume()
+            }
         }
     }
 
@@ -305,7 +385,9 @@ class SipEngineManager: ObservableObject {
             let deviceId = self._registeredDeviceId
             self._engine = nil
             self._registeredDeviceId = nil
-            self.configuredWith = nil
+            self.configuredGatewayUrl = nil
+            self._gatewayToken = nil
+            self.rebuildPending = false
             self.stateLock.unlock()
 
             if let engine = engine, let deviceId = deviceId {

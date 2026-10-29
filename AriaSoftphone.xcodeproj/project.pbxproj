@@ -10,6 +10,7 @@
 		02B0E2997105BA1BE223C0EC /* CallHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */; };
 		087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */; };
 		09D6319B4286D7DBF34175AD /* aria_mobile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DF83E37DCF9E007E2250A /* aria_mobile.swift */; };
+		0C6B5F50EBA3875E5B10BA3F /* EngineSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */; };
 		1719C006774A2B24D586E561 /* CallStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */; };
 		19B126C073701906B6E7C230 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1925854638E35A495F340AE4 /* AccountSettings.swift */; };
 		1AC1F17DB93780A10AC66F65 /* ProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */; };
@@ -83,6 +84,7 @@
 		30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PbxApiClient.swift; sourceTree = "<group>"; };
 		31A81048D28AF4D85B189D2B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayAuthTests.swift; sourceTree = "<group>"; };
+		3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSetupTests.swift; sourceTree = "<group>"; };
 		4020AF8C411533A96DA54A99 /* aria_mobileFFI.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = aria_mobileFFI.modulemap; sourceTree = "<group>"; };
 		461C9F297FCCEA7348A009EA /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		4713290CD5C956B6844E622F /* TransferView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferView.swift; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */,
 				06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */,
 				FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */,
+				3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */,
 				31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */,
 				DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */,
 				BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */,
@@ -423,6 +426,7 @@
 				80FC14C0EB49B84D765A0887 /* AudioConversionTests.swift in Sources */,
 				FB3672C722B0F56396E61092 /* CallHistoryStoreTests.swift in Sources */,
 				1719C006774A2B24D586E561 /* CallStateTests.swift in Sources */,
+				0C6B5F50EBA3875E5B10BA3F /* EngineSetupTests.swift in Sources */,
 				BDDE708BD9056D3C958F3910 /* GatewayAuthTests.swift in Sources */,
 				FADC8E36008E726A1888947E /* IncomingPushTriageTests.swift in Sources */,
 				087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */,
