@@ -469,6 +469,11 @@ void uniffi_aria_mobile_core_fn_method_ariamobileengine_hangup(void*_Nonnull ptr
 RustBuffer uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call(void*_Nonnull ptr, RustBuffer uri, RustBuffer credentials, RustBuffer preferred_codecs, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+RustBuffer uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call_with_id(void*_Nonnull ptr, RustBuffer call_id, RustBuffer uri, RustBuffer credentials, RustBuffer preferred_codecs, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_NOTIFY_NETWORK_CHANGE
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_NOTIFY_NETWORK_CHANGE
 void uniffi_aria_mobile_core_fn_method_ariamobileengine_notify_network_change(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -547,6 +552,12 @@ void uniffi_aria_mobile_core_fn_init_callback_vtable_platformaudiobridge(UniffiV
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_INIT_RUNTIME
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_INIT_RUNTIME
 void uniffi_aria_mobile_core_fn_func_init_runtime(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_NEW_OUTGOING_CALL_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_NEW_OUTGOING_CALL_ID
+RustBuffer uniffi_aria_mobile_core_fn_func_new_outgoing_call_id(RustCallStatus *_Nonnull out_status
     
 );
 #endif
@@ -842,6 +853,12 @@ uint16_t uniffi_aria_mobile_core_checksum_func_init_runtime(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_NEW_OUTGOING_CALL_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_NEW_OUTGOING_CALL_ID
+uint16_t uniffi_aria_mobile_core_checksum_func_new_outgoing_call_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_SHUTDOWN_RUNTIME
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_SHUTDOWN_RUNTIME
 uint16_t uniffi_aria_mobile_core_checksum_func_shutdown_runtime(void
@@ -995,6 +1012,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_hangup(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_MAKE_CALL
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_MAKE_CALL
 uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call_with_id(void
     
 );
 #endif

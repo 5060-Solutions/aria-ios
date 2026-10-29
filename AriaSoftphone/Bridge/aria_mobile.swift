@@ -721,26 +721,40 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func handlePushNotification(payload: PushCallPayload) throws  -> CallOffer
     
     /**
-     * Hang up a call, including an outgoing call that is still ringing
-     * (see `make_call`). Throws `InvalidState` for an unknown or already
-     * ended call_id.
+     * Hang up a call, including an outgoing call that is still ringing or
+     * has not been made yet (see `make_call_with_id`). Throws `InvalidState`
+     * for an unknown or already ended call_id.
      *
-     * The local call always ends and `Ended` is emitted. Throws
-     * `AuthenticationError` if the gateway rejected the token (401) for the
-     * hangup or, for a ringing call, the cancel. The far end may then stay up
-     * until the PBX times it out (a ringing call that is answered is still
-     * hung up in the background): fetch a new token and call
-     * `set_gateway_token`.
+     * Never waits on the gateway: the call is torn down locally and `Ended`
+     * is queued at once, and the gateway hangup (or, for a ringing call, the
+     * cancel) runs in the background. Throws `AuthenticationError`, after
+     * ending the call locally, only when there is no gateway token at all,
+     * in which case nothing is sent. Background failures are reported later:
+     * a rejected token through `on_auth_required`, and a hangup the gateway
+     * did not confirm (after one retry) through `on_error`.
      */
     func hangup(callId: String) throws 
     
     /**
-     * Make an outgoing call through the gateway. Blocks until the far end
-     * answers or the call fails, after reporting `Ringing` with the call's
-     * `outgoing-<uuid>` id.
+     * `make_call_with_id` with an id the core picks. The app learns the id
+     * only from the `Ringing` event, which is delivered asynchronously, so
+     * it cannot reliably hang up before then. Prefer `make_call_with_id`.
+     */
+    func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
+    
+    /**
+     * Make an outgoing call through the gateway under `call_id`, which the
+     * app chose, normally with `new_outgoing_call_id()`: `outgoing-`
+     * followed by 1-64 characters from `[A-Za-z0-9_-]`. Blocks until the far
+     * end answers or the call fails, after reporting `Ringing`.
      *
-     * `hangup(call_id)` may be called while this is blocked: `Ended` is
-     * reported for the call and this throws `Cancelled` at once. The core
+     * Throws `InvalidState` for a malformed id, or one that is in use or
+     * was used recently. Because the app knows the id up front,
+     * `hangup(call_id)` works at any point:
+     * - Before this is called: `Ended` is reported at once, and this then
+     *   throws `Cancelled` without reporting anything or sending a request.
+     * - While this is blocked: `Ended` is reported and this throws
+     *   `Cancelled` at once. The core
      * cancels the ringing call at the gateway (`POST /v1/calls/cancel` with
      * the uuid part of the call_id as `client_ref`). If the gateway has no
      * ringing call to cancel (answered meanwhile, or a gateway without the
@@ -748,7 +762,7 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * background. Any other failure reports `Ended` and throws
      * (`AuthenticationError` on a 401).
      */
-    func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
+    func makeCallWithId(callId: String, uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
     /**
      * Notify the core of a network connectivity change.
@@ -1147,16 +1161,17 @@ open func handlePushNotification(payload: PushCallPayload)throws  -> CallOffer {
 }
     
     /**
-     * Hang up a call, including an outgoing call that is still ringing
-     * (see `make_call`). Throws `InvalidState` for an unknown or already
-     * ended call_id.
+     * Hang up a call, including an outgoing call that is still ringing or
+     * has not been made yet (see `make_call_with_id`). Throws `InvalidState`
+     * for an unknown or already ended call_id.
      *
-     * The local call always ends and `Ended` is emitted. Throws
-     * `AuthenticationError` if the gateway rejected the token (401) for the
-     * hangup or, for a ringing call, the cancel. The far end may then stay up
-     * until the PBX times it out (a ringing call that is answered is still
-     * hung up in the background): fetch a new token and call
-     * `set_gateway_token`.
+     * Never waits on the gateway: the call is torn down locally and `Ended`
+     * is queued at once, and the gateway hangup (or, for a ringing call, the
+     * cancel) runs in the background. Throws `AuthenticationError`, after
+     * ending the call locally, only when there is no gateway token at all,
+     * in which case nothing is sent. Background failures are reported later:
+     * a rejected token through `on_auth_required`, and a hangup the gateway
+     * did not confirm (after one retry) through `on_error`.
      */
 open func hangup(callId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_hangup(self.uniffiClonePointer(),
@@ -1166,12 +1181,33 @@ open func hangup(callId: String)throws  {try rustCallWithError(FfiConverterTypeM
 }
     
     /**
-     * Make an outgoing call through the gateway. Blocks until the far end
-     * answers or the call fails, after reporting `Ringing` with the call's
-     * `outgoing-<uuid>` id.
+     * `make_call_with_id` with an id the core picks. The app learns the id
+     * only from the `Ringing` event, which is delivered asynchronously, so
+     * it cannot reliably hang up before then. Prefer `make_call_with_id`.
+     */
+open func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec])throws  -> CallInfo {
+    return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call(self.uniffiClonePointer(),
+        FfiConverterString.lower(uri),
+        FfiConverterTypeSipCredentials.lower(credentials),
+        FfiConverterSequenceTypeAudioCodec.lower(preferredCodecs),$0
+    )
+})
+}
+    
+    /**
+     * Make an outgoing call through the gateway under `call_id`, which the
+     * app chose, normally with `new_outgoing_call_id()`: `outgoing-`
+     * followed by 1-64 characters from `[A-Za-z0-9_-]`. Blocks until the far
+     * end answers or the call fails, after reporting `Ringing`.
      *
-     * `hangup(call_id)` may be called while this is blocked: `Ended` is
-     * reported for the call and this throws `Cancelled` at once. The core
+     * Throws `InvalidState` for a malformed id, or one that is in use or
+     * was used recently. Because the app knows the id up front,
+     * `hangup(call_id)` works at any point:
+     * - Before this is called: `Ended` is reported at once, and this then
+     *   throws `Cancelled` without reporting anything or sending a request.
+     * - While this is blocked: `Ended` is reported and this throws
+     *   `Cancelled` at once. The core
      * cancels the ringing call at the gateway (`POST /v1/calls/cancel` with
      * the uuid part of the call_id as `client_ref`). If the gateway has no
      * ringing call to cancel (answered meanwhile, or a gateway without the
@@ -1179,9 +1215,10 @@ open func hangup(callId: String)throws  {try rustCallWithError(FfiConverterTypeM
      * background. Any other failure reports `Ended` and throws
      * (`AuthenticationError` on a 401).
      */
-open func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec])throws  -> CallInfo {
+open func makeCallWithId(callId: String, uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec])throws  -> CallInfo {
     return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
-    uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call(self.uniffiClonePointer(),
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call_with_id(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),
         FfiConverterString.lower(uri),
         FfiConverterTypeSipCredentials.lower(credentials),
         FfiConverterSequenceTypeAudioCodec.lower(preferredCodecs),$0
@@ -3073,8 +3110,10 @@ extension MobileError: Foundation.LocalizedError {
 /**
  * Callback interface for receiving events from the Rust core.
  *
- * Callbacks can arrive on any thread, including background poll threads, and
- * must not block for long. They may call back into the engine. See the
+ * Callbacks are delivered one at a time on a dedicated core thread, never
+ * inside the core's runtime, and asynchronously with respect to the engine
+ * method that caused them. They may call any engine method, including the
+ * blocking ones, but should not block for long themselves. See the
  * "Event contract" section of the README for the guaranteed sequence.
  */
 public protocol MobileEventHandler : AnyObject {
@@ -3102,15 +3141,19 @@ public protocol MobileEventHandler : AnyObject {
     func onMediaStats(callId: String, stats: MediaStats) 
     
     /**
-     * Called when an error occurs.
+     * Called when background work failed in a way the app should surface.
+     * Currently fired with context `"hangup"` when the gateway did not
+     * confirm hanging up a call even after one retry (for example a 404
+     * because it does not know the call): the call has ended here, but the
+     * other party may still be connected. `message` names the call_id.
      */
     func onError(context: String, message: String) 
     
     /**
      * Called when background work (call-status polls, the caller-cancel
-     * watch, the network-change heartbeat, hanging up an outgoing call that
-     * was answered after it was cancelled) had the gateway token rejected
-     * with 401. Fetch a new token from
+     * watch, the network-change heartbeat, `hangup`'s gateway hangup or
+     * cancel, and hanging up an outgoing call that was answered after it
+     * was cancelled) had the gateway token rejected with 401. Fetch a new token from
      * the PBX (`POST /api/v1/devices/{id}/gateway-token`) and pass it to
      * `set_gateway_token`. Emitted at most once per token: it fires again
      * only after `set_gateway_token` has been called and the new token is
@@ -3812,6 +3855,15 @@ public func initRuntime() {try! rustCall() {
 }
 }
 /**
+ * A fresh `outgoing-<uuid>` call_id for `make_call_with_id`.
+ */
+public func newOutgoingCallId() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_func_new_outgoing_call_id($0
+    )
+})
+}
+/**
  * Shut down the Rust runtime. Call on app termination.
  */
 public func shutdownRuntime() {try! rustCall() {
@@ -3836,6 +3888,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.contractVersionMismatch
     }
     if (uniffi_aria_mobile_core_checksum_func_init_runtime() != 32843) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_func_new_outgoing_call_id() != 37587) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_func_shutdown_runtime() != 2017) {
@@ -3914,6 +3969,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call() != 192) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call_with_id() != 48628) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_notify_network_change() != 62643) {
