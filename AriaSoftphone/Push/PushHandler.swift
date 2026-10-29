@@ -30,12 +30,11 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             .joined()
 
         // Do not log the VoIP push token.
+        guard token != pushToken else { return }
         pushToken = token
 
-        // If already registered, update the token with the gateway
-        if SipEngineManager.shared.deviceId != nil {
-            // Token refresh will be handled on next register call
-        }
+        // Persist it and tell the gateway, so pushes follow the new token.
+        SipEngineManager.shared.updatePushToken(token)
     }
 
     func pushRegistry(
@@ -103,9 +102,12 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
                 return
             }
 
-            // Fetch the full call offer from the gateway
+            // Fetch the full call offer from the gateway. On a cold launch
+            // the engine does not exist yet, so build and register it first —
+            // only after CallKit has the call, as PushKit requires.
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
+                    try SipEngineManager.shared.ensureReady()
                     let offer = try SipEngineManager.shared.handlePushNotification(
                         payload: pushPayload
                     )

@@ -10,8 +10,39 @@ class SipEngineManager: ObservableObject {
     @Published var registrationError: String?
     @Published var deviceId: String?
 
-    private var engine: AriaMobileEngine?
+    /// Guarded by `stateLock`: the engine is rebuilt on the setup queue and
+    /// read from the main queue, call-action queues and push handling alike.
+    private var _engine: AriaMobileEngine?
+    /// Gateway device id from the last successful registration. Kept beside
+    /// the engine because a rebuilt engine has not registered yet.
+    private var _registeredDeviceId: String?
+    /// What the current engine was built with, so a restore can tell whether
+    /// the stored account still matches it.
+    private var configuredWith: (gatewayUrl: String, apiKey: String)?
+    private let stateLock = NSLock()
+
+    /// Serialises configure/register so a launch-time restore, a VoIP push
+    /// and a login cannot build two engines at once.
+    private let setupQueue = DispatchQueue(label: "com.5060.aria.engine-setup")
+
     private let eventHandler = SwiftEventHandler()
+
+    /// The one audio bridge, shared by every engine instance. CallKit owns the
+    /// audio session, so the call manager starts and stops this from the
+    /// provider's activation callbacks.
+    let audioBridge = iOSAudioBridge()
+
+    private var engine: AriaMobileEngine? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _engine
+    }
+
+    private var registeredDeviceId: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _registeredDeviceId
+    }
 
     private init() {
         eventHandler.manager = self
@@ -23,10 +54,137 @@ class SipEngineManager: ObservableObject {
             baseUrl: gatewayUrl,
             apiKey: apiKey
         )
-        engine = AriaMobileEngine(gatewayConfig: config)
-        engine?.setEventHandler(handler: eventHandler)
-        engine?.setAudioBridge(bridge: iOSAudioBridge())
+        let newEngine = AriaMobileEngine(gatewayConfig: config)
+        newEngine.setEventHandler(handler: eventHandler)
+        newEngine.setAudioBridge(bridge: audioBridge)
+
+        stateLock.lock()
+        _engine = newEngine
+        _registeredDeviceId = nil
+        configuredWith = (gatewayUrl, apiKey)
+        stateLock.unlock()
+
         startRemoteHangupPolling()
+    }
+
+    // MARK: - Session restore
+
+    /// Bring the engine up from the stored account and register it with the
+    /// gateway, unless that has already happened.
+    ///
+    /// The engine used to be built only by an interactive login, so after a
+    /// relaunch — and in particular when PushKit cold-launches the app for an
+    /// incoming call — there was no engine and the call offer could not be
+    /// fetched. The engine also needs a registration before it holds a
+    /// gateway auth token, so configuring alone is not enough.
+    ///
+    /// Blocks on the network. Never call it on the main queue.
+    func ensureReady() throws {
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        try setupQueue.sync {
+            let account = AccountSettings.load()
+            guard account.isProvisioned, !account.gatewayUrl.isEmpty,
+                  let apiKey = KeychainStore.get(KeychainStore.gatewayTokenKey)
+                    ?? KeychainStore.get(KeychainStore.jwtKey) else {
+                throw SipError.notConfigured
+            }
+
+            stateLock.lock()
+            let current = configuredWith
+            let alreadyRegistered = _engine != nil && _registeredDeviceId != nil
+            stateLock.unlock()
+
+            let sameConfig = current?.gatewayUrl == account.gatewayUrl && current?.apiKey == apiKey
+            if sameConfig && alreadyRegistered { return }
+            if !sameConfig {
+                configure(gatewayUrl: account.gatewayUrl, apiKey: apiKey)
+            }
+
+            guard let password = KeychainStore.get(KeychainStore.sipPasswordKey),
+                  !password.isEmpty else {
+                throw SipError.missingCredentials
+            }
+            try registerDevice(
+                pushToken: KeychainStore.get(KeychainStore.pushTokenKey) ?? "",
+                bundleId: Bundle.main.bundleIdentifier,
+                sip: account.sipCredentials(password: password)
+            )
+        }
+    }
+
+    /// `ensureReady()` off the caller's queue.
+    func ensureReadyAsync() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try self.ensureReady()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Restore the session in the background, e.g. at launch. Failures are
+    /// surfaced as a registration error rather than thrown.
+    func restoreSessionInBackground() {
+        guard AccountSettings.load().isProvisioned else { return }
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                try self.ensureReady()
+            } catch {
+                print("Session restore failed: \(error)")
+                DispatchQueue.main.async {
+                    self.registrationError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Drop the engine so the next `ensureReady()` builds it from the stored
+    /// account — used when a login changes it.
+    func reset() {
+        setupQueue.sync {
+            stateLock.lock()
+            _engine = nil
+            _registeredDeviceId = nil
+            configuredWith = nil
+            stateLock.unlock()
+        }
+        DispatchQueue.main.async {
+            self.isRegistered = false
+            self.deviceId = nil
+        }
+    }
+
+    // MARK: - Push token
+
+    /// Tell the gateway about a rotated VoIP push token.
+    ///
+    /// Without this a token rotation left the gateway pushing to a dead token
+    /// and incoming calls silently stopped. The token is persisted first, so
+    /// an engine that is not registered yet picks it up when it registers.
+    func updatePushToken(_ token: String) {
+        let previous = KeychainStore.get(KeychainStore.pushTokenKey)
+        KeychainStore.set(token, forKey: KeychainStore.pushTokenKey)
+        guard AccountSettings.load().isProvisioned else { return }
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                if previous == token, self.registeredDeviceId != nil {
+                    // PushKit redelivers the same token on every launch.
+                    return
+                }
+                if let engine = self.engine, let deviceId = self.registeredDeviceId {
+                    try engine.updatePushToken(deviceId: deviceId, newToken: token)
+                } else {
+                    // Registers with the token just stored.
+                    try self.ensureReady()
+                }
+            } catch {
+                print("Push token update failed: \(error)")
+            }
+        }
     }
 
     /// Register this device with the push gateway.
@@ -48,19 +206,38 @@ class SipEngineManager: ObservableObject {
         )
 
         let response = try engine.registerDevice(registration: registration)
+        stateLock.lock()
+        if _engine === engine {
+            _registeredDeviceId = response.deviceId
+        }
+        stateLock.unlock()
         DispatchQueue.main.async {
             self.deviceId = response.deviceId
             self.isRegistered = true
+            self.registrationError = nil
         }
     }
 
-    /// Unregister from the push gateway.
-    func unregister() throws {
-        guard let engine = engine, let deviceId = deviceId else { return }
-        try engine.unregisterDevice(deviceId: deviceId)
+    /// Unregister from the push gateway and drop the engine. Blocks on the
+    /// network, so it runs on the setup queue rather than the caller's.
+    func signOut() {
+        setupQueue.async {
+            self.stateLock.lock()
+            let engine = self._engine
+            let deviceId = self._registeredDeviceId
+            self._engine = nil
+            self._registeredDeviceId = nil
+            self.configuredWith = nil
+            self.stateLock.unlock()
+
+            if let engine = engine, let deviceId = deviceId {
+                try? engine.unregisterDevice(deviceId: deviceId)
+            }
+        }
         DispatchQueue.main.async {
             self.isRegistered = false
             self.deviceId = nil
+            self.registrationError = nil
         }
     }
 
@@ -279,11 +456,14 @@ class SwiftEventHandler: MobileEventHandler {
 
 enum SipError: LocalizedError {
     case notConfigured
+    case missingCredentials
 
     var errorDescription: String? {
         switch self {
         case .notConfigured:
             return "SIP engine not configured. Set up gateway connection first."
+        case .missingCredentials:
+            return "The SIP password is not available. Scan your provisioning QR code again."
         }
     }
 }

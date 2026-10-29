@@ -9,6 +9,7 @@ extension Color {
 /// Settings screen with PBX-mediated auth flow and Aria branding.
 struct SettingsView: View {
     @EnvironmentObject var sipEngine: SipEngineManager
+    @ObservedObject private var session = AccountSession.shared
 
     // SIP credentials (from QR scan)
     @AppStorage("sipUsername") private var sipUsername = ""
@@ -19,24 +20,20 @@ struct SettingsView: View {
     @AppStorage("sipTransport") private var sipTransport = "udp"
     @AppStorage("apiUrl") private var apiUrl = ""
 
-    // PBX auth state
-    // JWT is a bearer credential — stored in the Keychain, not UserDefaults.
-    // Held in @State for UI binding and loaded/persisted via KeychainStore.
-    @State private var jwt = ""
+    // PBX auth state. The JWT itself lives in the Keychain; `session`
+    // reports whether one is held.
     @AppStorage("extensionId") private var extensionId = ""
-    @AppStorage("tenantId") private var tenantId = ""
     @AppStorage("pbxDeviceId") private var pbxDeviceId = ""
-    @AppStorage("gatewayUrl") private var gatewayUrl = ""
 
-    @State private var sipPassword = ""
-    @State private var isConnecting = false
-    @State private var errorMessage: String?
     @State private var showQRScanner = false
     @State private var showSignOutAlert = false
 
     private var isSignedIn: Bool {
-        !jwt.isEmpty && !pbxDeviceId.isEmpty
+        session.hasSession && !pbxDeviceId.isEmpty
     }
+
+    private var isConnecting: Bool { session.isConnecting }
+    private var errorMessage: String? { session.errorMessage }
 
     var body: some View {
         NavigationStack {
@@ -97,24 +94,7 @@ struct SettingsView: View {
             } message: {
                 Text("Are you sure you want to sign out? You will need to scan a QR code again to reconnect.")
             }
-            .onAppear { loadSecrets() }
         }
-    }
-
-    // MARK: - Secret Loading / Persistence
-
-    /// Load secrets (JWT, SIP password) from the Keychain into view state.
-    private func loadSecrets() {
-        jwt = KeychainStore.get(KeychainStore.jwtKey) ?? ""
-        if sipPassword.isEmpty {
-            sipPassword = KeychainStore.get(KeychainStore.sipPasswordKey) ?? ""
-        }
-    }
-
-    /// Update the JWT in both view state and the Keychain (single source of truth).
-    private func setJwt(_ value: String) {
-        jwt = value
-        KeychainStore.set(value, forKey: KeychainStore.jwtKey)
     }
 
     // MARK: - Aria Branding Header
@@ -364,19 +344,7 @@ struct SettingsView: View {
     // MARK: - QR Scan Handler
 
     private func handleQRScanned(_ credentials: ProvisioningCredentials) {
-        sipUsername = credentials.username
-        sipPassword = credentials.password
-        // Persist the SIP password securely so outgoing/incoming call paths can
-        // retrieve it after relaunch (Keychain, never UserDefaults).
-        KeychainStore.set(credentials.password, forKey: KeychainStore.sipPasswordKey)
-        // SIP domain = tenant domain (used in From/To headers for auth)
-        // SIP registrar = server address (where to send REGISTER)
-        sipDomain = credentials.tenantDomain.isEmpty ? credentials.server : credentials.tenantDomain
-        sipRegistrar = credentials.server
-        sipPort = credentials.port
-        sipDisplayName = credentials.displayName
-        sipTransport = credentials.transport.lowercased()
-        apiUrl = credentials.apiUrl
+        session.applyProvisioning(credentials)
         showQRScanner = false
 
         // Auto-trigger PBX login after QR scan
@@ -386,123 +354,13 @@ struct SettingsView: View {
     // MARK: - PBX Login + Device Registration
 
     private func performLogin() {
-        guard !apiUrl.isEmpty, !sipUsername.isEmpty, !sipPassword.isEmpty, !sipDomain.isEmpty else {
-            errorMessage = "Missing required fields. Scan a QR code to configure."
-            return
-        }
-
-        // Defense in depth: never POST the extension password to a cleartext or
-        // malformed host, even if configuration was set outside the QR flow.
-        guard isValidProvisioningDestination(apiUrl: apiUrl, server: sipRegistrar.isEmpty ? sipDomain : sipRegistrar) else {
-            errorMessage = "Refusing to connect: the configured server is insecure or invalid. The API endpoint must use HTTPS."
-            return
-        }
-
-        isConnecting = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let client = PbxApiClient(baseUrl: apiUrl)
-
-                // Step 1: Extension login
-                let loginResult = try await client.extensionLogin(
-                    extensionNumber: sipUsername,
-                    password: sipPassword,
-                    tenantDomain: sipDomain
-                )
-
-                await MainActor.run {
-                    setJwt(loginResult.jwt)
-                    extensionId = loginResult.extensionId
-                    tenantId = loginResult.tenantId
-                }
-
-                // Step 2: Device registration
-                let pushToken = PushHandler.shared.pushToken ?? ""
-                let deviceResult = try await client.registerDevice(
-                    jwt: loginResult.jwt,
-                    pushToken: pushToken,
-                    platform: "ios"
-                )
-
-                let gwUrl = deviceResult.gatewayUrl.isEmpty ? "https://push.ariaroute.com" : deviceResult.gatewayUrl
-                let gwToken = deviceResult.gatewayToken.isEmpty ? loginResult.jwt : deviceResult.gatewayToken
-
-                await MainActor.run {
-                    pbxDeviceId = deviceResult.deviceId
-                    gatewayUrl = gwUrl
-                }
-
-                // Step 3: Initialize SIP engine with gateway token (not API JWT)
-                sipEngine.configure(gatewayUrl: gwUrl, apiKey: gwToken)
-
-                let credentials = SipCredentials(
-                    username: sipUsername,
-                    password: sipPassword,
-                    domain: sipDomain,
-                    registrar: sipRegistrar.isEmpty ? nil : sipRegistrar,
-                    transport: sipTransport,
-                    port: UInt16(sipPort),
-                    authUsername: nil,
-                    displayName: sipDisplayName
-                )
-
-                let bundleId = Bundle.main.bundleIdentifier
-                try sipEngine.registerDevice(
-                    platform: "ios",
-                    pushToken: pushToken,
-                    bundleId: bundleId,
-                    sip: credentials
-                )
-
-                await MainActor.run {
-                    isConnecting = false
-                }
-            } catch {
-                await MainActor.run {
-                    isConnecting = false
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
+        session.login()
     }
 
     // MARK: - Sign Out
 
     private func performSignOut() {
-        let savedJwt = jwt
-        let savedDeviceId = pbxDeviceId
-        let savedApiUrl = apiUrl
-
-        // Unregister device from PBX in background
-        if !savedJwt.isEmpty && !savedDeviceId.isEmpty && !savedApiUrl.isEmpty {
-            Task {
-                try? await PbxApiClient(baseUrl: savedApiUrl)
-                    .unregisterDevice(jwt: savedJwt, deviceId: savedDeviceId)
-            }
-        }
-
-        // Unregister from gateway
-        try? sipEngine.unregister()
-
-        // Clear all stored state
-        sipUsername = ""
-        sipDomain = ""
-        sipPort = 5060
-        sipDisplayName = ""
-        sipRegistrar = ""
-        sipTransport = "udp"
-        sipPassword = ""
-        apiUrl = ""
-        setJwt("")
-        // Clear secrets from the Keychain on sign-out.
-        KeychainStore.remove(KeychainStore.sipPasswordKey)
-        extensionId = ""
-        tenantId = ""
-        pbxDeviceId = ""
-        gatewayUrl = ""
-        errorMessage = nil
+        session.signOut()
     }
 }
 

@@ -3,9 +3,14 @@ import Security
 
 /// Secure, device-only storage for secrets (SIP password, JWT session token).
 ///
-/// Backed by the iOS Keychain (`kSecClassGenericPassword`) with
-/// `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, so values are encrypted at
-/// rest, never synced to iCloud, and excluded from device backups.
+/// Backed by the iOS Keychain (`kSecClassGenericPassword`) with a
+/// `ThisDeviceOnly` accessibility class, so values are encrypted at rest,
+/// never synced to iCloud, and excluded from device backups.
+///
+/// Most items are `WhenUnlocked`. The few the app needs to answer a VoIP push
+/// on a locked phone — the SIP password, the gateway token and the push token —
+/// are `AfterFirstUnlock`: PushKit can launch the app while the device is
+/// locked, and an item it cannot read there means the call is never fetched.
 ///
 /// This is the single secure store for the app — all credential paths (setup,
 /// settings, outgoing/incoming call) read secrets from here rather than
@@ -21,6 +26,24 @@ enum KeychainStore {
 
     /// Bearer JWT returned by `POST /api/v1/auth/extension-login`.
     static let jwtKey = "jwt"
+
+    /// Push-gateway credential returned by `POST /api/v1/devices/register`.
+    static let gatewayTokenKey = "gatewayToken"
+
+    /// The most recent VoIP push token, so a cold launch can register with
+    /// the gateway before PushKit redelivers it.
+    static let pushTokenKey = "voipPushToken"
+
+    /// Items read while handling a push, possibly before the user unlocks.
+    private static let backgroundReadableKeys: Set<String> = [
+        sipPasswordKey, gatewayTokenKey, pushTokenKey,
+    ]
+
+    private static func accessibility(for key: String) -> CFString {
+        backgroundReadableKeys.contains(key)
+            ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            : kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    }
 
     // MARK: - Public API
 
@@ -43,7 +66,7 @@ enum KeychainStore {
         // Try to update an existing item first.
         let attributesToUpdate: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: accessibility(for: key),
         ]
 
         let updateStatus = SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
@@ -55,7 +78,7 @@ enum KeychainStore {
             // Item does not exist yet — add it.
             var addQuery = query
             addQuery[kSecValueData as String] = data
-            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            addQuery[kSecAttrAccessible as String] = accessibility(for: key)
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             return addStatus == errSecSuccess
         }
@@ -121,6 +144,15 @@ enum KeychainStore {
                 set(legacyJwt, forKey: jwtKey)
             }
             defaults.removeObject(forKey: jwtKey)
+        }
+
+        // Older builds stored every item `WhenUnlocked`. Rewriting a readable
+        // item moves it to the class `accessibility(for:)` now assigns; when
+        // the device is locked the read fails and this simply runs next time.
+        for key in backgroundReadableKeys {
+            if let value = get(key) {
+                set(value, forKey: key)
+            }
         }
     }
 }

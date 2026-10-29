@@ -31,6 +31,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Initialize the Rust runtime
         initRuntime()
 
+        // Rebuild the SIP engine from the stored account. Without this the
+        // engine existed only after an interactive login, so a relaunched app
+        // could neither place calls nor fetch an incoming call's offer.
+        SipEngineManager.shared.restoreSessionInBackground()
+
         // Register for VoIP pushes
         pushRegistry.delegate = PushHandler.shared
         pushRegistry.desiredPushTypes = [.voIP]
@@ -46,6 +51,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         return true
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // A launch-time restore can fail while the device is locked or
+        // offline; coming to the foreground is the natural retry. A no-op
+        // once the engine is registered.
+        SipEngineManager.shared.restoreSessionInBackground()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
