@@ -1,8 +1,10 @@
 import SwiftUI
 import ContactsUI
 
-/// Blind transfer of the call `callUUID`: pick a number (typed or from
-/// Contacts) and hand the call over to it.
+/// Transfer the call `callUUID`: pick a number (typed or from Contacts), then
+/// either hand the call over to it at once (blind), or call it first to
+/// introduce the caller (consult), holding this call, and complete the
+/// transfer from the call screen.
 struct TransferView: View {
     let callUUID: UUID
     let callerName: String
@@ -39,6 +41,15 @@ struct TransferView: View {
                     .disabled(isTransferring)
                 } footer: {
                     Text("\(callerName) will be connected to this number and your call will end.")
+                }
+
+                Section {
+                    Button(action: consult) {
+                        Label("Consult First", systemImage: "phone.arrow.up.right")
+                    }
+                    .disabled(trimmedTarget.isEmpty || isTransferring || !callManager.canAddCall)
+                } footer: {
+                    Text("Puts \(callerName) on hold and calls this number, so you can speak to them before completing the transfer.")
                 }
 
                 if let errorMessage = errorMessage {
@@ -111,6 +122,17 @@ struct TransferView: View {
                 dismiss()
             }
         }
+    }
+
+    /// Call the target while this call holds; "Complete Transfer" then
+    /// appears on the call screen once the target answers.
+    private func consult() {
+        guard TransferError.isAcceptableTarget(trimmedTarget) else {
+            errorMessage = TransferError.invalidTarget.localizedDescription
+            return
+        }
+        callManager.startOutgoingCall(uri: trimmedTarget)
+        dismiss()
     }
 }
 

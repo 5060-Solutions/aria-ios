@@ -14,6 +14,8 @@ struct CallView: View {
     @State private var isEncrypted = false
     @State private var showTransfer = false
     @State private var showAddCall = false
+    @State private var isCompletingTransfer = false
+    @State private var transferError: String?
 
     var body: some View {
         ZStack {
@@ -158,6 +160,10 @@ struct CallView: View {
                             .disabled(callManager.activeCall?.callId == nil)
                         }
                     }
+
+                    if let pair = callManager.attendedTransferPair {
+                        completeTransferButton(pair)
+                    }
                 }
 
                 Spacer()
@@ -227,6 +233,18 @@ struct CallView: View {
             AddCallView()
                 .environmentObject(callManager)
         }
+        .alert(
+            "Transfer Failed",
+            isPresented: Binding(
+                get: { transferError != nil },
+                set: { if !$0 { transferError = nil } }
+            ),
+            presenting: transferError
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }
     }
@@ -237,6 +255,33 @@ struct CallView: View {
     private func canSwap(with other: ActiveCall) -> Bool {
         guard let current = callManager.activeCall else { return false }
         return current.isConnected && other.isConnected && other.isOnHold
+    }
+
+    /// Join the caller to the consulted party and drop out of both calls.
+    private func completeTransferButton(_ pair: (transferred: ActiveCall, consult: ActiveCall)) -> some View {
+        Button {
+            isCompletingTransfer = true
+            callManager.completeAttendedTransfer { error in
+                isCompletingTransfer = false
+                transferError = error?.localizedDescription
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if isCompletingTransfer {
+                    ProgressView().tint(.indigo)
+                } else {
+                    Image(systemName: "arrow.triangle.merge")
+                }
+                Text(isCompletingTransfer ? "Transferring..." : "Complete Transfer")
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(.indigo)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Capsule().fill(Color.white))
+        }
+        .disabled(isCompletingTransfer)
+        .accessibilityHint("Connects \(pair.transferred.displayName) to \(pair.consult.displayName) and ends both of your calls.")
     }
 
     // MARK: - State

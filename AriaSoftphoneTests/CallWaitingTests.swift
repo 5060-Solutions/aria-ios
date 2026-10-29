@@ -1,8 +1,9 @@
 import XCTest
 @testable import AriaSoftphone
 
-/// Two calls at once: routing engine events, which call is on screen, and
-/// hold requests and their sync to CallKit.
+/// Two calls at once: routing engine events, which call is on screen, hold
+/// requests and their sync to CallKit, and which calls an attended transfer
+/// can join.
 final class CallWaitingTests: XCTestCase {
 
     private func inbound(_ token: String, connected: Bool = true, held: Bool = false) -> ActiveCall {
@@ -141,5 +142,34 @@ final class CallWaitingTests: XCTestCase {
     func testHoldChangesIgnoreCallsNotConnected() {
         let ringing = outbound("outgoing-x", connected: false)
         XCTAssertEqual(CallRegistry.holdChanges(calls: [ringing], callKitHeld: [ringing.uuid]), [])
+    }
+
+    // MARK: Attended transfer
+
+    func testAttendedTransferJoinsTheAnsweredCallToThePlacedOne() {
+        let answered = inbound("a", held: true)
+        let consult = outbound("outgoing-x")
+        for calls in [registry(answered, consult), registry(consult, answered)] {
+            let pair = calls.attendedTransferPair
+            XCTAssertEqual(pair?.transferred.uuid, answered.uuid)
+            XCTAssertEqual(pair?.consult.uuid, consult.uuid)
+        }
+    }
+
+    func testAttendedTransferNeedsOneCallEachWay() {
+        XCTAssertNil(registry(inbound("a", held: true), inbound("b")).attendedTransferPair)
+        XCTAssertNil(registry(outbound("outgoing-x", held: true), outbound("outgoing-y")).attendedTransferPair)
+    }
+
+    func testAttendedTransferNeedsBothCallsConnected() {
+        XCTAssertNil(registry(inbound("a")).attendedTransferPair)
+        XCTAssertNil(registry(inbound("a", held: true), outbound("outgoing-x", connected: false)).attendedTransferPair)
+    }
+
+    func testTransferUnsupportedHasItsOwnMessage() {
+        let error = TransferError(MobileError.TransferUnsupported(message: "both outgoing"))
+        XCTAssertEqual(error, .unsupported)
+        XCTAssertTrue(error.localizedDescription.contains("call you answered"))
+        XCTAssertTrue(error.localizedDescription.contains("still up"))
     }
 }

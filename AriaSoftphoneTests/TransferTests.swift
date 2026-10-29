@@ -15,7 +15,7 @@ final class TransferTests: XCTestCase {
     }
 
     func testEveryErrorHasAMessage() {
-        for error in [TransferError.invalidTarget, .notActive, .refused(""), .timedOut, .unavailable] {
+        for error in [TransferError.invalidTarget, .notActive, .refused(""), .timedOut, .unavailable, .unsupported] {
             XCTAssertFalse(error.localizedDescription.isEmpty)
         }
     }

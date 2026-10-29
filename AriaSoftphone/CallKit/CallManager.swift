@@ -381,6 +381,36 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
+    /// The two calls an attended transfer would join, if there are such:
+    /// see `CallRegistry.attendedTransferPair`.
+    var attendedTransferPair: (transferred: ActiveCall, consult: ActiveCall)? {
+        registry.attendedTransferPair
+    }
+
+    /// Attended transfer: connect the caller of the incoming call to the
+    /// party of the outgoing (consult) call and drop out of both.
+    ///
+    /// Blocks for up to about 45 s off the main queue, then reports there:
+    /// `nil` on success (each call's Ended(Transferred) then ends it here and
+    /// records it as transferred), or an error to show, with both calls up.
+    func completeAttendedTransfer(completion: @escaping (TransferError?) -> Void) {
+        guard let pair = registry.attendedTransferPair,
+              let callId = pair.transferred.callId,
+              let consultCallId = pair.consult.callId else {
+            completion(.notActive)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try SipEngineManager.shared.transferAttended(callId: callId, consultCallId: consultCallId)
+                DispatchQueue.main.async { completion(nil) }
+            } catch {
+                print("Attended transfer failed: \(error)")
+                DispatchQueue.main.async { completion(TransferError(error)) }
+            }
+        }
+    }
+
     /// Hold the call on screen and resume the other one.
     ///
     /// Done in the engine with `swapCalls`; the hold changes it reports are
@@ -961,7 +991,8 @@ struct ActiveCall: Identifiable {
 enum CallOutcome: String, Codable {
     /// Connected, then ended by either side.
     case answered
-    /// Connected, then handed to another party by blind transfer.
+    /// Connected, then handed to another party by transfer (blind or
+    /// attended).
     case transferred
     /// Incoming, picked up on another of the user's devices.
     case answeredElsewhere
@@ -1039,11 +1070,15 @@ enum TransferError: LocalizedError, Equatable {
     case refused(String)
     case timedOut
     case unavailable
+    /// An attended transfer between two calls the PBX cannot join: both
+    /// incoming or both outgoing.
+    case unsupported
 
     init(_ error: Error) {
         switch error as? MobileError {
         case .InvalidTarget: self = .invalidTarget
         case .InvalidState: self = .notActive
+        case .TransferUnsupported: self = .unsupported
         case .CallFailed(let message): self = .refused(message)
         case .Timeout: self = .timedOut
         default: self = .unavailable
@@ -1062,6 +1097,8 @@ enum TransferError: LocalizedError, Equatable {
             return "The phone system didn't respond in time. The call has not been transferred."
         case .unavailable:
             return "Couldn't reach the phone system. The call has not been transferred."
+        case .unsupported:
+            return "These calls can't be joined. The phone system can only transfer a call you answered to a call you placed. Both calls are still up."
         }
     }
 
@@ -1211,6 +1248,18 @@ struct CallRegistry {
     var canAddCall: Bool {
         calls.count < Self.maximumCalls
             && !calls.contains { $0.state == .incoming || $0.state == .connecting }
+    }
+
+    /// The calls an attended transfer would join: the PBX can only connect
+    /// an incoming call this phone answered (`transferred`) to an outgoing
+    /// call it placed (`consult`). nil unless there are exactly two connected
+    /// calls, one of each.
+    var attendedTransferPair: (transferred: ActiveCall, consult: ActiveCall)? {
+        let connected = calls.filter { $0.isConnected && $0.callId != nil }
+        guard connected.count == 2,
+              let inbound = connected.first(where: { $0.direction == .inbound }),
+              let outbound = connected.first(where: { $0.direction == .outbound }) else { return nil }
+        return (inbound, outbound)
     }
 
     /// What the engine must do for a `CXSetHeldCallAction`.
