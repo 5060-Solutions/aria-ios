@@ -10,8 +10,6 @@ targets:
     platform: iOS
     sources:
       - path: AriaSoftphone
-        excludes:
-          - "Aria Softphone/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria
