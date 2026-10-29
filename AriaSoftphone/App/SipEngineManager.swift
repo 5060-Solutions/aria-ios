@@ -522,6 +522,15 @@ class SwiftEventHandler: MobileEventHandler {
     }
 
     func onCallStateChanged(info: CallInfo) {
+        // Read on the calling thread: makeCall reports Ringing on the thread
+        // it runs on, which has its attempt's UUID parked.
+        if info.direction == .outbound, info.state == .ringing,
+           let uuid = OutgoingAttempts.shared.current {
+            DispatchQueue.main.async {
+                CallManager.shared.outgoingCallRinging(uuid: uuid, info: info)
+            }
+            return
+        }
         DispatchQueue.main.async {
             CallManager.shared.updateCallState(info: info)
         }

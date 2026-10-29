@@ -87,4 +87,59 @@ final class CallStateTests: XCTestCase {
         transferring.isTransferring = true
         XCTAssertEqual(CallEnding.resolve(for: transferring).outcome, .transferred)
     }
+
+    // MARK: - Ending a call here
+
+    func testConnectedCallIsHungUpByItsId() {
+        var connected = call(.outbound, connectedAt: Date())
+        connected.callId = "outgoing-1"
+        XCTAssertEqual(connected.releaseOnLocalEnd, .hangup(callId: "outgoing-1"))
+    }
+
+    func testRingingOutgoingCallIsHungUpByItsRingingId() {
+        var ringing = ActiveCall(uuid: UUID(), callToken: nil, remoteUri: "1", remoteName: nil,
+                                 direction: .outbound, state: .connecting)
+        XCTAssertEqual(ringing.releaseOnLocalEnd, .cancelBeforeRinging)
+        ringing.engineCallId = "outgoing-2"
+        XCTAssertEqual(ringing.releaseOnLocalEnd, .hangup(callId: "outgoing-2"))
+    }
+
+    func testUnansweredIncomingCallIsRejected() {
+        XCTAssertEqual(call(.inbound).releaseOnLocalEnd, .reject(callToken: "tok"))
+    }
+
+    func testCancelledIsTheUserHangingUp() {
+        XCTAssertTrue(CallManager.isCancellation(MobileError.Cancelled(message: "hangup")))
+        XCTAssertFalse(CallManager.isCancellation(MobileError.CallFailed(message: "busy")))
+        // Hung up before connecting: history says cancelled, not failed.
+        XCTAssertEqual(CallOutcome.resolve(for: call(.outbound), endedLocally: true), .cancelled)
+    }
+
+    func testAnAbandonedAttemptIsNeverDialled() {
+        let attempts = OutgoingAttempts()
+        let uuid = UUID()
+        attempts.abandon(uuid)
+        XCTAssertFalse(attempts.begin(uuid))
+        XCTAssertNil(attempts.current)
+    }
+
+    func testAnAttemptIsVisibleOnItsThreadWhileDialling() {
+        let attempts = OutgoingAttempts()
+        let uuid = UUID()
+        XCTAssertTrue(attempts.begin(uuid))
+        XCTAssertEqual(attempts.current, uuid)
+
+        let other = expectation(description: "other thread")
+        Thread.detachNewThread {
+            XCTAssertNil(attempts.current)
+            other.fulfill()
+        }
+        wait(for: [other], timeout: 2)
+
+        attempts.end(uuid)
+        XCTAssertNil(attempts.current)
+        // Ending clears an abandon that raced the dial.
+        XCTAssertTrue(attempts.begin(uuid))
+        attempts.end(uuid)
+    }
 }
