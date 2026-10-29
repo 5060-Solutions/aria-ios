@@ -73,20 +73,44 @@ final class AccountSession: ObservableObject {
 
                 // Step 2: Device registration with the PBX
                 let pushToken = KeychainStore.get(KeychainStore.pushTokenKey) ?? ""
-                let deviceResult = try await client.registerDevice(
-                    jwt: loginResult.jwt,
-                    pushToken: pushToken,
-                    platform: "ios"
-                )
+                let defaults = UserDefaults.standard
+                var gatewayToken = ""
+                do {
+                    let deviceResult = try await client.registerDevice(
+                        jwt: loginResult.jwt,
+                        pushToken: pushToken,
+                        platform: "ios"
+                    )
+                    defaults.set(deviceResult.deviceId, forKey: AccountSettings.Key.pbxDeviceId)
+                    if !deviceResult.gatewayUrl.isEmpty {
+                        defaults.set(deviceResult.gatewayUrl, forKey: AccountSettings.Key.gatewayUrl)
+                    }
+                    // The PBX says which transport (and port) its mobile SIP
+                    // endpoint uses; it outranks what the QR code carried.
+                    if isValidTransport(deviceResult.sipTransport) {
+                        defaults.set(deviceResult.sipTransport, forKey: AccountSettings.Key.transport)
+                        if deviceResult.sipPort > 0 {
+                            defaults.set(deviceResult.sipPort, forKey: AccountSettings.Key.port)
+                        }
+                    }
+                    gatewayToken = deviceResult.gatewayToken
+                } catch PbxApiClient.ApiError.gatewayTokenUnavailable(let deviceId, _, _) {
+                    // The device was stored; only its token is missing.
+                    defaults.set(deviceId, forKey: AccountSettings.Key.pbxDeviceId)
+                }
+                if (defaults.string(forKey: AccountSettings.Key.gatewayUrl) ?? "").isEmpty {
+                    defaults.set("https://push.ariaroute.com", forKey: AccountSettings.Key.gatewayUrl)
+                }
 
-                let gwUrl = deviceResult.gatewayUrl.isEmpty ? "https://push.ariaroute.com" : deviceResult.gatewayUrl
-                let gwToken = deviceResult.gatewayToken.isEmpty ? loginResult.jwt : deviceResult.gatewayToken
-
-                UserDefaults.standard.set(deviceResult.deviceId, forKey: AccountSettings.Key.pbxDeviceId)
-                UserDefaults.standard.set(gwUrl, forKey: AccountSettings.Key.gatewayUrl)
+                // Only a PBX-issued gateway token authenticates to the gateway;
+                // the login JWT is not one. Without a token, renew it.
+                if gatewayToken.isEmpty {
+                    let deviceId = defaults.string(forKey: AccountSettings.Key.pbxDeviceId) ?? ""
+                    gatewayToken = try await client.renewGatewayToken(jwt: loginResult.jwt, deviceId: deviceId)
+                }
                 // Persisted so the engine can be rebuilt at launch and inside a
                 // VoIP push without another interactive login.
-                KeychainStore.set(gwToken, forKey: KeychainStore.gatewayTokenKey)
+                KeychainStore.set(gatewayToken, forKey: KeychainStore.gatewayTokenKey)
 
                 // Step 3: Build the SIP engine from what was just stored and
                 // register with the gateway (gateway token, not the API JWT).

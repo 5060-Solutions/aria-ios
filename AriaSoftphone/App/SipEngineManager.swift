@@ -81,9 +81,15 @@ class SipEngineManager: ObservableObject {
         dispatchPrecondition(condition: .notOnQueue(.main))
         try setupQueue.sync {
             let account = AccountSettings.load()
-            guard account.isProvisioned, !account.gatewayUrl.isEmpty,
-                  let apiKey = KeychainStore.get(KeychainStore.gatewayTokenKey)
-                    ?? KeychainStore.get(KeychainStore.jwtKey) else {
+            guard account.isProvisioned, !account.gatewayUrl.isEmpty else {
+                throw SipError.notConfigured
+            }
+            // Only a PBX-issued gateway token will do. With none stored (an
+            // older install, or one cleared after a failed renewal), get one.
+            if KeychainStore.get(KeychainStore.gatewayTokenKey) == nil {
+                try GatewayTokenRenewer.shared.renewBlocking()
+            }
+            guard let apiKey = KeychainStore.get(KeychainStore.gatewayTokenKey) else {
                 throw SipError.notConfigured
             }
 
@@ -102,12 +108,59 @@ class SipEngineManager: ObservableObject {
                   !password.isEmpty else {
                 throw SipError.missingCredentials
             }
-            try registerDevice(
-                pushToken: KeychainStore.get(KeychainStore.pushTokenKey) ?? "",
-                bundleId: Bundle.main.bundleIdentifier,
-                sip: account.sipCredentials(password: password)
-            )
+            // An expired token is renewed and the registration retried once;
+            // this is what lets a cold-start push survive a stale token.
+            try withAuthRetry {
+                try registerDevice(
+                    pushToken: KeychainStore.get(KeychainStore.pushTokenKey) ?? "",
+                    bundleId: Bundle.main.bundleIdentifier,
+                    sip: account.sipCredentials(password: password)
+                )
+            }
         }
+    }
+
+    // MARK: - Gateway token
+
+    /// Hand the engine a renewed gateway token. Safe mid-call: the engine
+    /// does not re-register, and its background polls pick the token up.
+    func setGatewayToken(_ token: String) {
+        stateLock.lock()
+        let engine = _engine
+        if let current = configuredWith {
+            configuredWith = (current.gatewayUrl, token)
+        }
+        stateLock.unlock()
+        engine?.setGatewayToken(token: token)
+    }
+
+    /// Run an engine call; if the gateway rejected the token, renew it and
+    /// run the call once more.
+    private func withAuthRetry<T>(_ operation: () throws -> T) throws -> T {
+        try Self.retryingOnAuthFailure(
+            renew: { try GatewayTokenRenewer.shared.renewBlocking() },
+            operation
+        )
+    }
+
+    /// `operation`, retried once after `renew` if it failed with
+    /// `AuthenticationError`. Any other error, or a second auth failure, is
+    /// thrown as is.
+    static func retryingOnAuthFailure<T>(renew: () throws -> Void, _ operation: () throws -> T) throws -> T {
+        do {
+            return try operation()
+        } catch where isAuthFailure(error) {
+            try renew()
+            return try operation()
+        }
+    }
+
+    /// The gateway answered 401: the token is missing, expired or revoked.
+    static func isAuthFailure(_ error: Error) -> Bool {
+        if case MobileError.AuthenticationError = error {
+            return true
+        }
+        return false
     }
 
     /// `ensureReady()` off the caller's queue.
@@ -174,7 +227,9 @@ class SipEngineManager: ObservableObject {
                     return
                 }
                 if let engine = self.engine, let deviceId = self.registeredDeviceId {
-                    try engine.updatePushToken(deviceId: deviceId, newToken: token)
+                    try self.withAuthRetry {
+                        try engine.updatePushToken(deviceId: deviceId, newToken: token)
+                    }
                 } else {
                     // Registers with the token just stored.
                     try self.ensureReady()
@@ -182,6 +237,31 @@ class SipEngineManager: ObservableObject {
             } catch {
                 print("Push token update failed: \(error)")
             }
+        }
+        // The PBX keeps its own copy of the push token for the device.
+        Task {
+            await Self.updatePbxPushToken(token)
+        }
+    }
+
+    /// `PUT /api/v1/devices/{id}/push-token`. A 409 (the token is already
+    /// bound to another device record) is logged, not fatal: the gateway
+    /// registration above is what delivers pushes.
+    private static func updatePbxPushToken(_ token: String) async {
+        let defaults = UserDefaults.standard
+        guard let apiUrl = defaults.string(forKey: AccountSettings.Key.apiUrl), !apiUrl.isEmpty,
+              let deviceId = defaults.string(forKey: AccountSettings.Key.pbxDeviceId), !deviceId.isEmpty else {
+            return
+        }
+        do {
+            try await PbxSession.shared.authorized { jwt in
+                try await PbxApiClient(baseUrl: apiUrl)
+                    .updatePushToken(jwt: jwt, deviceId: deviceId, pushToken: token)
+            }
+        } catch PbxApiClient.ApiError.httpError(let code, let message) where code == 409 {
+            print("PBX kept its push token (409): \(message)")
+        } catch {
+            print("PBX push token update failed: \(error)")
         }
     }
 
@@ -244,7 +324,7 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        return try engine.handlePushNotification(payload: payload)
+        return try withAuthRetry { try engine.handlePushNotification(payload: payload) }
     }
 
     /// Accept an incoming call.
@@ -252,10 +332,9 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        return try engine.acceptIncomingCall(
-            callToken: callToken,
-            preferredCodecs: codecs
-        )
+        return try withAuthRetry {
+            try engine.acceptIncomingCall(callToken: callToken, preferredCodecs: codecs)
+        }
     }
 
     /// Reject an incoming call.
@@ -263,7 +342,7 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        try engine.rejectIncomingCall(callToken: callToken)
+        try withAuthRetry { try engine.rejectIncomingCall(callToken: callToken) }
     }
 
     /// Make an outgoing call.
@@ -271,17 +350,28 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        return try engine.makeCall(
-            uri: uri,
-            credentials: credentials,
-            preferredCodecs: codecs
-        )
+        // Not retried: by the time a 401 comes back the engine has reported
+        // Ringing and Ended for the attempt, so a retry would be a new call
+        // behind the user's back. Renew so the next attempt works.
+        do {
+            return try engine.makeCall(uri: uri, credentials: credentials, preferredCodecs: codecs)
+        } catch where Self.isAuthFailure(error) {
+            GatewayTokenRenewer.shared.renewInBackground()
+            throw error
+        }
     }
 
     /// Hang up an active call.
     func hangup(callId: String) throws {
         guard let engine = engine else { return }
-        try engine.hangup(callId: callId)
+        do {
+            try engine.hangup(callId: callId)
+        } catch where Self.isAuthFailure(error) {
+            // The call has already ended locally; renew so the core's
+            // fallback hangup and later calls can reach the gateway.
+            GatewayTokenRenewer.shared.renewInBackground()
+            throw error
+        }
     }
 
     /// Blind-transfer an active call. Blocks for up to about 8 s. On success
@@ -290,7 +380,7 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        try engine.transferCall(callId: callId, target: target)
+        try withAuthRetry { try engine.transferCall(callId: callId, target: target) }
     }
 
     /// Mute/unmute.
@@ -437,9 +527,10 @@ class SwiftEventHandler: MobileEventHandler {
         }
     }
 
+    /// Background work (status polls, the caller-cancel watch) had its token
+    /// rejected. Fetch a new one; the engine uses it from then on.
     func onAuthRequired() {
-        // Gateway token renewal is wired up separately.
-        print("Gateway token rejected; renewal required")
+        GatewayTokenRenewer.shared.renewInBackground()
     }
 
     func onMediaStats(callId: String, stats: MediaStats) {

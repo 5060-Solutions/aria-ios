@@ -2,9 +2,8 @@ import Foundation
 
 /// The signed-in extension's voicemail, from the Aria PBX REST API.
 ///
-/// Authenticates with the extension-login JWT `AccountSession` stores. When
-/// the API answers 401 the JWT has expired, so the service logs in again with
-/// the stored SIP credentials — exactly what login did — and retries once.
+/// Authenticates with the extension-login JWT `AccountSession` stores, through
+/// `PbxSession`, which logs in again and retries once when it has expired.
 @MainActor
 final class VoicemailService: ObservableObject {
     static let shared = VoicemailService()
@@ -106,31 +105,14 @@ final class VoicemailService: ObservableObject {
     private func authorized<T>(
         _ operation: (PbxApiClient, String) async throws -> T
     ) async throws -> T {
-        let account = AccountSettings.load()
-        guard !account.apiUrl.isEmpty, let jwt = KeychainStore.get(KeychainStore.jwtKey) else {
+        let apiUrl = AccountSettings.load().apiUrl
+        guard !apiUrl.isEmpty, KeychainStore.get(KeychainStore.jwtKey) != nil else {
             throw VoicemailError.notSignedIn
         }
-        let client = PbxApiClient(baseUrl: account.apiUrl)
-
-        do {
-            return try await operation(client, jwt)
-        } catch PbxApiClient.ApiError.httpError(let code, _) where code == 401 {
-            let fresh = try await relogin(client: client, account: account)
-            return try await operation(client, fresh)
+        let client = PbxApiClient(baseUrl: apiUrl)
+        return try await PbxSession.shared.authorized { jwt in
+            try await operation(client, jwt)
         }
-    }
-
-    private func relogin(client: PbxApiClient, account: AccountSettings) async throws -> String {
-        guard let password = KeychainStore.get(KeychainStore.sipPasswordKey), !password.isEmpty else {
-            throw VoicemailError.notSignedIn
-        }
-        let result = try await client.extensionLogin(
-            extensionNumber: account.username,
-            password: password,
-            tenantDomain: account.domain
-        )
-        KeychainStore.set(result.jwt, forKey: KeychainStore.jwtKey)
-        return result.jwt
     }
 }
 

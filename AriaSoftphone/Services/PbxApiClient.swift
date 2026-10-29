@@ -22,6 +22,10 @@ class PbxApiClient {
     struct DeviceResponse {
         let deviceId: String
         let sipDomain: String
+        /// `udp`, `tcp` or `tls` — the transport `sipPort` belongs to. Empty
+        /// from a PBX that predates the field.
+        let sipTransport: String
+        let sipPort: Int
         let gatewayUrl: String
         let gatewayToken: String
     }
@@ -33,6 +37,9 @@ class PbxApiClient {
         case emptyResponse
         case httpError(statusCode: Int, message: String)
         case decodingError(String)
+        /// Device registration stored the device but could not get a gateway
+        /// token for it (502/503). Renew one for `deviceId`.
+        case gatewayTokenUnavailable(deviceId: String, statusCode: Int, message: String)
 
         var errorDescription: String? {
             switch self {
@@ -44,6 +51,8 @@ class PbxApiClient {
                 return "Request failed (\(code)): \(message)"
             case .decodingError(let detail):
                 return "Failed to parse response: \(detail)"
+            case .gatewayTokenUnavailable(_, let code, let message):
+                return "Request failed (\(code)): \(message)"
             }
         }
     }
@@ -81,24 +90,76 @@ class PbxApiClient {
         pushToken: String,
         platform: String
     ) async throws -> DeviceResponse {
-        let url = try buildURL(path: "/api/v1/devices/register")
-
         let body: [String: Any] = [
             "push_token": pushToken,
             "platform": platform,
         ]
 
-        let json = try await post(url: url, body: body, token: jwt)
+        let data: Data
+        do {
+            data = try await send("POST", path: "/api/v1/devices/register", body: body, token: jwt)
+        } catch ApiError.httpError(let code, let message) where code == 502 || code == 503 {
+            // The device row exists; only its gateway token is missing. The
+            // body names the device so the token can be renewed for it.
+            if let deviceId = lastErrorBody?["device_id"] as? String, !deviceId.isEmpty {
+                throw ApiError.gatewayTokenUnavailable(deviceId: deviceId, statusCode: code, message: message)
+            }
+            throw ApiError.httpError(statusCode: code, message: message)
+        }
+        return try Self.parseDeviceResponse(data)
+    }
 
-        guard let deviceId = json["device_id"] as? String else {
+    static func parseDeviceResponse(_ data: Data) throws -> DeviceResponse {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let deviceId = json["device_id"] as? String else {
             throw ApiError.decodingError("Missing device_id")
         }
 
-        let sipDomain = json["sip_domain"] as? String ?? ""
-        let gatewayUrl = json["gateway_url"] as? String ?? ""
-        let gatewayToken = json["gateway_token"] as? String ?? ""
+        return DeviceResponse(
+            deviceId: deviceId,
+            sipDomain: json["sip_domain"] as? String ?? "",
+            sipTransport: (json["sip_transport"] as? String ?? "").lowercased(),
+            sipPort: json["sip_port"] as? Int ?? 0,
+            gatewayUrl: json["gateway_url"] as? String ?? "",
+            gatewayToken: json["gateway_token"] as? String ?? ""
+        )
+    }
 
-        return DeviceResponse(deviceId: deviceId, sipDomain: sipDomain, gatewayUrl: gatewayUrl, gatewayToken: gatewayToken)
+    // MARK: - POST /api/v1/devices/{id}/gateway-token
+
+    struct GatewayTokenResponse: Decodable {
+        let gatewayToken: String
+        let expiresIn: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case gatewayToken = "gateway_token"
+            case expiresIn = "expires_in"
+        }
+    }
+
+    /// A fresh push-gateway token for this device.
+    func renewGatewayToken(jwt: String, deviceId: String) async throws -> String {
+        let data = try await send(
+            "POST",
+            path: "/api/v1/devices/\(try pathSegment(deviceId))/gateway-token",
+            token: jwt
+        )
+        let response = try decode(GatewayTokenResponse.self, from: data)
+        guard !response.gatewayToken.isEmpty else {
+            throw ApiError.decodingError("Empty gateway_token")
+        }
+        return response.gatewayToken
+    }
+
+    // MARK: - PUT /api/v1/devices/{id}/push-token
+
+    func updatePushToken(jwt: String, deviceId: String, pushToken: String) async throws {
+        _ = try await send(
+            "PUT",
+            path: "/api/v1/devices/\(try pathSegment(deviceId))/push-token",
+            body: ["push_token": pushToken],
+            token: jwt
+        )
     }
 
     // MARK: - POST /api/v1/devices/unregister
@@ -286,16 +347,25 @@ class PbxApiClient {
         return decoder
     }()
 
+    /// The JSON body of the last non-2xx response from `send`, for routes
+    /// whose errors carry fields beyond the message.
+    private var lastErrorBody: [String: Any]?
+
     /// Send a request and return the body of a 2xx response.
     private func send(
         _ method: String,
         path: String,
         query: [URLQueryItem] = [],
+        body: [String: Any]? = nil,
         token: String?
     ) async throws -> Data {
         var request = URLRequest(url: try buildURL(path: path, query: query))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body = body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
         request.timeoutInterval = 15
         if let token = token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -307,6 +377,7 @@ class PbxApiClient {
         }
         guard (200..<300).contains(http.statusCode) else {
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            lastErrorBody = json
             let message = json?["error"] as? String ?? String(data: data, encoding: .utf8) ?? ""
             throw ApiError.httpError(statusCode: http.statusCode, message: message)
         }
