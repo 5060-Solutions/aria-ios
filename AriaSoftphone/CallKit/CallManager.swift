@@ -12,6 +12,10 @@ class CallManager: NSObject, ObservableObject {
 
     @Published var activeCall: ActiveCall?
     @Published var incomingOffer: CallOffer?
+    /// Whether audio is currently going to the built-in speaker. Follows the
+    /// actual route, so it is also right after a change from Control Centre
+    /// or a Bluetooth device connecting.
+    @Published private(set) var isSpeakerOn = false
 
     private let provider: CXProvider
     private let callController = CXCallController()
@@ -34,6 +38,34 @@ class CallManager: NSObject, ObservableObject {
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: DispatchQueue.main)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(audioRouteChanged),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+    }
+
+    // MARK: - Audio Route
+
+    /// Send call audio to the speaker, or back to the default route.
+    func setSpeaker(_ on: Bool) {
+        do {
+            try AVAudioSession.sharedInstance().overrideOutputAudioPort(on ? .speaker : .none)
+        } catch {
+            print("Failed to change audio route: \(error)")
+        }
+        refreshAudioRoute()
+    }
+
+    @objc private func audioRouteChanged(_ notification: Notification) {
+        DispatchQueue.main.async { self.refreshAudioRoute() }
+    }
+
+    private func refreshAudioRoute() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        isSpeakerOn = outputs.contains { $0.portType == .builtInSpeaker }
     }
 
     // MARK: - Incoming Call (from push notification)
@@ -502,6 +534,7 @@ extension CallManager: CXProviderDelegate {
         // CallKit has activated the session: the hardware is ours until it
         // deactivates it. Only now may the audio engine start.
         SipEngineManager.shared.audioBridge.start()
+        refreshAudioRoute()
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
