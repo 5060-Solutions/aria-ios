@@ -20,6 +20,65 @@ func isTrustedGatewayURL(_ pushed: String, configured: String) -> Bool {
     return pushedHost == configuredHost && (pushedURL.port ?? 443) == (configuredURL.port ?? 443)
 }
 
+/// The call a VoIP push announces.
+struct IncomingPush: Equatable {
+    let callToken: String
+    let callerUri: String
+    let callerName: String?
+    let gatewayUrl: String
+
+    enum Rejection: Error, Equatable {
+        /// No call token: there is no call to fetch.
+        case missingCallToken
+        /// Not signed in, so there is no gateway to fetch it from.
+        case noConfiguredGateway
+        /// The payload names a gateway other than the one registered with.
+        case untrustedGateway
+    }
+
+    /// Parse a push payload.
+    ///
+    /// The push gateway sends camelCase keys (`callToken`, `callerUri`,
+    /// `callerName`) and no gateway URL; snake_case is accepted as a fallback,
+    /// as the Android client does. A missing gateway URL means the configured
+    /// gateway. A payload that does name one must name the configured one —
+    /// anything else is not fetched.
+    static func parse(_ payload: [AnyHashable: Any], configuredGateway: String) -> Result<IncomingPush, Rejection> {
+        func string(_ keys: String...) -> String? {
+            for key in keys {
+                if let value = payload[key] as? String, !value.isEmpty {
+                    return value
+                }
+            }
+            return nil
+        }
+
+        guard let callToken = string("callToken", "call_token") else {
+            return .failure(.missingCallToken)
+        }
+        guard !configuredGateway.isEmpty else {
+            return .failure(.noConfiguredGateway)
+        }
+
+        let gatewayUrl: String
+        if let pushed = string("gatewayUrl", "gateway_url") {
+            guard isTrustedGatewayURL(pushed, configured: configuredGateway) else {
+                return .failure(.untrustedGateway)
+            }
+            gatewayUrl = pushed
+        } else {
+            gatewayUrl = configuredGateway
+        }
+
+        return .success(IncomingPush(
+            callToken: callToken,
+            callerUri: string("callerUri", "caller_uri") ?? "Unknown",
+            callerName: string("callerName", "caller_name"),
+            gatewayUrl: gatewayUrl
+        ))
+    }
+}
+
 class PushHandler: NSObject, PKPushRegistryDelegate {
     static let shared = PushHandler()
 
@@ -75,27 +134,22 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
         print("Received VoIP push")
 
         // Parse the push payload
-        guard let data = payload.dictionaryPayload as? [String: Any],
-              let callToken = data["call_token"] as? String,
-              let callerUri = data["caller_uri"] as? String,
-              let gatewayUrl = data["gateway_url"] as? String else {
-            print("Invalid VoIP push payload")
+        let configuredGateway = UserDefaults.standard.string(forKey: AccountSettings.Key.gatewayUrl) ?? ""
+        let parsed: IncomingPush
+        switch IncomingPush.parse(payload.dictionaryPayload, configuredGateway: configuredGateway) {
+        case .success(let push):
+            parsed = push
+        case .failure(let rejection):
+            print("Rejected VoIP push: \(rejection)")
             // MUST report a call to CallKit even on failure (iOS 13+)
             CallManager.shared.reportAndEndInvalidPush(completion: completion)
             return
         }
 
-        // The payload names the gateway to fetch the call from. Only the one
-        // this device registered with is trusted; anything else is reported
-        // (PushKit requires it) and ended without contacting it.
-        let configuredGateway = UserDefaults.standard.string(forKey: AccountSettings.Key.gatewayUrl) ?? ""
-        guard isTrustedGatewayURL(gatewayUrl, configured: configuredGateway) else {
-            print("Rejected VoIP push from an unexpected gateway")
-            CallManager.shared.reportAndEndInvalidPush(completion: completion)
-            return
-        }
-
-        let callerName = data["caller_name"] as? String
+        let callToken = parsed.callToken
+        let callerUri = parsed.callerUri
+        let callerName = parsed.callerName
+        let gatewayUrl = parsed.gatewayUrl
 
         let pushPayload = PushCallPayload(
             callToken: callToken,
