@@ -12,12 +12,17 @@ struct CallView: View {
     @State private var txLevel: Float = 0
     @State private var pulseScale: CGFloat = 1.0
     @State private var isEncrypted = false
-    @State private var showTransfer = false
+    /// The call the transfer sheet is for, fixed when Transfer is tapped so
+    /// the sheet never moves to a call that takes the screen meanwhile.
+    @State private var transferCall: ActiveCall?
     @State private var showAddCall = false
     @State private var isCompletingTransfer = false
     @State private var transferError: String?
 
     var body: some View {
+        // The call these controls were drawn for. Buttons act on it, not on
+        // whatever call is on screen when the tap lands.
+        let shown = callManager.activeCall
         ZStack {
             // Background gradient
             LinearGradient(
@@ -34,7 +39,11 @@ struct CallView: View {
                     OtherCallRow(
                         call: other,
                         canSwap: canSwap(with: other),
-                        onSwap: { callManager.swapCalls() }
+                        onSwap: {
+                            if let shown = shown {
+                                callManager.swapCalls(active: shown.uuid, held: other.uuid)
+                            }
+                        }
                     )
                 }
 
@@ -91,7 +100,7 @@ struct CallView: View {
                 // DTMF overlay
                 if showDTMFKeypad {
                     DTMFKeypad { digit in
-                        callManager.sendDTMF(digit)
+                        if let shown = shown { callManager.sendDTMF(uuid: shown.uuid, digit) }
                         playDTMFTone(digit: digit)
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -105,7 +114,7 @@ struct CallView: View {
                             label: "Mute",
                             isActive: callManager.activeCall?.isMuted == true
                         ) {
-                            callManager.setMuted(!(callManager.activeCall?.isMuted ?? false))
+                            if let shown = shown { callManager.setMuted(uuid: shown.uuid, !shown.isMuted) }
                         }
 
                         CallControlButton(
@@ -121,7 +130,7 @@ struct CallView: View {
                             label: callManager.activeCall?.isOnHold == true ? "Resume" : "Hold",
                             isActive: callManager.activeCall?.isOnHold == true
                         ) {
-                            callManager.setHeld(!(callManager.activeCall?.isOnHold ?? false))
+                            if let shown = shown { callManager.setHeld(uuid: shown.uuid, !shown.isOnHold) }
                         }
                     }
 
@@ -155,7 +164,7 @@ struct CallView: View {
                                 label: "Transfer",
                                 isActive: false
                             ) {
-                                showTransfer = true
+                                transferCall = shown
                             }
                             .disabled(callManager.activeCall?.callId == nil)
                         }
@@ -173,18 +182,18 @@ struct CallView: View {
                     // Call waiting: say what happens to the call in progress.
                     HStack(spacing: 28) {
                         AnswerChoiceButton(icon: "phone.down.fill", label: "Decline", color: .red) {
-                            callManager.endCall()
+                            if let shown = shown { callManager.endCall(uuid: shown.uuid) }
                         }
                         AnswerChoiceButton(icon: "phone.fill", label: "Hold & Accept", color: .green) {
-                            callManager.answerCall(.holdOthers)
+                            if let shown = shown { callManager.answerCall(uuid: shown.uuid, .holdOthers) }
                         }
                         AnswerChoiceButton(icon: "phone.arrow.down.left.fill", label: "End & Accept", color: .orange) {
-                            callManager.answerCall(.endOthers)
+                            if let shown = shown { callManager.answerCall(uuid: shown.uuid, .endOthers) }
                         }
                     }
                 } else if callManager.activeCall?.state == .incoming {
                     HStack(spacing: 60) {
-                        Button(action: { callManager.endCall() }) {
+                        Button(action: { if let shown = shown { callManager.endCall(uuid: shown.uuid) } }) {
                             Circle()
                                 .fill(Color.red)
                                 .frame(width: 72, height: 72)
@@ -195,7 +204,7 @@ struct CallView: View {
                                 )
                         }
 
-                        Button(action: { callManager.answerCall() }) {
+                        Button(action: { if let shown = shown { callManager.answerCall(uuid: shown.uuid) } }) {
                             Circle()
                                 .fill(Color.green)
                                 .frame(width: 72, height: 72)
@@ -207,7 +216,7 @@ struct CallView: View {
                         }
                     }
                 } else {
-                    Button(action: { callManager.endCall() }) {
+                    Button(action: { if let shown = shown { callManager.endCall(uuid: shown.uuid) } }) {
                         Circle()
                             .fill(Color.red)
                             .frame(width: 72, height: 72)
@@ -223,11 +232,9 @@ struct CallView: View {
             }
             .padding()
         }
-        .sheet(isPresented: $showTransfer) {
-            if let call = callManager.activeCall {
-                TransferView(callUUID: call.uuid, callerName: call.displayName)
-                    .environmentObject(callManager)
-            }
+        .sheet(item: $transferCall) { call in
+            TransferView(callUUID: call.uuid, callerName: call.displayName)
+                .environmentObject(callManager)
         }
         .sheet(isPresented: $showAddCall) {
             AddCallView()
@@ -261,7 +268,10 @@ struct CallView: View {
     private func completeTransferButton(_ pair: (transferred: ActiveCall, consult: ActiveCall)) -> some View {
         Button {
             isCompletingTransfer = true
-            callManager.completeAttendedTransfer { error in
+            callManager.completeAttendedTransfer(
+                transferred: pair.transferred.uuid,
+                consult: pair.consult.uuid
+            ) { error in
                 isCompletingTransfer = false
                 transferError = error?.localizedDescription
             }

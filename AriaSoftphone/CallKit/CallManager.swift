@@ -310,12 +310,16 @@ class CallManager: NSObject, ObservableObject {
         case endOthers
     }
 
-    /// Answer the ringing call from the in-app UI. Goes through CallKit so the
-    /// system call UI and audio session follow; the other call is held or
-    /// ended in the same transaction, ahead of the answer, as CallKit's own
-    /// buttons do.
-    func answerCall(_ mode: AnswerMode = .holdOthers) {
-        guard let call = activeCall, call.state == .incoming else { return }
+    /// Answer the ringing call `uuid` from the in-app UI. Goes through
+    /// CallKit so the system call UI and audio session follow; the other call
+    /// is held or ended in the same transaction, ahead of the answer, as
+    /// CallKit's own buttons do.
+    ///
+    /// Every in-app action names the call it was shown for, not whichever
+    /// call is on screen by the time it runs: a second call can take the
+    /// screen between the two.
+    func answerCall(uuid: UUID, _ mode: AnswerMode = .holdOthers) {
+        guard let call = registry[uuid], call.state == .incoming else { return }
         var actions: [CXAction] = []
         for other in registry.calls where other.uuid != call.uuid {
             switch mode {
@@ -335,13 +339,8 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
-    /// End the call on screen. Another call stays as it was: a held call
-    /// stays held until the user resumes it.
-    func endCall() {
-        guard let call = activeCall else { return }
-        endCall(uuid: call.uuid)
-    }
-
+    /// End the call `uuid`. Another call stays as it was: a held call stays
+    /// held until the user resumes it.
     func endCall(uuid: UUID) {
         let endAction = CXEndCallAction(call: uuid)
         let transaction = CXTransaction(action: endAction)
@@ -393,8 +392,15 @@ class CallManager: NSObject, ObservableObject {
     /// Blocks for up to about 45 s off the main queue, then reports there:
     /// `nil` on success (each call's Ended(Transferred) then ends it here and
     /// records it as transferred), or an error to show, with both calls up.
-    func completeAttendedTransfer(completion: @escaping (TransferError?) -> Void) {
+    /// `transferred` and `consult` are the calls the user was shown; if they
+    /// are no longer the pair (one ended, another connected) nothing is sent.
+    func completeAttendedTransfer(
+        transferred: UUID,
+        consult: UUID,
+        completion: @escaping (TransferError?) -> Void
+    ) {
         guard let pair = registry.attendedTransferPair,
+              pair.transferred.uuid == transferred, pair.consult.uuid == consult,
               let callId = pair.transferred.callId,
               let consultCallId = pair.consult.callId else {
             completion(.notActive)
@@ -411,13 +417,14 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
-    /// Hold the call on screen and resume the other one.
+    /// Hold the talking call `active` and resume the held call `held`.
     ///
     /// Done in the engine with `swapCalls`; the hold changes it reports are
-    /// then passed on to CallKit (see `syncHoldWithCallKit`).
-    func swapCalls() {
-        guard let talking = registry.talking, let activeId = talking.callId,
-              let held = registry.calls.first(where: { $0.uuid != talking.uuid && $0.isConnected && $0.isOnHold }),
+    /// then passed on to CallKit (see `syncHoldWithCallKit`). Nothing happens
+    /// unless the two are still talking and held.
+    func swapCalls(active: UUID, held: UUID) {
+        guard let talking = registry.talking, talking.uuid == active, let activeId = talking.callId,
+              let held = registry[held], held.uuid != active, held.isConnected, held.isOnHold,
               let heldId = held.callId else { return }
         do {
             try SipEngineManager.shared.swapCalls(activeCallId: activeId, heldCallId: heldId)
@@ -429,17 +436,17 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
-    func setMuted(_ muted: Bool) {
-        guard let call = activeCall else { return }
-        let muteAction = CXSetMutedCallAction(call: call.uuid, muted: muted)
+    func setMuted(uuid: UUID, _ muted: Bool) {
+        guard registry[uuid] != nil else { return }
+        let muteAction = CXSetMutedCallAction(call: uuid, muted: muted)
         let transaction = CXTransaction(action: muteAction)
         callController.request(transaction) { _ in }
     }
 
-    /// Hold or resume the call on screen. Resuming it holds the other call.
-    func setHeld(_ held: Bool) {
-        guard let call = activeCall else { return }
-        let holdAction = CXSetHeldCallAction(call: call.uuid, onHold: held)
+    /// Hold or resume the call `uuid`. Resuming it holds the other call.
+    func setHeld(uuid: UUID, _ held: Bool) {
+        guard registry[uuid] != nil else { return }
+        let holdAction = CXSetHeldCallAction(call: uuid, onHold: held)
         let transaction = CXTransaction(action: holdAction)
         callController.request(transaction) { error in
             if let error = error {
@@ -448,10 +455,10 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
-    func sendDTMF(_ digits: String) {
-        guard let call = activeCall else { return }
+    func sendDTMF(uuid: UUID, _ digits: String) {
+        guard registry[uuid] != nil else { return }
         let dtmfAction = CXPlayDTMFCallAction(
-            call: call.uuid,
+            call: uuid,
             digits: digits,
             type: .singleTone
         )
