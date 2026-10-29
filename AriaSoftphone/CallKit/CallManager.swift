@@ -557,31 +557,49 @@ extension CallManager: CXProviderDelegate {
         activeCall?.state = .connecting
         let uuid = call.uuid
 
+        // Fulfil now. The accept below waits on the network (and possibly a
+        // token renewal), and holding the action that long risks CallKit
+        // timing it out with the caller still ringing; fulfilling also lets
+        // CallKit activate the audio session while the media comes up. A
+        // failure from here on is reported as a failed call.
+        action.fulfill()
+
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try SipEngineManager.shared.ensureReady()
                 let info = try SipEngineManager.shared.acceptCall(callToken: callToken)
                 DispatchQueue.main.async {
                     guard self.activeCall?.uuid == uuid else {
+                        // Hung up while the accept was in flight.
                         DispatchQueue.global(qos: .utility).async {
                             try? SipEngineManager.shared.hangup(callId: info.callId)
                         }
-                        action.fail()
                         return
                     }
                     self.callDidConnect(callId: info.callId)
-                    action.fulfill()
                 }
             } catch {
                 print("Failed to accept call: \(error)")
                 DispatchQueue.main.async {
-                    action.fail()
                     guard let call = self.activeCall, call.uuid == uuid else { return }
                     self.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
                     self.finishCall(call, outcome: .failed)
                 }
             }
         }
+    }
+
+    /// CallKit gave up waiting for an action. Answer and start are fulfilled
+    /// at once, so this should not happen for them, but if it does the call
+    /// is dead in CallKit and must not be left up in the engine.
+    func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+        guard let callAction = action as? CXCallAction,
+              callAction is CXAnswerCallAction || callAction is CXStartCallAction,
+              let call = activeCall, call.uuid == callAction.callUUID else { return }
+        print("CallKit timed out performing \(type(of: action))")
+        provider.reportCall(with: call.uuid, endedAt: Date(), reason: .failed)
+        finishCall(call, outcome: call.connectedAt != nil ? .answered : .failed)
+        hangUpInEngine(call)
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
