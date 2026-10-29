@@ -687,7 +687,11 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     /**
      * Check if any active call was ended by the remote party.
      * Returns the call_id if detected, null otherwise.
-     * The app should call this periodically from a UI timer (~2s).
+     *
+     * Kept for apps that poll. The core now detects a remote hangup itself
+     * and reports it through `on_call_state_changed` (`Ended`) before the
+     * call_id appears here, so an app using the event handler does not need
+     * to call this. Only the most recent 16 IDs are retained.
      */
     func checkRemoteHangup()  -> String?
     
@@ -772,6 +776,20 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * Set mute state.
      */
     func setMute(callId: String, muted: Bool) throws 
+    
+    /**
+     * Blind-transfer an active call to `target` (a dial string such as
+     * "1002" or a "sip:" URI). The PBX takes the call over; on success the
+     * local call and its media end, and `on_call_state_changed` reports
+     * `Ended` for `call_id`, exactly as for a remote hangup.
+     *
+     * Errors leave the call up: `InvalidTarget` for a target rejected locally
+     * or by the gateway, `InvalidState` for an unknown call or one that is not
+     * active yet (still ringing), or a gateway without the transfer route,
+     * `CallFailed` when the PBX refused the transfer, `Timeout` when the PBX
+     * did not answer it. The call can block for up to about 8 s.
+     */
+    func transferCall(callId: String, target: String) throws 
     
     /**
      * Unregister this device from the push gateway.
@@ -1034,7 +1052,11 @@ open func callIsEncrypted(callId: String) -> Bool {
     /**
      * Check if any active call was ended by the remote party.
      * Returns the call_id if detected, null otherwise.
-     * The app should call this periodically from a UI timer (~2s).
+     *
+     * Kept for apps that poll. The core now detects a remote hangup itself
+     * and reports it through `on_call_state_changed` (`Ended`) before the
+     * call_id appears here, so an app using the event handler does not need
+     * to call this. Only the most recent 16 IDs are retained.
      */
 open func checkRemoteHangup() -> String? {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
@@ -1211,6 +1233,26 @@ open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(Ffi
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_mute(self.uniffiClonePointer(),
         FfiConverterString.lower(callId),
         FfiConverterBool.lower(muted),$0
+    )
+}
+}
+    
+    /**
+     * Blind-transfer an active call to `target` (a dial string such as
+     * "1002" or a "sip:" URI). The PBX takes the call over; on success the
+     * local call and its media end, and `on_call_state_changed` reports
+     * `Ended` for `call_id`, exactly as for a remote hangup.
+     *
+     * Errors leave the call up: `InvalidTarget` for a target rejected locally
+     * or by the gateway, `InvalidState` for an unknown call or one that is not
+     * active yet (still ringing), or a gateway without the transfer route,
+     * `CallFailed` when the PBX refused the transfer, `Timeout` when the PBX
+     * did not answer it. The call can block for up to about 8 s.
+     */
+open func transferCall(callId: String, target: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_transfer_call(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),
+        FfiConverterString.lower(target),$0
     )
 }
 }
@@ -2835,6 +2877,12 @@ public enum MobileError {
     
     case Timeout(message: String)
     
+    /**
+     * A transfer target was empty, contained characters that are not allowed
+     * in a SIP URI header (CR, LF, '<', '>'), or was refused by the gateway.
+     */
+    case InvalidTarget(message: String)
+    
 }
 
 
@@ -2883,6 +2931,10 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
             message: try FfiConverterString.read(from: &buf)
         )
         
+        case 9: return .InvalidTarget(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2910,6 +2962,8 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(7))
         case .Timeout(_ /* message is ignored*/):
             writeInt(&buf, Int32(8))
+        case .InvalidTarget(_ /* message is ignored*/):
+            writeInt(&buf, Int32(9))
 
         
         }
@@ -2930,6 +2984,10 @@ extension MobileError: Foundation.LocalizedError {
 
 /**
  * Callback interface for receiving events from the Rust core.
+ *
+ * Callbacks can arrive on any thread, including background poll threads, and
+ * must not block for long. They may call back into the engine. See the
+ * "Event contract" section of the README for the guaranteed sequence.
  */
 public protocol MobileEventHandler : AnyObject {
     
@@ -2944,7 +3002,9 @@ public protocol MobileEventHandler : AnyObject {
     func onIncomingCall(offer: CallOffer) 
     
     /**
-     * Called when call state changes.
+     * Called when call state changes. Every call_id that has been reported
+     * gets exactly one final `Ended`, whoever ended the call (local hangup,
+     * remote hangup, transfer, caller cancel, or a failed outgoing call).
      */
     func onCallStateChanged(info: CallInfo) 
     
@@ -3757,6 +3817,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_mute() != 20691) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_transfer_call() != 38156) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_unregister_device() != 61754) {
