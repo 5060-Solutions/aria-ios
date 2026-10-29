@@ -483,6 +483,12 @@ class SipEngineManager: ObservableObject {
         try withAuthRetry { try engine.transferCall(callId: callId, target: target) }
     }
 
+    /// Hold `activeCallId` and resume `heldCallId` in one step.
+    func swapCalls(activeCallId: String, heldCallId: String) throws {
+        guard let engine = engine else { return }
+        try engine.swapCalls(activeCallId: activeCallId, heldCallId: heldCallId)
+    }
+
     /// Mute/unmute.
     func setMute(callId: String, muted: Bool) throws {
         guard let engine = engine else { return }

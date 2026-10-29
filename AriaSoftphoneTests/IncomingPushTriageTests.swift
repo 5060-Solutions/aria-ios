@@ -9,28 +9,40 @@ final class IncomingPushTriageTests: XCTestCase {
     }
 
     func testANewCallOnAFreeLineIsAccepted() {
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "a", activeCall: nil,
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "a", calls: [],
                                                  finishedTokens: RecentTokens(capacity: 4)), .accept)
     }
 
     func testARepeatPushForTheRingingCallIsADuplicateNotBusy() {
         // The bug: this used to take the busy branch and reject the live call.
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "a", activeCall: ringing("a"),
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "a", calls: [ringing("a")],
                                                  finishedTokens: RecentTokens(capacity: 4)), .duplicate)
     }
 
     func testAPushForAFinishedCallIsADuplicate() {
         var finished = RecentTokens(capacity: 4)
         finished.insert("declined")
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "declined", activeCall: nil,
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "declined", calls: [],
                                                  finishedTokens: finished), .duplicate)
     }
 
-    func testADifferentCallDuringACallIsBusy() {
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", activeCall: ringing("a"),
+    func testADifferentCallDuringOneCallIsAcceptedAsCallWaiting() {
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [ringing("a")],
+                                                 finishedTokens: RecentTokens(capacity: 4)), .accept)
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [ringing(nil)],
+                                                 finishedTokens: RecentTokens(capacity: 4)), .accept)
+    }
+
+    func testADifferentCallDuringTwoCallsIsBusy() {
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "c", calls: [ringing("a"), ringing(nil)],
                                                  finishedTokens: RecentTokens(capacity: 4)), .busy)
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", activeCall: ringing(nil),
-                                                 finishedTokens: RecentTokens(capacity: 4)), .busy)
+    }
+
+    func testARepeatPushForTheSecondCallIsADuplicateNotBusy() {
+        // With two calls up, a redelivered push for either must not be
+        // declined as busy: that would reject a live call.
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [ringing("a"), ringing("b")],
+                                                 finishedTokens: RecentTokens(capacity: 4)), .duplicate)
     }
 
     func testRecentTokensForgetTheOldestBeyondCapacity() {

@@ -184,8 +184,10 @@ struct CallView: View {
             .padding()
         }
         .sheet(isPresented: $showTransfer) {
-            TransferView()
-                .environmentObject(callManager)
+            if let call = callManager.activeCall {
+                TransferView(callUUID: call.uuid, callerName: call.displayName)
+                    .environmentObject(callManager)
+            }
         }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }
