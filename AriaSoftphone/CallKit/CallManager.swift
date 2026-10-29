@@ -25,9 +25,6 @@ class CallManager: NSObject, ObservableObject {
     /// `onIncomingCall` for one of these is stale and must not ring again.
     private var finishedTokens = RecentTokens(capacity: 64)
 
-    /// Pairs a transfer's result with its call's end, whichever comes first.
-    private var transfers = TransferLedger()
-
     /// An accept whose result is unknown: the core reports Ended and then
     /// hangs up or rejects the call itself.
     static func acceptOutcomeUnknown(_ error: Error) -> Bool {
@@ -315,23 +312,14 @@ class CallManager: NSObject, ObservableObject {
             return
         }
 
-        activeCall?.isTransferring = true
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try SipEngineManager.shared.transferCall(callId: callId, target: target)
-                DispatchQueue.main.async {
-                    self.transferFinished(uuid: call.uuid, succeeded: true)
-                    completion(nil)
-                }
+                // The call's Ended(Transferred) ends and records it.
+                DispatchQueue.main.async { completion(nil) }
             } catch {
                 print("Transfer failed: \(error)")
-                DispatchQueue.main.async {
-                    if self.activeCall?.uuid == call.uuid {
-                        self.activeCall?.isTransferring = false
-                    }
-                    self.transferFinished(uuid: call.uuid, succeeded: false)
-                    completion(TransferError(error))
-                }
+                DispatchQueue.main.async { completion(TransferError(error)) }
             }
         }
     }
@@ -387,12 +375,8 @@ class CallManager: NSObject, ObservableObject {
 
     /// Tear down local state for a call that has ended, however it ended.
     /// CallKit must already have been told (by an action or `reportCall`).
-    /// `outcome` nil defers the history record to whoever learns it later
-    /// (a transfer whose result is still pending).
-    private func finishCall(_ call: ActiveCall, outcome: CallOutcome?) {
-        if let outcome = outcome {
-            CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
-        }
+    private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
+        CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
 
         // Runs on its own queue and only if the user opted in, so a slow
         // transcription cannot hold up tearing the call down.
@@ -426,12 +410,6 @@ class CallManager: NSObject, ObservableObject {
 
     // MARK: - State Updates
 
-    private func transferFinished(uuid: UUID, succeeded: Bool) {
-        if let record = transfers.transferFinished(uuid: uuid, succeeded: succeeded) {
-            CallHistoryStore.shared.add(record)
-        }
-    }
-
     /// Call-state events from the engine, matched to the call by id.
     ///
     /// Connects are handled where `makeCall` / `acceptCall` return, since
@@ -448,17 +426,11 @@ class CallManager: NSObject, ObservableObject {
 
         switch info.state {
         case .ended:
-            let ending = CallEnding.resolve(for: call)
-            provider.reportCall(with: call.uuid, endedAt: Date(), reason: ending.reason)
-            if call.isTransferring {
-                // Either the transfer went through or the far end hung up
-                // while it was pending; only the transfer's result can say.
-                let record = transfers.callEnded(call, at: Date())
-                finishCall(call, outcome: nil)
-                if let record = record { CallHistoryStore.shared.add(record) }
-            } else {
-                finishCall(call, outcome: ending.outcome)
+            let ending = CallEnding.resolve(for: call, reason: info.endReason)
+            if let reason = ending.callKitReason {
+                provider.reportCall(with: call.uuid, endedAt: Date(), reason: reason)
             }
+            finishCall(call, outcome: ending.outcome)
             return
         case .onHold:
             call.state = .onHold
@@ -748,8 +720,7 @@ struct ActiveCall: Identifiable {
     /// connects: `incoming-<call_token>` for an incoming call, and for an
     /// outgoing one the id from its first `.ringing` event.
     var engineCallId: String?
-    /// A blind transfer has been requested and not yet refused.
-    var isTransferring = false
+
     var remoteUri: String
     var remoteName: String?
     var direction: CallDirection
@@ -826,6 +797,8 @@ enum CallOutcome: String, Codable {
     case answered
     /// Connected, then handed to another party by blind transfer.
     case transferred
+    /// Incoming, picked up on another of the user's devices.
+    case answeredElsewhere
     /// Incoming, never answered here: the caller gave up or it could not be
     /// delivered.
     case missed
@@ -845,59 +818,49 @@ enum CallOutcome: String, Codable {
     }
 }
 
-/// Decides whether a call that ended during a transfer was transferred.
+/// How to report a call the engine ended, to CallKit and to history.
 ///
-/// The call's `Ended` and the transfer's result can arrive in either order,
-/// and an `Ended` during a pending transfer may be the far end hanging up
-/// instead. So the call is recorded as transferred only once the transfer
-/// has reported success; if it failed, the call simply ended.
-struct TransferLedger {
-    private var results: [UUID: Bool] = [:]
-    private var ended: [UUID: (call: ActiveCall, endedAt: Date)] = [:]
-
-    /// The call ended while a transfer was pending. Returns its record if the
-    /// transfer's result is already known.
-    mutating func callEnded(_ call: ActiveCall, at endedAt: Date) -> CallRecord? {
-        if let succeeded = results.removeValue(forKey: call.uuid) {
-            return Self.record(call, endedAt: endedAt, transferred: succeeded)
-        }
-        ended[call.uuid] = (call, endedAt)
-        return nil
-    }
-
-    /// The transfer returned. Returns the call's record if it has already
-    /// ended. A failed transfer whose call is still up records nothing.
-    mutating func transferFinished(uuid: UUID, succeeded: Bool) -> CallRecord? {
-        if let (call, endedAt) = ended.removeValue(forKey: uuid) {
-            return Self.record(call, endedAt: endedAt, transferred: succeeded)
-        }
-        if succeeded {
-            results[uuid] = true
-        }
-        return nil
-    }
-
-    private static func record(_ call: ActiveCall, endedAt: Date, transferred: Bool) -> CallRecord {
-        CallRecord(call: call, outcome: transferred ? .transferred : .answered, endedAt: endedAt)
-    }
-}
-
-/// How to report a call the engine ended (rather than one the user ended
-/// here) to CallKit and to history.
+/// The core says why in `CallInfo.endReason`. Endings that follow the app's
+/// own action (a local hangup, a cancel, our own decline) were already
+/// reported to CallKit and recorded by that action, and their `Ended` arrives
+/// after the call is gone here; if one does reach a live call it is finished
+/// without a second CallKit report.
 struct CallEnding: Equatable {
-    let reason: CXCallEndedReason
+    /// nil: CallKit already knows, from the action that caused it.
+    let callKitReason: CXCallEndedReason?
     let outcome: CallOutcome
 
-    static func resolve(for call: ActiveCall) -> CallEnding {
-        if call.connectedAt != nil {
-            return CallEnding(reason: .remoteEnded, outcome: .answered)
+    static func resolve(for call: ActiveCall, reason: EndReason?) -> CallEnding {
+        let connected = call.connectedAt != nil
+        switch reason {
+        case .remoteHangup:
+            return CallEnding(callKitReason: .remoteEnded, outcome: connected ? .answered : unconnectedRemoteEnd(call))
+        case .callerCancelled:
+            return CallEnding(callKitReason: .unanswered, outcome: .missed)
+        case .answeredElsewhere:
+            return CallEnding(callKitReason: .answeredElsewhere, outcome: .answeredElsewhere)
+        case .rejected:
+            // Our own decline is recorded by the end action and its Ended
+            // never matches a live call, so this one was declined elsewhere.
+            return CallEnding(callKitReason: .declinedElsewhere, outcome: .rejected)
+        case .transferred:
+            return CallEnding(callKitReason: .remoteEnded, outcome: .transferred)
+        case .failed:
+            return CallEnding(callKitReason: .failed, outcome: connected ? .answered : .failed)
+        case .localHangup, .cancelled:
+            return CallEnding(callKitReason: nil, outcome: CallOutcome.resolve(for: call, endedLocally: true))
+        case nil:
+            // A core without end reasons: infer from the call's state.
+            if connected { return CallEnding(callKitReason: .remoteEnded, outcome: .answered) }
+            switch call.direction {
+            case .inbound: return CallEnding(callKitReason: .unanswered, outcome: .missed)
+            case .outbound: return CallEnding(callKitReason: .failed, outcome: .failed)
+            }
         }
-        switch call.direction {
-        // The caller gave up before it was answered.
-        case .inbound: return CallEnding(reason: .unanswered, outcome: .missed)
-        // makeCall failed; it reports Ended and then throws.
-        case .outbound: return CallEnding(reason: .failed, outcome: .failed)
-        }
+    }
+
+    private static func unconnectedRemoteEnd(_ call: ActiveCall) -> CallOutcome {
+        call.direction == .inbound ? .missed : .failed
     }
 }
 

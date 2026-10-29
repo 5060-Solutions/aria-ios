@@ -67,57 +67,57 @@ final class CallStateTests: XCTestCase {
         XCTAssertEqual(outgoing.engineCallId, "outgoing-abc")
     }
 
-    func testCallerCancelBeforeAnswerIsMissed() {
-        XCTAssertEqual(CallEnding.resolve(for: call(.inbound)),
-                       CallEnding(reason: .unanswered, outcome: .missed))
+    // MARK: - End reasons
+
+    private func ending(_ c: ActiveCall, _ reason: EndReason?) -> CallEnding {
+        CallEnding.resolve(for: c, reason: reason)
     }
 
-    func testFailedOutgoingCallIsFailed() {
-        XCTAssertEqual(CallEnding.resolve(for: call(.outbound)),
-                       CallEnding(reason: .failed, outcome: .failed))
+    func testCallerCancelledIsMissed() {
+        XCTAssertEqual(ending(call(.inbound), .callerCancelled),
+                       CallEnding(callKitReason: .unanswered, outcome: .missed))
     }
 
-    func testRemoteHangupOfAConnectedCall() {
-        XCTAssertEqual(CallEnding.resolve(for: call(.inbound, connectedAt: Date())),
-                       CallEnding(reason: .remoteEnded, outcome: .answered))
+    func testAnsweredElsewhereIsNotMissed() {
+        let e = ending(call(.inbound), .answeredElsewhere)
+        XCTAssertEqual(e, CallEnding(callKitReason: .answeredElsewhere, outcome: .answeredElsewhere))
+        XCTAssertFalse(CallRecord(call: call(.inbound), outcome: e.outcome).isMissed)
     }
 
-    // MARK: - Transfer outcome
-
-    private func transferring() -> ActiveCall {
-        var call = call(.outbound, connectedAt: Date())
-        call.isTransferring = true
-        return call
+    func testRejectedElsewhere() {
+        XCTAssertEqual(ending(call(.inbound), .rejected),
+                       CallEnding(callKitReason: .declinedElsewhere, outcome: .rejected))
     }
 
-    func testTransferredWhenSuccessArrivesAfterTheEnd() {
-        var ledger = TransferLedger()
-        let call = transferring()
-        XCTAssertNil(ledger.callEnded(call, at: Date()))
-        XCTAssertEqual(ledger.transferFinished(uuid: call.uuid, succeeded: true)?.outcome, .transferred)
+    func testFailed() {
+        XCTAssertEqual(ending(call(.outbound), .failed), CallEnding(callKitReason: .failed, outcome: .failed))
+        XCTAssertEqual(ending(call(.inbound), .failed), CallEnding(callKitReason: .failed, outcome: .failed))
     }
 
-    func testTransferredWhenSuccessArrivesBeforeTheEnd() {
-        var ledger = TransferLedger()
-        let call = transferring()
-        XCTAssertNil(ledger.transferFinished(uuid: call.uuid, succeeded: true))
-        XCTAssertEqual(ledger.callEnded(call, at: Date())?.outcome, .transferred)
+    func testRemoteHangup() {
+        XCTAssertEqual(ending(call(.inbound, connectedAt: Date()), .remoteHangup),
+                       CallEnding(callKitReason: .remoteEnded, outcome: .answered))
     }
 
-    func testRemoteHangupDuringAFailedTransferIsNotTransferred() {
-        var ledger = TransferLedger()
-        let call = transferring()
-        XCTAssertNil(ledger.callEnded(call, at: Date()))
-        XCTAssertEqual(ledger.transferFinished(uuid: call.uuid, succeeded: false)?.outcome, .answered)
+    func testTransferredOnlyFromTheTransferredReason() {
+        let connected = call(.outbound, connectedAt: Date())
+        XCTAssertEqual(ending(connected, .transferred),
+                       CallEnding(callKitReason: .remoteEnded, outcome: .transferred))
+        // A BYE while a transfer is pending is just a remote hangup.
+        XCTAssertEqual(ending(connected, .remoteHangup).outcome, .answered)
     }
 
-    func testAFailedTransferOnALiveCallRecordsNothing() {
-        var ledger = TransferLedger()
-        XCTAssertNil(ledger.transferFinished(uuid: UUID(), succeeded: false))
+    func testOwnActionsAreNotReportedToCallKitAgain() {
+        XCTAssertNil(ending(call(.outbound, connectedAt: Date()), .localHangup).callKitReason)
+        XCTAssertEqual(ending(call(.outbound), .cancelled),
+                       CallEnding(callKitReason: nil, outcome: .cancelled))
     }
 
-    func testAConnectedCallEndingIsAnsweredEvenWhileTransferring() {
-        XCTAssertEqual(CallEnding.resolve(for: transferring()).outcome, .answered)
+    func testWithoutAReasonFallsBackToTheCallState() {
+        XCTAssertEqual(ending(call(.inbound), nil), CallEnding(callKitReason: .unanswered, outcome: .missed))
+        XCTAssertEqual(ending(call(.outbound), nil), CallEnding(callKitReason: .failed, outcome: .failed))
+        XCTAssertEqual(ending(call(.inbound, connectedAt: Date()), nil),
+                       CallEnding(callKitReason: .remoteEnded, outcome: .answered))
     }
 
     // MARK: - Ending a call here
