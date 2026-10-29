@@ -82,10 +82,42 @@ final class CallStateTests: XCTestCase {
                        CallEnding(reason: .remoteEnded, outcome: .answered))
     }
 
-    func testCompletedTransferIsRecordedAsTransferred() {
-        var transferring = call(.outbound, connectedAt: Date())
-        transferring.isTransferring = true
-        XCTAssertEqual(CallEnding.resolve(for: transferring).outcome, .transferred)
+    // MARK: - Transfer outcome
+
+    private func transferring() -> ActiveCall {
+        var call = call(.outbound, connectedAt: Date())
+        call.isTransferring = true
+        return call
+    }
+
+    func testTransferredWhenSuccessArrivesAfterTheEnd() {
+        var ledger = TransferLedger()
+        let call = transferring()
+        XCTAssertNil(ledger.callEnded(call, at: Date()))
+        XCTAssertEqual(ledger.transferFinished(uuid: call.uuid, succeeded: true)?.outcome, .transferred)
+    }
+
+    func testTransferredWhenSuccessArrivesBeforeTheEnd() {
+        var ledger = TransferLedger()
+        let call = transferring()
+        XCTAssertNil(ledger.transferFinished(uuid: call.uuid, succeeded: true))
+        XCTAssertEqual(ledger.callEnded(call, at: Date())?.outcome, .transferred)
+    }
+
+    func testRemoteHangupDuringAFailedTransferIsNotTransferred() {
+        var ledger = TransferLedger()
+        let call = transferring()
+        XCTAssertNil(ledger.callEnded(call, at: Date()))
+        XCTAssertEqual(ledger.transferFinished(uuid: call.uuid, succeeded: false)?.outcome, .answered)
+    }
+
+    func testAFailedTransferOnALiveCallRecordsNothing() {
+        var ledger = TransferLedger()
+        XCTAssertNil(ledger.transferFinished(uuid: UUID(), succeeded: false))
+    }
+
+    func testAConnectedCallEndingIsAnsweredEvenWhileTransferring() {
+        XCTAssertEqual(CallEnding.resolve(for: transferring()).outcome, .answered)
     }
 
     // MARK: - Ending a call here
