@@ -270,6 +270,40 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
+    /// Blind-transfer the connected call to `target`.
+    ///
+    /// The engine blocks for up to about 8 s, so this runs off the main queue
+    /// and reports back there: `nil` once the PBX has taken the call (the
+    /// engine's `.ended` then ends it here and records it as transferred), or
+    /// an error to show, with the call still up.
+    func transferCall(to target: String, completion: @escaping (TransferError?) -> Void) {
+        let target = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let call = activeCall, let callId = call.callId else {
+            completion(.notActive)
+            return
+        }
+        guard TransferError.isAcceptableTarget(target) else {
+            completion(.invalidTarget)
+            return
+        }
+
+        activeCall?.isTransferring = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try SipEngineManager.shared.transferCall(callId: callId, target: target)
+                DispatchQueue.main.async { completion(nil) }
+            } catch {
+                print("Transfer failed: \(error)")
+                DispatchQueue.main.async {
+                    if self.activeCall?.uuid == call.uuid {
+                        self.activeCall?.isTransferring = false
+                    }
+                    completion(TransferError(error))
+                }
+            }
+        }
+    }
+
     func setMuted(_ muted: Bool) {
         guard let call = activeCall else { return }
         let muteAction = CXSetMutedCallAction(call: call.uuid, muted: muted)
@@ -699,6 +733,47 @@ struct CallEnding: Equatable {
         // makeCall failed; it reports Ended and then throws.
         case .outbound: return CallEnding(reason: .failed, outcome: .failed)
         }
+    }
+}
+
+/// Why a transfer did not happen. In every case the call is still up.
+enum TransferError: LocalizedError, Equatable {
+    case invalidTarget
+    case notActive
+    case refused
+    case timedOut
+    case unavailable
+
+    init(_ error: Error) {
+        switch error as? MobileError {
+        case .InvalidTarget: self = .invalidTarget
+        case .InvalidState: self = .notActive
+        case .CallFailed: self = .refused
+        case .Timeout: self = .timedOut
+        default: self = .unavailable
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidTarget:
+            return "That number can't be transferred to. Check it and try again."
+        case .notActive:
+            return "This call can't be transferred right now."
+        case .refused:
+            return "The phone system refused the transfer."
+        case .timedOut:
+            return "The phone system didn't respond in time. The call has not been transferred."
+        case .unavailable:
+            return "Couldn't reach the phone system. The call has not been transferred."
+        }
+    }
+
+    /// What the core would reject locally: empty, or characters that do not
+    /// belong in a SIP URI header.
+    static func isAcceptableTarget(_ target: String) -> Bool {
+        let forbidden = CharacterSet(charactersIn: "\r\n<>")
+        return !target.isEmpty && target.rangeOfCharacter(from: forbidden) == nil
     }
 }
 

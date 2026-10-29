@@ -284,6 +284,15 @@ class SipEngineManager: ObservableObject {
         try engine.hangup(callId: callId)
     }
 
+    /// Blind-transfer an active call. Blocks for up to about 8 s. On success
+    /// the engine reports `.ended` for the call; on failure the call stays up.
+    func transferCall(callId: String, target: String) throws {
+        guard let engine = engine else {
+            throw SipError.notConfigured
+        }
+        try engine.transferCall(callId: callId, target: target)
+    }
+
     /// Mute/unmute.
     func setMute(callId: String, muted: Bool) throws {
         guard let engine = engine else { return }

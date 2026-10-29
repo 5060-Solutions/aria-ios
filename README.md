@@ -7,7 +7,7 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 - **CallKit integration** -- incoming calls show the native iOS call UI, even from lock screen
 - **PushKit VoIP push** -- instant wake on incoming calls via APNs VoIP push
 - **Full dial pad** -- T9 layout with haptic feedback
-- **Mid-call controls** -- mute, hold, speaker, DTMF keypad, encrypted-media indicator
+- **Mid-call controls** -- mute, hold, speaker, DTMF keypad, blind transfer, encrypted-media indicator
 - **Contacts integration** -- search and call from iOS contacts (CNContactStore)
 - **Call history** -- incoming, outgoing and missed calls, stored on device; tap to call back
 - **Voicemail** -- list, play, mark read and delete messages via the Aria PBX API

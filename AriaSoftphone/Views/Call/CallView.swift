@@ -12,6 +12,7 @@ struct CallView: View {
     @State private var txLevel: Float = 0
     @State private var pulseScale: CGFloat = 1.0
     @State private var isEncrypted = false
+    @State private var showTransfer = false
 
     var body: some View {
         ZStack {
@@ -121,6 +122,15 @@ struct CallView: View {
                                 showDTMFKeypad.toggle()
                             }
                         }
+
+                        CallControlButton(
+                            icon: "arrow.turn.up.right",
+                            label: "Transfer",
+                            isActive: false
+                        ) {
+                            showTransfer = true
+                        }
+                        .disabled(callManager.activeCall?.callId == nil)
                     }
                 }
 
@@ -167,6 +177,10 @@ struct CallView: View {
                 Spacer().frame(height: 40)
             }
             .padding()
+        }
+        .sheet(isPresented: $showTransfer) {
+            TransferView()
+                .environmentObject(callManager)
         }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }
