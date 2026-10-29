@@ -1,4 +1,5 @@
 import XCTest
+import CallKit
 @testable import AriaSoftphone
 
 /// Two calls at once: routing engine events, which call is on screen, hold
@@ -156,6 +157,18 @@ final class CallWaitingTests: XCTestCase {
     func testHoldChangesIgnoreCallsNotConnected() {
         let ringing = outbound("outgoing-x", connected: false)
         XCTAssertEqual(CallRegistry.holdChanges(calls: [ringing], callKitHeld: [ringing.uuid]), [])
+    }
+
+    func testEveryCallDeclaresHoldAndDTMFButNotGrouping() {
+        let update = CallManager.callUpdate(remoteUri: "1002", remoteName: nil)
+        XCTAssertTrue(update.supportsHolding)
+        XCTAssertTrue(update.supportsDTMF)
+        XCTAssertFalse(update.supportsGrouping)
+        XCTAssertFalse(update.supportsUngrouping)
+        XCTAssertFalse(update.hasVideo)
+        XCTAssertEqual(update.remoteHandle?.value, "1002")
+        XCTAssertEqual(update.localizedCallerName, "1002")
+        XCTAssertEqual(CallManager.callUpdate(remoteUri: "1002", remoteName: "Bob").localizedCallerName, "Bob")
     }
 
     // MARK: Attended transfer

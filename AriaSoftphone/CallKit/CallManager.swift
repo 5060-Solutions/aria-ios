@@ -101,6 +101,22 @@ class CallManager: NSObject, ObservableObject {
 
     // MARK: - Incoming Call (from push notification)
 
+    /// What every call can do, for both directions. Holding has to be
+    /// declared: CallKit fails a hold (and so a transaction that holds one
+    /// call to start or answer another) on a call that does not support it.
+    /// Calls are never merged, so no grouping.
+    static func callUpdate(remoteUri: String, remoteName: String?) -> CXCallUpdate {
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .generic, value: remoteUri)
+        update.localizedCallerName = remoteName ?? remoteUri
+        update.hasVideo = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsHolding = true
+        update.supportsDTMF = true
+        return update
+    }
+
     /// Report an incoming call to CallKit.
     private func reportIncomingCall(
         uuid: UUID,
@@ -108,17 +124,7 @@ class CallManager: NSObject, ObservableObject {
         callerName: String?,
         completion: @escaping (Error?) -> Void
     ) {
-        let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(
-            type: .generic,
-            value: callerUri
-        )
-        update.localizedCallerName = callerName ?? callerUri
-        update.hasVideo = false
-        update.supportsGrouping = false
-        update.supportsUngrouping = false
-        update.supportsHolding = true
-        update.supportsDTMF = true
+        let update = Self.callUpdate(remoteUri: callerUri, remoteName: callerName)
 
         provider.reportNewIncomingCall(with: uuid, update: update) { error in
             if let error = error {
@@ -631,6 +637,12 @@ extension CallManager: CXProviderDelegate {
         configureAudioSessionForFirstCall(except: call.uuid)
 
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
+        // A started call has CallKit's default capabilities until told
+        // otherwise; without holding, it could not be held for a second call.
+        provider.reportCall(
+            with: action.callUUID,
+            updated: Self.callUpdate(remoteUri: action.handle.value, remoteName: call.remoteName)
+        )
         // Fulfil now: the engine's makeCall blocks until the far end answers,
         // which can outlast the action's timeout. A failure from here on is
         // reported to CallKit as a failed call instead.
