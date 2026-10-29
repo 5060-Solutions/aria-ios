@@ -25,6 +25,16 @@ struct CallView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 24) {
+                // The other call: held, or the one in progress while a
+                // second call rings.
+                ForEach(callManager.otherCalls) { other in
+                    OtherCallRow(
+                        call: other,
+                        canSwap: canSwap(with: other),
+                        onSwap: { callManager.swapCalls() }
+                    )
+                }
+
                 Spacer()
 
                 // Caller info
@@ -142,7 +152,20 @@ struct CallView: View {
                 Spacer()
 
                 // End call / Accept-Reject buttons
-                if callManager.activeCall?.state == .incoming {
+                if callManager.activeCall?.state == .incoming, !callManager.otherCalls.isEmpty {
+                    // Call waiting: say what happens to the call in progress.
+                    HStack(spacing: 28) {
+                        AnswerChoiceButton(icon: "phone.down.fill", label: "Decline", color: .red) {
+                            callManager.endCall()
+                        }
+                        AnswerChoiceButton(icon: "phone.fill", label: "Hold & Accept", color: .green) {
+                            callManager.answerCall(.holdOthers)
+                        }
+                        AnswerChoiceButton(icon: "phone.arrow.down.left.fill", label: "End & Accept", color: .orange) {
+                            callManager.answerCall(.endOthers)
+                        }
+                    }
+                } else if callManager.activeCall?.state == .incoming {
                     HStack(spacing: 60) {
                         Button(action: { callManager.endCall() }) {
                             Circle()
@@ -191,6 +214,14 @@ struct CallView: View {
         }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }
+    }
+
+    // MARK: - Call waiting
+
+    /// Swap is offered between two connected calls, from the call on screen.
+    private func canSwap(with other: ActiveCall) -> Bool {
+        guard let current = callManager.activeCall else { return false }
+        return current.isConnected && other.isConnected && other.isOnHold
     }
 
     // MARK: - State
@@ -268,6 +299,82 @@ struct CallView: View {
         ]
         if let soundID = toneMap[digit] {
             AudioServicesPlaySystemSound(soundID)
+        }
+    }
+}
+
+// MARK: - Other Call Row
+
+/// The call that is not on screen, with Swap when both are connected.
+struct OtherCallRow: View {
+    let call: ActiveCall
+    let canSwap: Bool
+    let onSwap: () -> Void
+
+    private var status: String {
+        switch call.state {
+        case .incoming: return "Incoming call"
+        case .connecting: return call.direction == .outbound ? "Calling..." : "Connecting..."
+        case .onHold: return "On hold"
+        case .connected: return call.isOnHold ? "On hold" : "Active"
+        case .ended: return "Call ended"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: call.isOnHold ? "pause.circle.fill" : "phone.circle.fill")
+                .font(.title2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.displayName)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(status)
+                    .font(.caption)
+                    .opacity(0.8)
+            }
+            Spacer()
+            if canSwap {
+                Button(action: onSwap) {
+                    Label("Swap", systemImage: "arrow.up.arrow.down")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.25)))
+                }
+            }
+        }
+        .foregroundColor(.white)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.15)))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Answer Choice Button
+
+/// One of the answer buttons shown when a second call rings.
+struct AnswerChoiceButton: View {
+    let icon: String
+    let label: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 64, height: 64)
+                    .overlay(
+                        Image(systemName: icon)
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    )
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.9))
+            }
         }
     }
 }
