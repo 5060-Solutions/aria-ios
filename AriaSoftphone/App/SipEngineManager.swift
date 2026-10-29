@@ -101,11 +101,17 @@ class SipEngineManager: ObservableObject {
                 throw SipError.notConfigured
             }
             stateLock.lock()
+            var tokenRead = KeychainStore.ReadResult.notFound
             if _gatewayToken == nil {
-                _gatewayToken = KeychainStore.get(KeychainStore.gatewayTokenKey)
+                tokenRead = KeychainStore.read(KeychainStore.gatewayTokenKey)
+                _gatewayToken = tokenRead.value
             }
             let haveToken = _gatewayToken != nil
             stateLock.unlock()
+
+            // Before the first unlock the token is there but unreadable.
+            // Renewing would need the password, equally unreadable; wait.
+            if case .unavailable = tokenRead { throw SipError.keychainLocked }
 
             // Only a PBX-issued gateway token will do. With none stored (an
             // older install, or one cleared after a failed renewal), get one;
@@ -140,8 +146,14 @@ class SipEngineManager: ObservableObject {
                 break
             }
 
-            guard let password = KeychainStore.get(KeychainStore.sipPasswordKey),
-                  !password.isEmpty else {
+            let password: String
+            switch KeychainStore.read(KeychainStore.sipPasswordKey) {
+            case .value(let value) where !value.isEmpty:
+                password = value
+            case .unavailable:
+                // Locked, not missing: say so, and leave the account alone.
+                throw SipError.keychainLocked
+            default:
                 throw SipError.missingCredentials
             }
             // An expired token is renewed and the registration retried once;
@@ -246,6 +258,9 @@ class SipEngineManager: ObservableObject {
         DispatchQueue.global(qos: .utility).async {
             do {
                 try self.ensureReady()
+            } catch SipError.keychainLocked {
+                // Retried when the app next becomes active, i.e. unlocked.
+                print("Session restore deferred: Keychain locked")
             } catch {
                 print("Session restore failed: \(error)")
                 DispatchQueue.main.async {
@@ -641,11 +656,14 @@ class SwiftEventHandler: MobileEventHandler {
 enum SipError: LocalizedError {
     case notConfigured
     case missingCredentials
+    case keychainLocked
 
     var errorDescription: String? {
         switch self {
         case .notConfigured:
             return "SIP engine not configured. Set up gateway connection first."
+        case .keychainLocked:
+            return "Unlock your iPhone to connect."
         case .missingCredentials:
             return "The SIP password is not available. Scan your provisioning QR code again."
         }

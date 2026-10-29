@@ -87,7 +87,30 @@ enum KeychainStore {
     }
 
     /// Read the string value for the given key, or `nil` if absent.
+    /// The outcome of a read, telling "not there" apart from "there but
+    /// unreadable right now".
+    enum ReadResult: Equatable {
+        case value(String)
+        case notFound
+        /// The item exists but cannot be read yet — typically
+        /// `errSecInteractionNotAllowed` before the first unlock after a
+        /// reboot, when PushKit can still launch the app. Not a reason to
+        /// treat the account as gone.
+        case unavailable(OSStatus)
+
+        var value: String? {
+            if case .value(let value) = self { return value }
+            return nil
+        }
+    }
+
+    /// Read the string value for the given key, or `nil` if absent or
+    /// unreadable. Use `read(_:)` where the difference matters.
     static func get(_ key: String) -> String? {
+        read(key).value
+    }
+
+    static func read(_ key: String) -> ReadResult {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -98,12 +121,18 @@ enum KeychainStore {
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let value = String(data: data, encoding: .utf8) else {
-            return nil
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data,
+                  let value = String(data: data, encoding: .utf8) else {
+                return .notFound
+            }
+            return .value(value)
+        case errSecItemNotFound:
+            return .notFound
+        default:
+            return .unavailable(status)
         }
-        return value
     }
 
     /// Remove the item for the given key. Succeeds if the item is already absent.
@@ -121,37 +150,58 @@ enum KeychainStore {
     // MARK: - One-time migration off UserDefaults
 
     /// UserDefaults key previously used to persist the SIP password in cleartext.
-    private static let legacySipPasswordDefaultsKey = "sipPassword_temp"
+    static let legacySipPasswordDefaultsKey = "sipPassword_temp"
 
     /// Migrate any secrets left in `UserDefaults` by older builds into the
     /// Keychain, then scrub them from `UserDefaults`. Safe to call on every
     /// launch — it is a no-op once migration has completed.
     static func migrateLegacyDefaultsIfNeeded() {
-        let defaults = UserDefaults.standard
+        migrateLegacyDefaults(
+            defaults: .standard,
+            read: { read($0) },
+            write: { set($0, forKey: $1) }
+        )
+    }
+
+    /// The migration with its storage injected, for tests.
+    ///
+    /// A legacy value is scrubbed from `UserDefaults` only once the Keychain
+    /// is known to hold the secret: the write succeeded, or the item was
+    /// already there. On a locked first launch the Keychain can be neither
+    /// read nor written, and scrubbing then deleted the only copy of the
+    /// password. Now the migration just runs again on a later launch.
+    static func migrateLegacyDefaults(
+        defaults: UserDefaults,
+        read: (String) -> ReadResult,
+        write: (String, String) -> Bool
+    ) {
+        func migrate(defaultsKey: String, to key: String) {
+            guard let legacy = defaults.string(forKey: defaultsKey), !legacy.isEmpty else { return }
+            let safelyStored: Bool
+            switch read(key) {
+            case .value:
+                safelyStored = true
+            case .notFound:
+                safelyStored = write(legacy, key)
+            case .unavailable:
+                safelyStored = false
+            }
+            if safelyStored {
+                defaults.removeObject(forKey: defaultsKey)
+            }
+        }
 
         // SIP password previously stored under "sipPassword_temp".
-        if let legacyPassword = defaults.string(forKey: legacySipPasswordDefaultsKey),
-           !legacyPassword.isEmpty {
-            if get(sipPasswordKey) == nil {
-                set(legacyPassword, forKey: sipPasswordKey)
-            }
-            defaults.removeObject(forKey: legacySipPasswordDefaultsKey)
-        }
-
+        migrate(defaultsKey: legacySipPasswordDefaultsKey, to: sipPasswordKey)
         // JWT previously stored via @AppStorage("jwt") (backed by UserDefaults).
-        if let legacyJwt = defaults.string(forKey: jwtKey), !legacyJwt.isEmpty {
-            if get(jwtKey) == nil {
-                set(legacyJwt, forKey: jwtKey)
-            }
-            defaults.removeObject(forKey: jwtKey)
-        }
+        migrate(defaultsKey: jwtKey, to: jwtKey)
 
         // Older builds stored every item `WhenUnlocked`. Rewriting a readable
         // item moves it to the class `accessibility(for:)` now assigns; when
         // the device is locked the read fails and this simply runs next time.
         for key in backgroundReadableKeys {
-            if let value = get(key) {
-                set(value, forKey: key)
+            if case .value(let value) = read(key) {
+                _ = write(value, key)
             }
         }
     }
