@@ -123,14 +123,19 @@ struct CallView: View {
                             }
                         }
 
-                        CallControlButton(
-                            icon: "arrow.turn.up.right",
-                            label: "Transfer",
-                            isActive: false
-                        ) {
-                            showTransfer = true
+                        // The PBX only acts on a REFER from the side that
+                        // answered, so a call this phone placed cannot be
+                        // transferred.
+                        if callManager.activeCall?.direction == .inbound {
+                            CallControlButton(
+                                icon: "arrow.turn.up.right",
+                                label: "Transfer",
+                                isActive: false
+                            ) {
+                                showTransfer = true
+                            }
+                            .disabled(callManager.activeCall?.callId == nil)
                         }
-                        .disabled(callManager.activeCall?.callId == nil)
                     }
                 }
 
