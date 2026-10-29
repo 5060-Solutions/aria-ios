@@ -22,6 +22,7 @@
 		37F9993221BC459599D7CEF5 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFEB257095314173756DA2C /* KeychainStore.swift */; };
 		4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */; };
 		596E51BF55D914B9F7727A47 /* TransferView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4713290CD5C956B6844E622F /* TransferView.swift */; };
+		5B4044032700271AAFBC08B7 /* AddCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06147D89CDEF0D5858BE5B89 /* AddCallView.swift */; };
 		5CD9C9891C5EFDEDE1EA8586 /* CallTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */; };
 		7161C35B236D1DDA52E25A01 /* CallWaitingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCDF6A16316D562754275C61 /* CallWaitingTests.swift */; };
 		79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */; };
@@ -75,6 +76,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		06147D89CDEF0D5858BE5B89 /* AddCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddCallView.swift; sourceTree = "<group>"; };
 		06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryStoreTests.swift; sourceTree = "<group>"; };
 		125317FA44A9C196C3BE928E /* CallManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallManager.swift; sourceTree = "<group>"; };
 		1925854638E35A495F340AE4 /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
@@ -243,6 +245,7 @@
 		90BFE579341CCD6900DCFA8B /* Call */ = {
 			isa = PBXGroup;
 			children = (
+				06147D89CDEF0D5858BE5B89 /* AddCallView.swift */,
 				8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */,
 				9A4869ED93080641E10B496E /* HistoryView.swift */,
 				4713290CD5C956B6844E622F /* TransferView.swift */,
@@ -450,6 +453,7 @@
 			files = (
 				D27BE0A8ECBE26473F9EEAE6 /* AccountSession.swift in Sources */,
 				19B126C073701906B6E7C230 /* AccountSettings.swift in Sources */,
+				5B4044032700271AAFBC08B7 /* AddCallView.swift in Sources */,
 				1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */,
 				AD294B76D2C8420FF343DEB7 /* AudioBridge.swift in Sources */,
 				02B0E2997105BA1BE223C0EC /* CallHistoryStore.swift in Sources */,

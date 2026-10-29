@@ -13,6 +13,7 @@ struct CallView: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var isEncrypted = false
     @State private var showTransfer = false
+    @State private var showAddCall = false
 
     var body: some View {
         ZStack {
@@ -133,6 +134,16 @@ struct CallView: View {
                             }
                         }
 
+                        if callManager.canAddCall {
+                            CallControlButton(
+                                icon: "plus",
+                                label: "Add Call",
+                                isActive: false
+                            ) {
+                                showAddCall = true
+                            }
+                        }
+
                         // The PBX only acts on a REFER from the side that
                         // answered, so a call this phone placed cannot be
                         // transferred.
@@ -211,6 +222,10 @@ struct CallView: View {
                 TransferView(callUUID: call.uuid, callerName: call.displayName)
                     .environmentObject(callManager)
             }
+        }
+        .sheet(isPresented: $showAddCall) {
+            AddCallView()
+                .environmentObject(callManager)
         }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }

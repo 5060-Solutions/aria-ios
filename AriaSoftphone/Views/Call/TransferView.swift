@@ -118,7 +118,7 @@ struct TransferView: View {
 
 /// The system contact picker, limited to phone numbers. Runs out of process,
 /// so it needs no Contacts permission.
-private struct ContactPhonePicker: UIViewControllerRepresentable {
+struct ContactPhonePicker: UIViewControllerRepresentable {
     let onPick: (String) -> Void
 
     func makeUIViewController(context: Context) -> CNContactPickerViewController {
