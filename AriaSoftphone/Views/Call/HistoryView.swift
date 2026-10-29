@@ -103,7 +103,8 @@ struct CallHistoryRow: View {
     private var icon: String {
         switch record.direction {
         case .inbound:
-            return record.outcome == .answered ? "phone.arrow.down.left" : "phone.down.fill"
+            return record.outcome == .answered || record.outcome == .transferred
+                ? "phone.arrow.down.left" : "phone.down.fill"
         case .outbound:
             return "phone.arrow.up.right"
         }
@@ -111,7 +112,7 @@ struct CallHistoryRow: View {
 
     private var iconColor: Color {
         switch record.outcome {
-        case .answered: return record.direction == .inbound ? .blue : .green
+        case .answered, .transferred: return record.direction == .inbound ? .blue : .green
         case .missed, .failed: return .red
         case .rejected, .cancelled: return .secondary
         }
@@ -122,6 +123,7 @@ struct CallHistoryRow: View {
         case .answered:
             let label = record.direction == .inbound ? "Incoming" : "Outgoing"
             return "\(label) \(formatDuration(record.duration))"
+        case .transferred: return "Transferred \(formatDuration(record.duration))"
         case .missed: return "Missed"
         case .rejected: return "Declined"
         case .cancelled: return "Cancelled"

@@ -314,7 +314,6 @@ class CallManager: NSObject, ObservableObject {
         }
         // A no-op unless transcription is on and a speech model is present.
         CallTranscription.shared.onCallStarted(callId: callId)
-        SipEngineManager.shared.startCallMonitoring()
     }
 
     /// Tear down local state for a call that has ended, however it ended.
@@ -330,7 +329,6 @@ class CallManager: NSObject, ObservableObject {
         if let token = call.callToken {
             pushReportedTokens.remove(token)
         }
-        SipEngineManager.shared.stopCallMonitoring()
         // Normally CallKit's deactivation already did this; stopping here too
         // means a call never inherits the last one's engine or buffers.
         SipEngineManager.shared.audioBridge.stop()
@@ -355,19 +353,34 @@ class CallManager: NSObject, ObservableObject {
 
     // MARK: - State Updates
 
-    /// Call-state events from the engine.
+    /// Call-state events from the engine, matched to the call by id.
     ///
-    /// The engine reports connects from inside `makeCall` / `acceptCall`,
-    /// before the call id is known here; those are handled when the call
-    /// returns. What matters from this path is the end of a call — this is
-    /// how a remote hangup arrives — and hold/mute changes.
+    /// Connects are handled where `makeCall` / `acceptCall` return, since
+    /// those report what the app needs. From this path come the call's id for
+    /// an outgoing call (its first `.ringing`), hold/mute changes, and the end
+    /// of a call the user did not end here: a remote hangup, a caller
+    /// cancelling before answer, a failed outgoing call, or a completed
+    /// transfer. A local hangup's `.ended` arrives after the call is already
+    /// gone and matches nothing.
     func updateCallState(info: CallInfo) {
-        guard var call = activeCall, call.callId == info.callId else { return }
+        guard var call = activeCall else { return }
+
+        // The first event for an outgoing call is `.ringing`, emitted before
+        // the gateway is contacted: that is where its id is learnt.
+        if call.engineCallId == nil, call.direction == .outbound,
+           info.direction == .outbound, info.state == .ringing {
+            call.engineCallId = info.callId
+            activeCall = call
+            return
+        }
+
+        guard call.engineCallId == info.callId else { return }
 
         switch info.state {
         case .ended:
-            provider.reportCall(with: call.uuid, endedAt: Date(), reason: .remoteEnded)
-            finishCall(call, outcome: CallOutcome.resolve(for: call, endedLocally: false))
+            let ending = CallEnding.resolve(for: call)
+            provider.reportCall(with: call.uuid, endedAt: Date(), reason: ending.reason)
+            finishCall(call, outcome: ending.outcome)
             return
         case .onHold:
             call.state = .onHold
@@ -581,8 +594,19 @@ struct ActiveCall: Identifiable {
     let uuid: UUID
     /// When the call was placed or started ringing.
     let startedAt = Date()
-    var callToken: String?
-    var callId: String?
+    var callToken: String? {
+        didSet { deriveEngineCallId() }
+    }
+    /// The engine's id for the call once it has connected.
+    var callId: String? {
+        didSet { if let callId = callId { engineCallId = callId } }
+    }
+    /// The id the engine's events carry for this call, known before it
+    /// connects: `incoming-<call_token>` for an incoming call, and for an
+    /// outgoing one the id from its first `.ringing` event.
+    var engineCallId: String?
+    /// A blind transfer has been requested and not yet refused.
+    var isTransferring = false
     var remoteUri: String
     var remoteName: String?
     var direction: CallDirection
@@ -590,6 +614,29 @@ struct ActiveCall: Identifiable {
     var isMuted: Bool = false
     var isOnHold: Bool = false
     var connectedAt: Date?
+
+    init(
+        uuid: UUID,
+        callToken: String?,
+        remoteUri: String,
+        remoteName: String?,
+        direction: CallDirection,
+        state: ActiveCallState
+    ) {
+        self.uuid = uuid
+        self.callToken = callToken
+        self.remoteUri = remoteUri
+        self.remoteName = remoteName
+        self.direction = direction
+        self.state = state
+        deriveEngineCallId()
+    }
+
+    private mutating func deriveEngineCallId() {
+        if engineCallId == nil, direction == .inbound, let token = callToken {
+            engineCallId = "incoming-\(token)"
+        }
+    }
 
     var duration: TimeInterval {
         guard let connectedAt = connectedAt else { return 0 }
@@ -615,6 +662,8 @@ struct ActiveCall: Identifiable {
 enum CallOutcome: String, Codable {
     /// Connected, then ended by either side.
     case answered
+    /// Connected, then handed to another party by blind transfer.
+    case transferred
     /// Incoming, never answered here: the caller gave up or it could not be
     /// delivered.
     case missed
@@ -630,6 +679,25 @@ enum CallOutcome: String, Codable {
         switch call.direction {
         case .inbound: return endedLocally ? .rejected : .missed
         case .outbound: return endedLocally ? .cancelled : .failed
+        }
+    }
+}
+
+/// How to report a call the engine ended (rather than one the user ended
+/// here) to CallKit and to history.
+struct CallEnding: Equatable {
+    let reason: CXCallEndedReason
+    let outcome: CallOutcome
+
+    static func resolve(for call: ActiveCall) -> CallEnding {
+        if call.connectedAt != nil {
+            return CallEnding(reason: .remoteEnded, outcome: call.isTransferring ? .transferred : .answered)
+        }
+        switch call.direction {
+        // The caller gave up before it was answered.
+        case .inbound: return CallEnding(reason: .unanswered, outcome: .missed)
+        // makeCall failed; it reports Ended and then throws.
+        case .outbound: return CallEnding(reason: .failed, outcome: .failed)
         }
     }
 }

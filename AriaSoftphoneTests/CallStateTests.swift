@@ -1,4 +1,5 @@
 import XCTest
+import CallKit
 @testable import AriaSoftphone
 
 /// The pure parts of the call lifecycle: how an ended call is classified and
@@ -48,5 +49,42 @@ final class CallStateTests: XCTestCase {
         let record = CallRecord(call: call(.inbound), outcome: .missed)
         XCTAssertEqual(record.duration, 0)
         XCTAssertTrue(record.isMissed)
+    }
+
+    // MARK: - Engine events
+
+    func testIncomingCallIdIsKnownBeforeAnswer() {
+        XCTAssertEqual(call(.inbound).engineCallId, "incoming-tok")
+    }
+
+    func testOutgoingCallIdComesFromTheEngine() {
+        var outgoing = ActiveCall(
+            uuid: UUID(), callToken: nil, remoteUri: "1002", remoteName: nil,
+            direction: .outbound, state: .connecting
+        )
+        XCTAssertNil(outgoing.engineCallId)
+        outgoing.callId = "outgoing-abc"
+        XCTAssertEqual(outgoing.engineCallId, "outgoing-abc")
+    }
+
+    func testCallerCancelBeforeAnswerIsMissed() {
+        XCTAssertEqual(CallEnding.resolve(for: call(.inbound)),
+                       CallEnding(reason: .unanswered, outcome: .missed))
+    }
+
+    func testFailedOutgoingCallIsFailed() {
+        XCTAssertEqual(CallEnding.resolve(for: call(.outbound)),
+                       CallEnding(reason: .failed, outcome: .failed))
+    }
+
+    func testRemoteHangupOfAConnectedCall() {
+        XCTAssertEqual(CallEnding.resolve(for: call(.inbound, connectedAt: Date())),
+                       CallEnding(reason: .remoteEnded, outcome: .answered))
+    }
+
+    func testCompletedTransferIsRecordedAsTransferred() {
+        var transferring = call(.outbound, connectedAt: Date())
+        transferring.isTransferring = true
+        XCTAssertEqual(CallEnding.resolve(for: transferring).outcome, .transferred)
     }
 }
