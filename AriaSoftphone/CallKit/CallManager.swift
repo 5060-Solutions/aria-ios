@@ -133,9 +133,9 @@ class CallManager: NSObject, ObservableObject {
     /// Call synchronously from the PushKit delegate, before any async work:
     /// PushKit terminates an app that does not report a call for every push.
     /// The completion runs on the main queue with an error if the call was
-    /// not taken (CallKit refused it, it duplicates a known call, or two
-    /// calls are already in progress); only on `nil` should the offer be
-    /// fetched.
+    /// not taken (CallKit refused it, it duplicates a known call, or there is
+    /// no room for it: two calls, or one still ringing or being set up);
+    /// only on `nil` should the offer be fetched.
     ///
     /// A call that arrives while another is up is reported like any other:
     /// CallKit offers the user Hold & Accept, End & Accept or Decline.
@@ -163,8 +163,10 @@ class CallManager: NSObject, ObservableObject {
             }
 
         case .busy:
-            // Two calls already: the core refuses a third, so decline it
-            // rather than ring a call that cannot be answered.
+            // Two calls already (the core refuses a third), or one still
+            // being set up: decline it rather than ring a call that cannot
+            // be answered properly. It is still reported first, as PushKit
+            // requires, then ended.
             finishedTokens.insert(callToken)
             reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
                 guard let self = self else { return }
@@ -816,6 +818,9 @@ extension CallManager: CXProviderDelegate {
             switch request {
             case .none:
                 break
+            case .notConnected:
+                action.fail()
+                return
             case .hold(let callId):
                 try SipEngineManager.shared.setHold(callId: callId, onHold: true)
                 registry.modify(uuid: uuid) { $0.setHeld(true) }
@@ -1172,18 +1177,22 @@ struct RecentTokens {
 
 /// What to do with a VoIP push, given the calls already known.
 enum IncomingPushTriage: Equatable {
-    /// A new call, with room for it: no call, or one (call waiting).
+    /// A new call, with room for it: no call, or one connected call (call
+    /// waiting).
     case accept
     /// A call already ringing or in progress, or one that has ended.
     case duplicate
-    /// A different call while two are already in progress.
+    /// A different call while two are in progress, or while one is still
+    /// ringing or being set up. Answering a waiting call next to one that
+    /// has not connected cannot hold that one, and when it connects the core
+    /// would hold the call the user is talking on.
     case busy
 
     static func decide(callToken: String, calls: [ActiveCall], finishedTokens: RecentTokens) -> IncomingPushTriage {
         if calls.contains(where: { $0.callToken == callToken }) || finishedTokens.contains(callToken) {
             return .duplicate
         }
-        return calls.count < CallRegistry.maximumCalls ? .accept : .busy
+        return CallRegistry.hasRoom(for: calls) ? .accept : .busy
     }
 }
 
@@ -1252,8 +1261,10 @@ struct CallRegistry {
     }
 
     /// Room for another call, and none still ringing or being set up.
-    var canAddCall: Bool {
-        calls.count < Self.maximumCalls
+    var canAddCall: Bool { Self.hasRoom(for: calls) }
+
+    static func hasRoom(for calls: [ActiveCall]) -> Bool {
+        calls.count < maximumCalls
             && !calls.contains { $0.state == .incoming || $0.state == .connecting }
     }
 
@@ -1272,8 +1283,12 @@ struct CallRegistry {
     /// What the engine must do for a `CXSetHeldCallAction`.
     enum HoldRequest: Equatable {
         /// Nothing: the call is already in that state (the action reports a
-        /// hold the core made), or has not connected yet.
+        /// hold the core made).
         case none
+        /// Refuse the action: the call is unknown or has not connected, and
+        /// the core holds only connected calls. Fulfilling it would show a
+        /// ringing call as held in CallKit.
+        case notConnected
         case hold(callId: String)
         case resume(callId: String)
         /// Resume `heldCallId` while `activeCallId` is talking.
@@ -1281,8 +1296,10 @@ struct CallRegistry {
     }
 
     static func holdRequest(for uuid: UUID, onHold: Bool, in registry: CallRegistry) -> HoldRequest {
-        guard let call = registry[uuid], call.isConnected, let callId = call.callId,
-              call.isOnHold != onHold else { return .none }
+        guard let call = registry[uuid], call.isConnected, let callId = call.callId else {
+            return .notConnected
+        }
+        guard call.isOnHold != onHold else { return .none }
         if onHold { return .hold(callId: callId) }
         if let talking = registry.talking, talking.uuid != uuid, let talkingId = talking.callId {
             return .swap(activeCallId: talkingId, heldCallId: callId)

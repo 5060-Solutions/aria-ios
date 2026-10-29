@@ -26,15 +26,33 @@ final class IncomingPushTriageTests: XCTestCase {
                                                  finishedTokens: finished), .duplicate)
     }
 
-    func testADifferentCallDuringOneCallIsAcceptedAsCallWaiting() {
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [ringing("a")],
+    private func connected(_ token: String?) -> ActiveCall {
+        var call = ringing(token)
+        call.connectedAt = Date()
+        call.state = .connected
+        return call
+    }
+
+    func testADifferentCallDuringOneConnectedCallIsAcceptedAsCallWaiting() {
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [connected("a")],
                                                  finishedTokens: RecentTokens(capacity: 4)), .accept)
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [ringing(nil)],
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [connected(nil)],
                                                  finishedTokens: RecentTokens(capacity: 4)), .accept)
     }
 
+    func testADifferentCallWhileOneIsStillRingingOrConnectingIsBusy() {
+        var dialling = ringing(nil)
+        dialling.state = .connecting
+        var answering = ringing("a")
+        answering.state = .connecting
+        for call in [ringing("a"), dialling, answering] {
+            XCTAssertEqual(IncomingPushTriage.decide(callToken: "b", calls: [call],
+                                                     finishedTokens: RecentTokens(capacity: 4)), .busy)
+        }
+    }
+
     func testADifferentCallDuringTwoCallsIsBusy() {
-        XCTAssertEqual(IncomingPushTriage.decide(callToken: "c", calls: [ringing("a"), ringing(nil)],
+        XCTAssertEqual(IncomingPushTriage.decide(callToken: "c", calls: [connected("a"), connected(nil)],
                                                  finishedTokens: RecentTokens(capacity: 4)), .busy)
     }
 

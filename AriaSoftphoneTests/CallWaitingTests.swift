@@ -120,10 +120,11 @@ final class CallWaitingTests: XCTestCase {
                        .resume(callId: "incoming-a"))
     }
 
-    func testHoldingACallNotYetConnectedDoesNothingInTheEngine() {
+    func testHoldingACallNotYetConnectedIsRefused() {
         let ringing = outbound("outgoing-x", connected: false)
-        XCTAssertEqual(CallRegistry.holdRequest(for: ringing.uuid, onHold: true, in: registry(ringing)), .none)
-        XCTAssertEqual(CallRegistry.holdRequest(for: UUID(), onHold: true, in: registry(ringing)), .none)
+        XCTAssertEqual(CallRegistry.holdRequest(for: ringing.uuid, onHold: true, in: registry(ringing)), .notConnected)
+        XCTAssertEqual(CallRegistry.holdRequest(for: ringing.uuid, onHold: false, in: registry(ringing)), .notConnected)
+        XCTAssertEqual(CallRegistry.holdRequest(for: UUID(), onHold: true, in: registry(ringing)), .notConnected)
     }
 
     func testHoldChangesTellCallKitHoldsBeforeResumes() {
