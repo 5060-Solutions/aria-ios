@@ -20,12 +20,10 @@ class CallManager: NSObject, ObservableObject {
     private let provider: CXProvider
     private let callController = CXCallController()
 
-    /// Call tokens already reported to CallKit from a VoIP push.
-    ///
-    /// Fetching the offer for a pushed call makes the engine fire
-    /// `onIncomingCall` too; without this the same call was reported to
-    /// CallKit a second time under a fresh UUID.
-    private var pushReportedTokens: Set<String> = []
+    /// Tokens of incoming calls that have ended here (declined, missed,
+    /// answered and hung up, refused as busy). A repeat push or a late
+    /// `onIncomingCall` for one of these is stale and must not ring again.
+    private var finishedTokens = RecentTokens(capacity: 64)
 
     static func isCancellation(_ error: Error) -> Bool {
         if case MobileError.Cancelled = error { return true }
@@ -107,7 +105,8 @@ class CallManager: NSObject, ObservableObject {
     /// Call synchronously from the PushKit delegate, before any async work:
     /// PushKit terminates an app that does not report a call for every push.
     /// The completion runs on the main queue with an error if the call was
-    /// not taken (CallKit refused it, or another call is in progress).
+    /// not taken (CallKit refused it, it duplicates a known call, or another
+    /// call is in progress); only on `nil` should the offer be fetched.
     func reportPushIncomingCall(
         uuid: UUID,
         callToken: String,
@@ -115,32 +114,43 @@ class CallManager: NSObject, ObservableObject {
         callerName: String?,
         completion: @escaping (Error?) -> Void
     ) {
-        pushReportedTokens.insert(callToken)
-        let busy = activeCall != nil
-
-        reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
-            guard let self = self else { return }
-            if let error = error {
-                self.pushReportedTokens.remove(callToken)
-                completion(error)
-                return
+        switch IncomingPushTriage.decide(
+            callToken: callToken,
+            activeCall: activeCall,
+            finishedTokens: finishedTokens
+        ) {
+        case .duplicate:
+            // A redelivered push for the call already ringing (or one that
+            // has ended). PushKit still needs a report, so report a call and
+            // end it at once — without touching the real one or history.
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+                if error == nil {
+                    self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+                }
+                completion(CallManagerError.duplicate)
             }
 
-            if busy {
-                // One call at a time: decline the second rather than let it
-                // replace the call in progress.
-                self.provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
-                self.pushReportedTokens.remove(callToken)
+        case .busy:
+            // One call at a time: decline the second rather than let it
+            // replace the call in progress.
+            finishedTokens.insert(callToken)
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+                guard let self = self else { return }
+                if error == nil {
+                    self.provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
+                }
                 self.recordMissedCall(remoteUri: callerUri, remoteName: callerName)
                 DispatchQueue.global(qos: .utility).async {
                     try? SipEngineManager.shared.ensureReady()
                     try? SipEngineManager.shared.rejectCall(callToken: callToken)
                 }
                 completion(CallManagerError.busy)
-                return
             }
 
-            self.activeCall = ActiveCall(
+        case .accept:
+            // Claim the slot now, not in the completion: a second push that
+            // arrives before CallKit answers must see this call.
+            activeCall = ActiveCall(
                 uuid: uuid,
                 callToken: callToken,
                 remoteUri: callerUri,
@@ -148,7 +158,21 @@ class CallManager: NSObject, ObservableObject {
                 direction: .inbound,
                 state: .incoming
             )
-            completion(nil)
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    // CallKit refused it (Do Not Disturb, blocked caller):
+                    // the call is not ours to ring.
+                    if self.activeCall?.uuid == uuid {
+                        self.activeCall = nil
+                        self.incomingOffer = nil
+                    }
+                    self.finishedTokens.insert(callToken)
+                    completion(error)
+                    return
+                }
+                completion(nil)
+            }
         }
     }
 
@@ -159,8 +183,10 @@ class CallManager: NSObject, ObservableObject {
     }
 
     /// The offer for a pushed call could not be fetched: end it in CallKit.
+    /// Only a call that is still ringing — answering does not need the offer,
+    /// so a late failure must not end a call the user has picked up.
     func failIncomingCall(uuid: UUID) {
-        guard let call = activeCall, call.uuid == uuid else { return }
+        guard let call = activeCall, call.uuid == uuid, call.state == .incoming else { return }
         provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
         finishCall(call, outcome: .missed)
     }
@@ -181,39 +207,20 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
-    /// Handle an incoming call offer from the Rust core.
+    /// The engine's `onIncomingCall`.
+    ///
+    /// It only fires from `handlePushNotification`, i.e. for a call PushKit
+    /// has already announced and this class has already reported, so it
+    /// never reports a call itself. On iOS every incoming call must arrive by
+    /// PushKit anyway. An offer for any other token — one that has since been
+    /// declined or missed, arriving late — is stale and dropped; reporting it
+    /// would ring a call that no longer exists.
     func handleIncomingCall(offer: CallOffer) {
-        // Already reported from PushKit: this is the same call, not a new one.
-        if pushReportedTokens.contains(offer.callToken) {
-            offerReceived(offer)
+        guard activeCall?.callToken == offer.callToken else {
+            print("Ignoring an offer for a call that is not ringing")
             return
         }
-        guard activeCall == nil else { return }
-
-        let uuid = UUID()
-        pushReportedTokens.insert(offer.callToken)
-        incomingOffer = offer
-
-        reportIncomingCall(
-            uuid: uuid,
-            callerUri: offer.callerUri,
-            callerName: offer.callerName
-        ) { [weak self] error in
-            guard let self = self else { return }
-            guard error == nil else {
-                self.pushReportedTokens.remove(offer.callToken)
-                self.incomingOffer = nil
-                return
-            }
-            self.activeCall = ActiveCall(
-                uuid: uuid,
-                callToken: offer.callToken,
-                remoteUri: offer.callerUri,
-                remoteName: offer.callerName,
-                direction: .inbound,
-                state: .incoming
-            )
-        }
+        offerReceived(offer)
     }
 
     // MARK: - Outgoing Call
@@ -365,8 +372,8 @@ class CallManager: NSObject, ObservableObject {
         if let callId = call.callId {
             CallTranscription.shared.onCallEnded(callId: callId)
         }
-        if let token = call.callToken {
-            pushReportedTokens.remove(token)
+        if call.direction == .inbound, let token = call.callToken {
+            finishedTokens.insert(token)
         }
         // Normally CallKit's deactivation already did this; stopping here too
         // means a call never inherits the last one's engine or buffers.
@@ -890,13 +897,56 @@ enum TransferError: LocalizedError, Equatable {
     }
 }
 
+/// A bounded record of recent call tokens, oldest dropped first.
+struct RecentTokens {
+    let capacity: Int
+    private var order: [String] = []
+    private var members: Set<String> = []
+
+    init(capacity: Int) {
+        self.capacity = max(1, capacity)
+    }
+
+    func contains(_ token: String) -> Bool {
+        members.contains(token)
+    }
+
+    mutating func insert(_ token: String) {
+        guard members.insert(token).inserted else { return }
+        order.append(token)
+        if order.count > capacity {
+            members.remove(order.removeFirst())
+        }
+    }
+}
+
+/// What to do with a VoIP push, given the calls already known.
+enum IncomingPushTriage: Equatable {
+    /// A new call, and the line is free.
+    case accept
+    /// The call already ringing or in progress, or one that has ended.
+    case duplicate
+    /// A different call while one is in progress.
+    case busy
+
+    static func decide(callToken: String, activeCall: ActiveCall?, finishedTokens: RecentTokens) -> IncomingPushTriage {
+        if activeCall?.callToken == callToken || finishedTokens.contains(callToken) {
+            return .duplicate
+        }
+        return activeCall == nil ? .accept : .busy
+    }
+}
+
 enum CallManagerError: LocalizedError {
     case busy
+    case duplicate
 
     var errorDescription: String? {
         switch self {
         case .busy:
             return "Another call is in progress."
+        case .duplicate:
+            return "This call has already been reported."
         }
     }
 }

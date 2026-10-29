@@ -42,6 +42,7 @@
 		D27BE0A8ECBE26473F9EEAE6 /* AccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B38590F217DB8452C47ADF6 /* AccountSession.swift */; };
 		E8B63C7CA74C0374F1190497 /* AriaMobileCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; };
 		F891814AFF53997FE76EAFE2 /* GatewayTokenRenewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF1D09026AEB6AD0B4D98388 /* GatewayTokenRenewer.swift */; };
+		FADC8E36008E726A1888947E /* IncomingPushTriageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */; };
 		FB3672C722B0F56396E61092 /* CallHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */; };
 		FFD3EFD07BC50CBD9FFEF8F0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8D92A5630AD126518BFFE3 /* ContentView.swift */; };
 /* End PBXBuildFile section */
@@ -109,6 +110,7 @@
 		DC8D92A5630AD126518BFFE3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBridge.swift; sourceTree = "<group>"; };
 		DF1D09026AEB6AD0B4D98388 /* GatewayTokenRenewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayTokenRenewer.swift; sourceTree = "<group>"; };
+		DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingPushTriageTests.swift; sourceTree = "<group>"; };
 		EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SipEngineManager.swift; sourceTree = "<group>"; };
 		F853B949444400FBD15B95AE /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
 		FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallStateTests.swift; sourceTree = "<group>"; };
@@ -161,6 +163,7 @@
 				06321946CD2ECD5574978240 /* CallHistoryStoreTests.swift */,
 				FB1E7E533BFCFD88C668FA86 /* CallStateTests.swift */,
 				31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */,
+				DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */,
 				BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */,
 				2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */,
 				CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */,
@@ -421,6 +424,7 @@
 				FB3672C722B0F56396E61092 /* CallHistoryStoreTests.swift in Sources */,
 				1719C006774A2B24D586E561 /* CallStateTests.swift in Sources */,
 				BDDE708BD9056D3C958F3910 /* GatewayAuthTests.swift in Sources */,
+				FADC8E36008E726A1888947E /* IncomingPushTriageTests.swift in Sources */,
 				087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */,
 				1AC1F17DB93780A10AC66F65 /* ProvisioningTests.swift in Sources */,
 				C0ACA95616AB1C59C2494CB3 /* PushGatewayTests.swift in Sources */,
