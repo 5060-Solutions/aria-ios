@@ -786,7 +786,10 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func registerDevice(registration: DeviceRegistration) throws  -> DeviceRegistrationResponse
     
     /**
-     * Reject an incoming call.
+     * Reject an incoming call. Once the gateway accepts the reject, `Ended`
+     * with `end_reason` `Rejected` is reported for `incoming-<call_token>`,
+     * if the call was offered through `handle_push_notification` and had
+     * not already ended.
      */
     func rejectIncomingCall(callToken: String) throws 
     
@@ -834,20 +837,23 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * `on_call_state_changed` reports `Ended` for `call_id`.
      *
      * After the PBX accepts the REFER, the core polls the call's status
-     * every 300 ms until it shows the outcome, for up to 30 s.
+     * every 300 ms until it shows the outcome, for up to 35 s (longer than
+     * the gateway's own 30 s NOTIFY watchdog, so its verdict normally wins).
      *
      * These errors leave the call fully up: `InvalidTarget` for a target
      * rejected locally or by the gateway; `InvalidState` for an unknown call,
      * one that is not active yet (still ringing), or a gateway without the
      * transfer route; `CallFailed` when the PBX refused the REFER or reported
      * the transfer failed (the message carries the SIP status, such as 486);
-     * `Timeout` when the PBX did not answer the REFER, or no outcome arrived
-     * within 30 s; `AuthenticationError` for a rejected token.
+     * `Timeout` when the PBX did not answer the REFER, the transfer failed
+     * with 408 (no outcome: the gateway's watchdog, or a 408 from the PBX),
+     * or the gateway stopped answering for 35 s; `AuthenticationError` for
+     * a rejected token.
      *
      * `InvalidState` after the REFER was accepted means the call ended for
      * another reason meanwhile; `Ended` has been reported. A gateway that
      * does not report transfer outcomes ends the call on acceptance, as
-     * before. Blocks for up to about 40 s; call it off the UI thread.
+     * before. Blocks for up to about 45 s; call it off the UI thread.
      */
     func transferCall(callId: String, target: String) throws 
     
@@ -1277,7 +1283,10 @@ open func registerDevice(registration: DeviceRegistration)throws  -> DeviceRegis
 }
     
     /**
-     * Reject an incoming call.
+     * Reject an incoming call. Once the gateway accepts the reject, `Ended`
+     * with `end_reason` `Rejected` is reported for `incoming-<call_token>`,
+     * if the call was offered through `handle_push_notification` and had
+     * not already ended.
      */
 open func rejectIncomingCall(callToken: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_reject_incoming_call(self.uniffiClonePointer(),
@@ -1368,20 +1377,23 @@ open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(Ffi
      * `on_call_state_changed` reports `Ended` for `call_id`.
      *
      * After the PBX accepts the REFER, the core polls the call's status
-     * every 300 ms until it shows the outcome, for up to 30 s.
+     * every 300 ms until it shows the outcome, for up to 35 s (longer than
+     * the gateway's own 30 s NOTIFY watchdog, so its verdict normally wins).
      *
      * These errors leave the call fully up: `InvalidTarget` for a target
      * rejected locally or by the gateway; `InvalidState` for an unknown call,
      * one that is not active yet (still ringing), or a gateway without the
      * transfer route; `CallFailed` when the PBX refused the REFER or reported
      * the transfer failed (the message carries the SIP status, such as 486);
-     * `Timeout` when the PBX did not answer the REFER, or no outcome arrived
-     * within 30 s; `AuthenticationError` for a rejected token.
+     * `Timeout` when the PBX did not answer the REFER, the transfer failed
+     * with 408 (no outcome: the gateway's watchdog, or a 408 from the PBX),
+     * or the gateway stopped answering for 35 s; `AuthenticationError` for
+     * a rejected token.
      *
      * `InvalidState` after the REFER was accepted means the call ended for
      * another reason meanwhile; `Ended` has been reported. A gateway that
      * does not report transfer outcomes ends the call on acceptance, as
-     * before. Blocks for up to about 40 s; call it off the UI thread.
+     * before. Blocks for up to about 45 s; call it off the UI thread.
      */
 open func transferCall(callId: String, target: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_transfer_call(self.uniffiClonePointer(),
@@ -2014,10 +2026,17 @@ public struct CallInfo {
     public var muted: Bool
     public var onHold: Bool
     public var durationSecs: UInt64
+    /**
+     * Why the call ended; set only when `state` is `Ended`.
+     */
+    public var endReason: EndReason?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(callId: String, remoteUri: String, remoteName: String?, state: CallState, direction: CallDirection, muted: Bool, onHold: Bool, durationSecs: UInt64) {
+    public init(callId: String, remoteUri: String, remoteName: String?, state: CallState, direction: CallDirection, muted: Bool, onHold: Bool, durationSecs: UInt64, 
+        /**
+         * Why the call ended; set only when `state` is `Ended`.
+         */endReason: EndReason?) {
         self.callId = callId
         self.remoteUri = remoteUri
         self.remoteName = remoteName
@@ -2026,6 +2045,7 @@ public struct CallInfo {
         self.muted = muted
         self.onHold = onHold
         self.durationSecs = durationSecs
+        self.endReason = endReason
     }
 }
 
@@ -2057,6 +2077,9 @@ extension CallInfo: Equatable, Hashable {
         if lhs.durationSecs != rhs.durationSecs {
             return false
         }
+        if lhs.endReason != rhs.endReason {
+            return false
+        }
         return true
     }
 
@@ -2069,6 +2092,7 @@ extension CallInfo: Equatable, Hashable {
         hasher.combine(muted)
         hasher.combine(onHold)
         hasher.combine(durationSecs)
+        hasher.combine(endReason)
     }
 }
 
@@ -2087,7 +2111,8 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
                 direction: FfiConverterTypeCallDirection.read(from: &buf), 
                 muted: FfiConverterBool.read(from: &buf), 
                 onHold: FfiConverterBool.read(from: &buf), 
-                durationSecs: FfiConverterUInt64.read(from: &buf)
+                durationSecs: FfiConverterUInt64.read(from: &buf), 
+                endReason: FfiConverterOptionTypeEndReason.read(from: &buf)
         )
     }
 
@@ -2100,6 +2125,7 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
         FfiConverterBool.write(value.muted, into: &buf)
         FfiConverterBool.write(value.onHold, into: &buf)
         FfiConverterUInt64.write(value.durationSecs, into: &buf)
+        FfiConverterOptionTypeEndReason.write(value.endReason, into: &buf)
     }
 }
 
@@ -2999,6 +3025,141 @@ extension CallState: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Why a call ended. Set only on the `Ended` event.
+ */
+
+public enum EndReason {
+    
+    /**
+     * This handset hung up.
+     */
+    case localHangup
+    /**
+     * The far end hung up (BYE).
+     */
+    case remoteHangup
+    /**
+     * The caller hung up an incoming call before it was answered.
+     */
+    case callerCancelled
+    /**
+     * An incoming call was answered on another device.
+     */
+    case answeredElsewhere
+    /**
+     * An incoming call was rejected with `reject_incoming_call`, or
+     * declined according to the gateway.
+     */
+    case rejected
+    /**
+     * The call was blind-transferred away from this handset.
+     */
+    case transferred
+    /**
+     * The call could not be set up: an outgoing call failed, or an accept
+     * had an unknown outcome.
+     */
+    case failed
+    /**
+     * An outgoing call was hung up before it was answered.
+     */
+    case cancelled
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEndReason: FfiConverterRustBuffer {
+    typealias SwiftType = EndReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EndReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .localHangup
+        
+        case 2: return .remoteHangup
+        
+        case 3: return .callerCancelled
+        
+        case 4: return .answeredElsewhere
+        
+        case 5: return .rejected
+        
+        case 6: return .transferred
+        
+        case 7: return .failed
+        
+        case 8: return .cancelled
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: EndReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .localHangup:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .remoteHangup:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .callerCancelled:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .answeredElsewhere:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .rejected:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .transferred:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .cancelled:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEndReason_lift(_ buf: RustBuffer) throws -> EndReason {
+    return try FfiConverterTypeEndReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEndReason_lower(_ value: EndReason) -> RustBuffer {
+    return FfiConverterTypeEndReason.lower(value)
+}
+
+
+
+extension EndReason: Equatable, Hashable {}
+
+
+
 
 /**
  * Errors that can occur in the mobile engine.
@@ -3174,6 +3335,7 @@ public protocol MobileEventHandler : AnyObject {
      * Called when call state changes. Every call_id that has been reported
      * gets exactly one final `Ended`, whoever ended the call (local hangup,
      * remote hangup, transfer, caller cancel, or a failed outgoing call).
+     * The `Ended` event carries `end_reason`.
      */
     func onCallStateChanged(info: CallInfo) 
     
@@ -3685,6 +3847,30 @@ fileprivate struct FfiConverterOptionTypeMediaStats: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMediaStats.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeEndReason: FfiConverterRustBuffer {
+    typealias SwiftType = EndReason?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeEndReason.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeEndReason.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
