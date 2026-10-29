@@ -437,6 +437,11 @@ class SwiftEventHandler: MobileEventHandler {
         }
     }
 
+    func onAuthRequired() {
+        // Gateway token renewal is wired up separately.
+        print("Gateway token rejected; renewal required")
+    }
+
     func onMediaStats(callId: String, stats: MediaStats) {
         // Update stats UI if needed
     }

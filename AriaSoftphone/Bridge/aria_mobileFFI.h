@@ -286,6 +286,13 @@ typedef void (*UniffiCallbackInterfaceMobileEventHandlerMethod4)(uint64_t, RustB
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MOBILE_EVENT_HANDLER_METHOD5
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MOBILE_EVENT_HANDLER_METHOD5
+typedef void (*UniffiCallbackInterfaceMobileEventHandlerMethod5)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PLATFORM_AUDIO_BRIDGE_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PLATFORM_AUDIO_BRIDGE_METHOD0
 typedef void (*UniffiCallbackInterfacePlatformAudioBridgeMethod0)(uint64_t, RustBuffer, uint32_t, void* _Nonnull, 
@@ -308,6 +315,7 @@ typedef struct UniffiVTableCallbackInterfaceMobileEventHandler {
     UniffiCallbackInterfaceMobileEventHandlerMethod2 _Nonnull onCallStateChanged;
     UniffiCallbackInterfaceMobileEventHandlerMethod3 _Nonnull onMediaStats;
     UniffiCallbackInterfaceMobileEventHandlerMethod4 _Nonnull onError;
+    UniffiCallbackInterfaceMobileEventHandlerMethod5 _Nonnull onAuthRequired;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMobileEventHandler;
 
@@ -494,6 +502,11 @@ void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_codec_preferences(vo
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_EVENT_HANDLER
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_EVENT_HANDLER
 void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_event_handler(void*_Nonnull ptr, uint64_t handler, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_gateway_token(void*_Nonnull ptr, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_HOLD
@@ -1027,6 +1040,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_event_hand
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_gateway_token(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_HOLD
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_HOLD
 uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_hold(void
@@ -1090,6 +1109,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_media_sta
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_ERROR
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_ERROR
 uint16_t uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_error(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_AUTH_REQUIRED
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_AUTH_REQUIRED
+uint16_t uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_auth_required(void
     
 );
 #endif
