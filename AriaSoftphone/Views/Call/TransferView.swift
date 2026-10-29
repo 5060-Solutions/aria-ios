@@ -68,6 +68,9 @@ struct TransferView: View {
                         ProgressView()
                         Text("Transferring...")
                             .font(.subheadline)
+                        // The core waits for the PBX to report the outcome.
+                        Text("This can take up to 40 seconds.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(24)

@@ -28,6 +28,15 @@ class CallManager: NSObject, ObservableObject {
     /// Pairs a transfer's result with its call's end, whichever comes first.
     private var transfers = TransferLedger()
 
+    /// An accept whose result is unknown: the core reports Ended and then
+    /// hangs up or rejects the call itself.
+    static func acceptOutcomeUnknown(_ error: Error) -> Bool {
+        switch error as? MobileError {
+        case .Timeout, .NetworkError: return true
+        default: return false
+        }
+    }
+
     static func isCancellation(_ error: Error) -> Bool {
         if case MobileError.Cancelled = error { return true }
         return false
@@ -602,6 +611,15 @@ extension CallManager: CXProviderDelegate {
                 }
             } catch {
                 print("Failed to accept call: \(error)")
+                // With an unknown outcome (Timeout, NetworkError) the core
+                // reports Ended and cleans the call up itself. A refused
+                // accept leaves it offered at the gateway, ringing the caller
+                // with nobody here, so reject it.
+                if !Self.acceptOutcomeUnknown(error) {
+                    DispatchQueue.global(qos: .utility).async {
+                        try? SipEngineManager.shared.rejectCall(callToken: callToken)
+                    }
+                }
                 DispatchQueue.main.async {
                     guard let call = self.activeCall, call.uuid == uuid else { return }
                     self.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
@@ -887,7 +905,9 @@ struct CallEnding: Equatable {
 enum TransferError: LocalizedError, Equatable {
     case invalidTarget
     case notActive
-    case refused
+    /// The PBX refused the REFER, or reported that the transfer failed. The
+    /// core's message says which, with the SIP status when there is one.
+    case refused(String)
     case timedOut
     case unavailable
 
@@ -895,7 +915,7 @@ enum TransferError: LocalizedError, Equatable {
         switch error as? MobileError {
         case .InvalidTarget: self = .invalidTarget
         case .InvalidState: self = .notActive
-        case .CallFailed: self = .refused
+        case .CallFailed(let message): self = .refused(message)
         case .Timeout: self = .timedOut
         default: self = .unavailable
         }
@@ -907,12 +927,42 @@ enum TransferError: LocalizedError, Equatable {
             return "That number can't be transferred to. Check it and try again."
         case .notActive:
             return "This call can't be transferred right now."
-        case .refused:
-            return "The phone system refused the transfer."
+        case .refused(let message):
+            return Self.describeRefusal(message)
         case .timedOut:
             return "The phone system didn't respond in time. The call has not been transferred."
         case .unavailable:
             return "Couldn't reach the phone system. The call has not been transferred."
+        }
+    }
+
+    /// The core's `CallFailed` message, as a sentence for the user, with the
+    /// common SIP statuses spelled out.
+    static func describeRefusal(_ message: String) -> String {
+        let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !detail.isEmpty else {
+            return "The phone system refused the transfer. You're still on the call."
+        }
+        var sentence = detail.prefix(1).uppercased() + detail.dropFirst()
+        if !sentence.hasSuffix(".") { sentence += "." }
+        if let reason = sipCode(in: detail).flatMap(sipReason) {
+            sentence += " \(reason)"
+        }
+        return sentence
+    }
+
+    private static func sipCode(in message: String) -> Int? {
+        guard let range = message.range(of: #"SIP (\d{3})"#, options: .regularExpression) else { return nil }
+        return Int(message[range].dropFirst(4))
+    }
+
+    private static func sipReason(_ code: Int) -> String? {
+        switch code {
+        case 404, 484: return "That number doesn't exist."
+        case 408, 480: return "Nobody answered there."
+        case 486, 600: return "That line is busy."
+        case 603: return "The call was declined there."
+        default: return nil
         }
     }
 
