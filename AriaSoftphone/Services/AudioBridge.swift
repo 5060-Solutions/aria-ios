@@ -18,6 +18,12 @@ class iOSAudioBridge: PlatformAudioBridge {
     /// Codec-rate Int16 -> `playbackFormat`. Rebuilt if the codec rate changes.
     private var playbackConverter: AVAudioConverter?
     private let lock = NSLock()
+    /// Between `start()` and `stop()`: a configuration change rebuilds the
+    /// engine only while this is set.
+    private var wantsRunning = false
+    private var configurationObserver: NSObjectProtocol?
+    /// Rebuilds run here, off the thread that posted the notification.
+    private let rebuildQueue = DispatchQueue(label: "com.5060.aria.audio-rebuild")
 
     // Buffer for mic capture — filled by the input tap, drained by onCaptureAudio
     private var captureBuffer: [Int16] = []
@@ -35,6 +41,12 @@ class iOSAudioBridge: PlatformAudioBridge {
         lock.lock()
         defer { lock.unlock() }
 
+        wantsRunning = true
+        startLocked()
+    }
+
+    /// Build and start the engine. `lock` must be held.
+    private func startLocked() {
         guard audioEngine == nil else { return }
 
         let engine = AVAudioEngine()
@@ -85,6 +97,19 @@ class iOSAudioBridge: PlatformAudioBridge {
         playbackFormat = outputFormat
         playbackConverter = nil
 
+        // A route or hardware format change (headset in or out, Bluetooth,
+        // the speaker override, a sample-rate change) stops the engine and
+        // invalidates its formats. Without a rebuild audio dies until the
+        // next call.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self, weak engine] _ in
+            guard let self = self, let engine = engine else { return }
+            self.rebuildQueue.async { self.rebuild(after: engine) }
+        }
+
         print("[AudioBridge] Started at \(outputFormat.sampleRate)Hz")
     }
 
@@ -92,14 +117,9 @@ class iOSAudioBridge: PlatformAudioBridge {
     /// already stopped; called between calls so nothing carries over.
     func stop() {
         lock.lock()
+        wantsRunning = false
         let wasRunning = audioEngine != nil
-        playerNode?.stop()
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
-        playerNode = nil
-        playbackFormat = nil
-        playbackConverter = nil
+        tearDownLocked()
         lock.unlock()
 
         captureLock.lock()
@@ -110,6 +130,39 @@ class iOSAudioBridge: PlatformAudioBridge {
         if wasRunning {
             print("[AudioBridge] Stopped")
         }
+    }
+
+    /// Release the engine. `lock` must be held.
+    private func tearDownLocked() {
+        if let observer = configurationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configurationObserver = nil
+        }
+        playerNode?.stop()
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
+        playerNode = nil
+        playbackFormat = nil
+        playbackConverter = nil
+    }
+
+    /// Rebuild after `engine` reported a configuration change: new formats,
+    /// a fresh tap and player, voice processing back on.
+    private func rebuild(after engine: AVAudioEngine) {
+        lock.lock()
+        defer { lock.unlock() }
+        // Stopped meanwhile, or already rebuilt for an earlier change.
+        guard wantsRunning, audioEngine === engine else { return }
+        print("[AudioBridge] Configuration changed; rebuilding")
+        tearDownLocked()
+        startLocked()
+
+        // The input format may have changed: let the tap rebuild its
+        // converter rather than feed the old one.
+        captureLock.lock()
+        captureConverter = nil
+        captureLock.unlock()
     }
 
     // MARK: - PlatformAudioBridge
