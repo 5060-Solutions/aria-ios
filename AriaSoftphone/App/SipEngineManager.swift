@@ -63,8 +63,6 @@ class SipEngineManager: ObservableObject {
         _registeredDeviceId = nil
         configuredWith = (gatewayUrl, apiKey)
         stateLock.unlock()
-
-        startRemoteHangupPolling()
     }
 
     // MARK: - Session restore
@@ -393,26 +391,46 @@ class SipEngineManager: ObservableObject {
         return engine?.aiClearInsights() ?? 0
     }
 
-    /// Check if remote party hung up.
-    func checkRemoteHangup() -> String? {
-        return engine?.checkRemoteHangup()
+    /// Whether the call's media is encrypted, as negotiated.
+    func callIsEncrypted(callId: String) -> Bool {
+        return engine?.callIsEncrypted(callId: callId) ?? false
     }
 
-    /// Start polling for remote hangup. Call once when engine is configured.
-    func startRemoteHangupPolling() {
-        remoteHangupTimer?.invalidate()
-        remoteHangupTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            if let callId = self.checkRemoteHangup() {
-                print("Remote hangup detected: \(callId)")
-                DispatchQueue.main.async {
-                    CallManager.shared.handleRemoteHangup()
-                }
+    // MARK: - Remote hangup
+    //
+    // Call ends reach the app through the event handler only: a remote hangup
+    // arrives as an `.ended` `onCallStateChanged`, the same as a local one.
+    //
+    // The core's per-call status poller notices the far end hanging up on its
+    // own thread but queues the result; the `.ended` event (and the media
+    // teardown) is emitted from `checkRemoteHangup()`. So while a call is up
+    // something must drain that queue. This used to be a 2 s timer running
+    // from engine setup for the life of the app, whose return value drove the
+    // teardown directly; now it runs only during a call and ignores the
+    // result, leaving the event as the single source of truth. Dropping it
+    // entirely needs the core to emit from its poller.
+
+    private var callMonitorTimer: Timer?
+
+    /// Start draining remote-hangup notices. Main queue.
+    func startCallMonitoring() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        callMonitorTimer?.invalidate()
+        callMonitorTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let engine = self?.engine else { return }
+            DispatchQueue.global(qos: .utility).async {
+                // Emits `.ended` through the event handler when it finds one.
+                _ = engine.checkRemoteHangup()
             }
         }
     }
 
-    private var remoteHangupTimer: Timer?
+    /// Main queue.
+    func stopCallMonitoring() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        callMonitorTimer?.invalidate()
+        callMonitorTimer = nil
+    }
 }
 
 // MARK: - UniFFI Event Handler Bridge

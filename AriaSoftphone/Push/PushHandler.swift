@@ -1,6 +1,5 @@
 import Foundation
 import PushKit
-import CallKit
 
 /// Handles VoIP push notifications via PushKit.
 ///
@@ -67,17 +66,7 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
               let gatewayUrl = data["gateway_url"] as? String else {
             print("Invalid VoIP push payload")
             // MUST report a call to CallKit even on failure (iOS 13+)
-            let uuid = UUID()
-            CallManager.shared.reportIncomingCall(
-                uuid: uuid,
-                callerUri: "Unknown",
-                callerName: nil
-            ) { _ in
-                // Immediately cancel the fake call
-                let provider = CXProvider(configuration: CXProviderConfiguration())
-                provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
-                completion()
-            }
+            CallManager.shared.reportAndEndInvalidPush(completion: completion)
             return
         }
 
@@ -90,10 +79,12 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             gatewayUrl: gatewayUrl
         )
 
-        // Report incoming call to CallKit
+        // Report incoming call to CallKit — synchronously, before any async
+        // work, as PushKit requires.
         let uuid = UUID()
-        CallManager.shared.reportIncomingCall(
+        CallManager.shared.reportPushIncomingCall(
             uuid: uuid,
+            callToken: callToken,
             callerUri: callerUri,
             callerName: callerName
         ) { error in
@@ -112,20 +103,16 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
                         payload: pushPayload
                     )
                     DispatchQueue.main.async {
-                        CallManager.shared.incomingOffer = offer
-                        CallManager.shared.activeCall = ActiveCall(
-                            uuid: uuid,
-                            callToken: callToken,
-                            remoteUri: callerUri,
-                            remoteName: callerName,
-                            direction: .inbound,
-                            state: .incoming
-                        )
+                        CallManager.shared.offerReceived(offer)
+                        completion()
                     }
                 } catch {
                     print("Failed to handle push notification: \(error)")
+                    DispatchQueue.main.async {
+                        CallManager.shared.failIncomingCall(uuid: uuid)
+                        completion()
+                    }
                 }
-                completion()
             }
         }
     }
