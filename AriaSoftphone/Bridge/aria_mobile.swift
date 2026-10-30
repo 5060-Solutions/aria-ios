@@ -598,7 +598,13 @@ fileprivate struct FfiConverterString: FfiConverter {
 public protocol AriaMobileEngineProtocol : AnyObject {
     
     /**
-     * Accept an incoming call with local SDP answer.
+     * Accept an incoming call with local SDP answer. Reports `Connected`.
+     *
+     * If the gateway refuses (an HTTP error), the call stays offered and
+     * nothing is reported. If the outcome is unknown (`Timeout` or
+     * `NetworkError`: the gateway may have accepted it anyway), `Ended` is
+     * reported for `incoming-<call_token>`, and the core hangs the call up
+     * if it was accepted or rejects it if it still rings.
      */
     func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
@@ -687,7 +693,11 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     /**
      * Check if any active call was ended by the remote party.
      * Returns the call_id if detected, null otherwise.
-     * The app should call this periodically from a UI timer (~2s).
+     *
+     * Kept for apps that poll. The core now detects a remote hangup itself
+     * and reports it through `on_call_state_changed` (`Ended`) before the
+     * call_id appears here, so an app using the event handler does not need
+     * to call this. Only the most recent 16 IDs are retained.
      */
     func checkRemoteHangup()  -> String?
     
@@ -717,29 +727,69 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func handlePushNotification(payload: PushCallPayload) throws  -> CallOffer
     
     /**
-     * Hang up an active call.
+     * Hang up a call, including an outgoing call that is still ringing or
+     * has not been made yet (see `make_call_with_id`). Throws `InvalidState`
+     * for an unknown or already ended call_id.
+     *
+     * Never waits on the gateway: the call is torn down locally and `Ended`
+     * is queued at once, and the gateway hangup (or, for a ringing call, the
+     * cancel) runs in the background. Throws `AuthenticationError`, after
+     * ending the call locally, only when there is no gateway token at all,
+     * in which case nothing is sent. Background failures are reported later:
+     * a rejected token through `on_auth_required`, and a hangup the gateway
+     * did not confirm (after one retry) through `on_error`.
      */
     func hangup(callId: String) throws 
     
     /**
-     * Make an outgoing call directly via SIP.
+     * `make_call_with_id` with an id the core picks. The app learns the id
+     * only from the `Ringing` event, which is delivered asynchronously, so
+     * it cannot reliably hang up before then. Prefer `make_call_with_id`.
      */
     func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
     /**
+     * Make an outgoing call through the gateway under `call_id`, which the
+     * app chose, normally with `new_outgoing_call_id()`: `outgoing-`
+     * followed by 1-64 characters from `[A-Za-z0-9_-]`. Blocks until the far
+     * end answers or the call fails, after reporting `Ringing`.
+     *
+     * Throws `InvalidState` for a malformed id, or one that is in use or
+     * was used recently. Because the app knows the id up front,
+     * `hangup(call_id)` works at any point:
+     * - Before this is called: `Ended` is reported at once, and this then
+     *   throws `Cancelled` without reporting anything or sending a request.
+     * - While this is blocked: `Ended` is reported and this throws
+     *   `Cancelled` at once. The core
+     * cancels the ringing call at the gateway (`POST /v1/calls/cancel` with
+     * the uuid part of the call_id as `client_ref`). If the gateway has no
+     * ringing call to cancel (answered meanwhile, or a gateway without the
+     * route) and the call is answered, the core hangs it up in the
+     * background. Any other failure reports `Ended` and throws
+     * (`AuthenticationError` on a 401).
+     */
+    func makeCallWithId(callId: String, uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
+    
+    /**
      * Notify the core of a network connectivity change.
      * Call this from the platform when WiFi/cellular changes, or after reconnect.
+     * Returns at once. The gateway heartbeat it triggers runs in the
+     * background, and a burst of changes is coalesced: at most one heartbeat
+     * is in flight, followed by one more if changes arrived meanwhile.
      */
     func notifyNetworkChange() 
     
     /**
-     * Register this device with the push gateway.
-     * Returns device_id and auth token.
+     * Register this device with the push gateway, authenticating with the
+     * current PBX-issued gateway token. Returns device_id and the token used.
      */
     func registerDevice(registration: DeviceRegistration) throws  -> DeviceRegistrationResponse
     
     /**
-     * Reject an incoming call.
+     * Reject an incoming call. Once the gateway accepts the reject, `Ended`
+     * with `end_reason` `Rejected` is reported for `incoming-<call_token>`,
+     * if the call was offered through `handle_push_notification` and had
+     * not already ended.
      */
     func rejectIncomingCall(callToken: String) throws 
     
@@ -764,6 +814,13 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func setEventHandler(handler: MobileEventHandler) 
     
     /**
+     * Replace the bearer token used for all gateway requests, including the
+     * background call-status polls. Pass a token fetched from the PBX
+     * (`POST /api/v1/devices/{id}/gateway-token`). Does not re-register.
+     */
+    func setGatewayToken(token: String) 
+    
+    /**
      * Set hold state.
      */
     func setHold(callId: String, onHold: Bool) throws 
@@ -772,6 +829,33 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * Set mute state.
      */
     func setMute(callId: String, muted: Bool) throws 
+    
+    /**
+     * Blind-transfer an active call to `target` (a dial string such as
+     * "1002" or a "sip:" URI), and wait for the outcome. On success the PBX
+     * has taken the call over: the local call and its media end, and
+     * `on_call_state_changed` reports `Ended` for `call_id`.
+     *
+     * After the PBX accepts the REFER, the core polls the call's status
+     * every 300 ms until it shows the outcome, for up to 35 s (longer than
+     * the gateway's own 30 s NOTIFY watchdog, so its verdict normally wins).
+     *
+     * These errors leave the call fully up: `InvalidTarget` for a target
+     * rejected locally or by the gateway; `InvalidState` for an unknown call,
+     * one that is not active yet (still ringing), or a gateway without the
+     * transfer route; `CallFailed` when the PBX refused the REFER or reported
+     * the transfer failed (the message carries the SIP status, such as 486);
+     * `Timeout` when the PBX did not answer the REFER, the transfer failed
+     * with 408 (no outcome: the gateway's watchdog, or a 408 from the PBX),
+     * or the gateway stopped answering for 35 s; `AuthenticationError` for
+     * a rejected token.
+     *
+     * `InvalidState` after the REFER was accepted means the call ended for
+     * another reason meanwhile; `Ended` has been reported. A gateway that
+     * does not report transfer outcomes ends the call on acceptance, as
+     * before. Blocks for up to about 45 s; call it off the UI thread.
+     */
+    func transferCall(callId: String, target: String) throws 
     
     /**
      * Unregister this device from the push gateway.
@@ -850,7 +934,13 @@ public convenience init(gatewayConfig: GatewayConfig) {
 
     
     /**
-     * Accept an incoming call with local SDP answer.
+     * Accept an incoming call with local SDP answer. Reports `Connected`.
+     *
+     * If the gateway refuses (an HTTP error), the call stays offered and
+     * nothing is reported. If the outcome is unknown (`Timeout` or
+     * `NetworkError`: the gateway may have accepted it anyway), `Ended` is
+     * reported for `incoming-<call_token>`, and the core hangs the call up
+     * if it was accepted or rejects it if it still rings.
      */
 open func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec])throws  -> CallInfo {
     return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
@@ -1034,7 +1124,11 @@ open func callIsEncrypted(callId: String) -> Bool {
     /**
      * Check if any active call was ended by the remote party.
      * Returns the call_id if detected, null otherwise.
-     * The app should call this periodically from a UI timer (~2s).
+     *
+     * Kept for apps that poll. The core now detects a remote hangup itself
+     * and reports it through `on_call_state_changed` (`Ended`) before the
+     * call_id appears here, so an app using the event handler does not need
+     * to call this. Only the most recent 16 IDs are retained.
      */
 open func checkRemoteHangup() -> String? {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
@@ -1098,7 +1192,17 @@ open func handlePushNotification(payload: PushCallPayload)throws  -> CallOffer {
 }
     
     /**
-     * Hang up an active call.
+     * Hang up a call, including an outgoing call that is still ringing or
+     * has not been made yet (see `make_call_with_id`). Throws `InvalidState`
+     * for an unknown or already ended call_id.
+     *
+     * Never waits on the gateway: the call is torn down locally and `Ended`
+     * is queued at once, and the gateway hangup (or, for a ringing call, the
+     * cancel) runs in the background. Throws `AuthenticationError`, after
+     * ending the call locally, only when there is no gateway token at all,
+     * in which case nothing is sent. Background failures are reported later:
+     * a rejected token through `on_auth_required`, and a hangup the gateway
+     * did not confirm (after one retry) through `on_error`.
      */
 open func hangup(callId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_hangup(self.uniffiClonePointer(),
@@ -1108,7 +1212,9 @@ open func hangup(callId: String)throws  {try rustCallWithError(FfiConverterTypeM
 }
     
     /**
-     * Make an outgoing call directly via SIP.
+     * `make_call_with_id` with an id the core picks. The app learns the id
+     * only from the `Ringing` event, which is delivered asynchronously, so
+     * it cannot reliably hang up before then. Prefer `make_call_with_id`.
      */
 open func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec])throws  -> CallInfo {
     return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
@@ -1121,8 +1227,42 @@ open func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [A
 }
     
     /**
+     * Make an outgoing call through the gateway under `call_id`, which the
+     * app chose, normally with `new_outgoing_call_id()`: `outgoing-`
+     * followed by 1-64 characters from `[A-Za-z0-9_-]`. Blocks until the far
+     * end answers or the call fails, after reporting `Ringing`.
+     *
+     * Throws `InvalidState` for a malformed id, or one that is in use or
+     * was used recently. Because the app knows the id up front,
+     * `hangup(call_id)` works at any point:
+     * - Before this is called: `Ended` is reported at once, and this then
+     *   throws `Cancelled` without reporting anything or sending a request.
+     * - While this is blocked: `Ended` is reported and this throws
+     *   `Cancelled` at once. The core
+     * cancels the ringing call at the gateway (`POST /v1/calls/cancel` with
+     * the uuid part of the call_id as `client_ref`). If the gateway has no
+     * ringing call to cancel (answered meanwhile, or a gateway without the
+     * route) and the call is answered, the core hangs it up in the
+     * background. Any other failure reports `Ended` and throws
+     * (`AuthenticationError` on a 401).
+     */
+open func makeCallWithId(callId: String, uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec])throws  -> CallInfo {
+    return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call_with_id(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),
+        FfiConverterString.lower(uri),
+        FfiConverterTypeSipCredentials.lower(credentials),
+        FfiConverterSequenceTypeAudioCodec.lower(preferredCodecs),$0
+    )
+})
+}
+    
+    /**
      * Notify the core of a network connectivity change.
      * Call this from the platform when WiFi/cellular changes, or after reconnect.
+     * Returns at once. The gateway heartbeat it triggers runs in the
+     * background, and a burst of changes is coalesced: at most one heartbeat
+     * is in flight, followed by one more if changes arrived meanwhile.
      */
 open func notifyNetworkChange() {try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_notify_network_change(self.uniffiClonePointer(),$0
@@ -1131,8 +1271,8 @@ open func notifyNetworkChange() {try! rustCall() {
 }
     
     /**
-     * Register this device with the push gateway.
-     * Returns device_id and auth token.
+     * Register this device with the push gateway, authenticating with the
+     * current PBX-issued gateway token. Returns device_id and the token used.
      */
 open func registerDevice(registration: DeviceRegistration)throws  -> DeviceRegistrationResponse {
     return try  FfiConverterTypeDeviceRegistrationResponse.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
@@ -1143,7 +1283,10 @@ open func registerDevice(registration: DeviceRegistration)throws  -> DeviceRegis
 }
     
     /**
-     * Reject an incoming call.
+     * Reject an incoming call. Once the gateway accepts the reject, `Ended`
+     * with `end_reason` `Rejected` is reported for `incoming-<call_token>`,
+     * if the call was offered through `handle_push_notification` and had
+     * not already ended.
      */
 open func rejectIncomingCall(callToken: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_reject_incoming_call(self.uniffiClonePointer(),
@@ -1194,6 +1337,18 @@ open func setEventHandler(handler: MobileEventHandler) {try! rustCall() {
 }
     
     /**
+     * Replace the bearer token used for all gateway requests, including the
+     * background call-status polls. Pass a token fetched from the PBX
+     * (`POST /api/v1/devices/{id}/gateway-token`). Does not re-register.
+     */
+open func setGatewayToken(token: String) {try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_set_gateway_token(self.uniffiClonePointer(),
+        FfiConverterString.lower(token),$0
+    )
+}
+}
+    
+    /**
      * Set hold state.
      */
 open func setHold(callId: String, onHold: Bool)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
@@ -1211,6 +1366,39 @@ open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(Ffi
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_mute(self.uniffiClonePointer(),
         FfiConverterString.lower(callId),
         FfiConverterBool.lower(muted),$0
+    )
+}
+}
+    
+    /**
+     * Blind-transfer an active call to `target` (a dial string such as
+     * "1002" or a "sip:" URI), and wait for the outcome. On success the PBX
+     * has taken the call over: the local call and its media end, and
+     * `on_call_state_changed` reports `Ended` for `call_id`.
+     *
+     * After the PBX accepts the REFER, the core polls the call's status
+     * every 300 ms until it shows the outcome, for up to 35 s (longer than
+     * the gateway's own 30 s NOTIFY watchdog, so its verdict normally wins).
+     *
+     * These errors leave the call fully up: `InvalidTarget` for a target
+     * rejected locally or by the gateway; `InvalidState` for an unknown call,
+     * one that is not active yet (still ringing), or a gateway without the
+     * transfer route; `CallFailed` when the PBX refused the REFER or reported
+     * the transfer failed (the message carries the SIP status, such as 486);
+     * `Timeout` when the PBX did not answer the REFER, the transfer failed
+     * with 408 (no outcome: the gateway's watchdog, or a 408 from the PBX),
+     * or the gateway stopped answering for 35 s; `AuthenticationError` for
+     * a rejected token.
+     *
+     * `InvalidState` after the REFER was accepted means the call ended for
+     * another reason meanwhile; `Ended` has been reported. A gateway that
+     * does not report transfer outcomes ends the call on acceptance, as
+     * before. Blocks for up to about 45 s; call it off the UI thread.
+     */
+open func transferCall(callId: String, target: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_transfer_call(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),
+        FfiConverterString.lower(target),$0
     )
 }
 }
@@ -1838,10 +2026,17 @@ public struct CallInfo {
     public var muted: Bool
     public var onHold: Bool
     public var durationSecs: UInt64
+    /**
+     * Why the call ended; set only when `state` is `Ended`.
+     */
+    public var endReason: EndReason?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(callId: String, remoteUri: String, remoteName: String?, state: CallState, direction: CallDirection, muted: Bool, onHold: Bool, durationSecs: UInt64) {
+    public init(callId: String, remoteUri: String, remoteName: String?, state: CallState, direction: CallDirection, muted: Bool, onHold: Bool, durationSecs: UInt64, 
+        /**
+         * Why the call ended; set only when `state` is `Ended`.
+         */endReason: EndReason?) {
         self.callId = callId
         self.remoteUri = remoteUri
         self.remoteName = remoteName
@@ -1850,6 +2045,7 @@ public struct CallInfo {
         self.muted = muted
         self.onHold = onHold
         self.durationSecs = durationSecs
+        self.endReason = endReason
     }
 }
 
@@ -1881,6 +2077,9 @@ extension CallInfo: Equatable, Hashable {
         if lhs.durationSecs != rhs.durationSecs {
             return false
         }
+        if lhs.endReason != rhs.endReason {
+            return false
+        }
         return true
     }
 
@@ -1893,6 +2092,7 @@ extension CallInfo: Equatable, Hashable {
         hasher.combine(muted)
         hasher.combine(onHold)
         hasher.combine(durationSecs)
+        hasher.combine(endReason)
     }
 }
 
@@ -1911,7 +2111,8 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
                 direction: FfiConverterTypeCallDirection.read(from: &buf), 
                 muted: FfiConverterBool.read(from: &buf), 
                 onHold: FfiConverterBool.read(from: &buf), 
-                durationSecs: FfiConverterUInt64.read(from: &buf)
+                durationSecs: FfiConverterUInt64.read(from: &buf), 
+                endReason: FfiConverterOptionTypeEndReason.read(from: &buf)
         )
     }
 
@@ -1924,6 +2125,7 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
         FfiConverterBool.write(value.muted, into: &buf)
         FfiConverterBool.write(value.onHold, into: &buf)
         FfiConverterUInt64.write(value.durationSecs, into: &buf)
+        FfiConverterOptionTypeEndReason.write(value.endReason, into: &buf)
     }
 }
 
@@ -2187,11 +2389,23 @@ public func FfiConverterTypeDeviceRegistrationResponse_lower(_ value: DeviceRegi
  */
 public struct GatewayConfig {
     public var baseUrl: String
+    /**
+     * The PBX-issued gateway token (`gateway_token` from the PBX device
+     * registration), used as the bearer token for every gateway request.
+     * The core never mints tokens itself. Replace it later with
+     * `set_gateway_token`.
+     */
     public var apiKey: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(baseUrl: String, apiKey: String) {
+    public init(baseUrl: String, 
+        /**
+         * The PBX-issued gateway token (`gateway_token` from the PBX device
+         * registration), used as the bearer token for every gateway request.
+         * The core never mints tokens itself. Replace it later with
+         * `set_gateway_token`.
+         */apiKey: String) {
         self.baseUrl = baseUrl
         self.apiKey = apiKey
     }
@@ -2811,6 +3025,141 @@ extension CallState: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Why a call ended. Set only on the `Ended` event.
+ */
+
+public enum EndReason {
+    
+    /**
+     * This handset hung up.
+     */
+    case localHangup
+    /**
+     * The far end hung up (BYE).
+     */
+    case remoteHangup
+    /**
+     * The caller hung up an incoming call before it was answered.
+     */
+    case callerCancelled
+    /**
+     * An incoming call was answered on another device.
+     */
+    case answeredElsewhere
+    /**
+     * An incoming call was rejected with `reject_incoming_call`, or
+     * declined according to the gateway.
+     */
+    case rejected
+    /**
+     * The call was blind-transferred away from this handset.
+     */
+    case transferred
+    /**
+     * The call could not be set up: an outgoing call failed, or an accept
+     * had an unknown outcome.
+     */
+    case failed
+    /**
+     * An outgoing call was hung up before it was answered.
+     */
+    case cancelled
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEndReason: FfiConverterRustBuffer {
+    typealias SwiftType = EndReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EndReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .localHangup
+        
+        case 2: return .remoteHangup
+        
+        case 3: return .callerCancelled
+        
+        case 4: return .answeredElsewhere
+        
+        case 5: return .rejected
+        
+        case 6: return .transferred
+        
+        case 7: return .failed
+        
+        case 8: return .cancelled
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: EndReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .localHangup:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .remoteHangup:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .callerCancelled:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .answeredElsewhere:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .rejected:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .transferred:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .cancelled:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEndReason_lift(_ buf: RustBuffer) throws -> EndReason {
+    return try FfiConverterTypeEndReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEndReason_lower(_ value: EndReason) -> RustBuffer {
+    return FfiConverterTypeEndReason.lower(value)
+}
+
+
+
+extension EndReason: Equatable, Hashable {}
+
+
+
 
 /**
  * Errors that can occur in the mobile engine.
@@ -2821,10 +3170,19 @@ public enum MobileError {
     
     case NetworkError(message: String)
     
+    /**
+     * There is no gateway token, or the gateway rejected it (HTTP 401).
+     * Every method that talks to the gateway reports a 401 this way. Fetch a
+     * new token from the PBX and pass it to `set_gateway_token`.
+     */
     case AuthenticationError(message: String)
     
     case RegistrationFailed(message: String)
     
+    /**
+     * The call or a call operation failed; the message says why, for
+     * example the SIP status of a failed transfer.
+     */
     case CallFailed(message: String)
     
     case MediaError(message: String)
@@ -2834,6 +3192,18 @@ public enum MobileError {
     case GatewayError(message: String)
     
     case Timeout(message: String)
+    
+    /**
+     * A transfer target was empty, contained characters that are not allowed
+     * in a SIP URI header (CR, LF, '<', '>'), or was refused by the gateway.
+     */
+    case InvalidTarget(message: String)
+    
+    /**
+     * `make_call` was cancelled by `hangup` before it returned. `Ended` has
+     * already been reported for the call.
+     */
+    case Cancelled(message: String)
     
 }
 
@@ -2883,6 +3253,14 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
             message: try FfiConverterString.read(from: &buf)
         )
         
+        case 9: return .InvalidTarget(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 10: return .Cancelled(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2910,6 +3288,10 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(7))
         case .Timeout(_ /* message is ignored*/):
             writeInt(&buf, Int32(8))
+        case .InvalidTarget(_ /* message is ignored*/):
+            writeInt(&buf, Int32(9))
+        case .Cancelled(_ /* message is ignored*/):
+            writeInt(&buf, Int32(10))
 
         
         }
@@ -2930,6 +3312,12 @@ extension MobileError: Foundation.LocalizedError {
 
 /**
  * Callback interface for receiving events from the Rust core.
+ *
+ * Callbacks are delivered one at a time on a dedicated core thread, never
+ * inside the core's runtime, and asynchronously with respect to the engine
+ * method that caused them. They may call any engine method, including the
+ * blocking ones, but should not block for long themselves. See the
+ * "Event contract" section of the README for the guaranteed sequence.
  */
 public protocol MobileEventHandler : AnyObject {
     
@@ -2944,7 +3332,10 @@ public protocol MobileEventHandler : AnyObject {
     func onIncomingCall(offer: CallOffer) 
     
     /**
-     * Called when call state changes.
+     * Called when call state changes. Every call_id that has been reported
+     * gets exactly one final `Ended`, whoever ended the call (local hangup,
+     * remote hangup, transfer, caller cancel, or a failed outgoing call).
+     * The `Ended` event carries `end_reason`.
      */
     func onCallStateChanged(info: CallInfo) 
     
@@ -2954,9 +3345,27 @@ public protocol MobileEventHandler : AnyObject {
     func onMediaStats(callId: String, stats: MediaStats) 
     
     /**
-     * Called when an error occurs.
+     * Called when background work failed in a way the app should surface.
+     * Currently fired with context `"hangup"` when the gateway did not
+     * confirm hanging up a call even after one retry (for example a 404
+     * because it does not know the call): the call has ended here, but the
+     * other party may still be connected. `message` names the call_id.
      */
     func onError(context: String, message: String) 
+    
+    /**
+     * Called when background work (call-status polls, the caller-cancel
+     * watch, the network-change heartbeat, `hangup`'s gateway hangup or
+     * cancel, and hanging up an outgoing call that was answered after it
+     * was cancelled) had the gateway token rejected with 401. Fetch a new token from
+     * the PBX (`POST /api/v1/devices/{id}/gateway-token`) and pass it to
+     * `set_gateway_token`. Emitted at most once per token: it fires again
+     * only after `set_gateway_token` has been called and the new token is
+     * rejected too. A rejected poll does not end the call; polling resumes
+     * with the new token. Engine methods report a 401 by throwing
+     * `AuthenticationError` instead of through this callback.
+     */
+    func onAuthRequired() 
     
 }
 
@@ -3091,6 +3500,28 @@ fileprivate struct UniffiCallbackInterfaceMobileEventHandler {
                 return uniffiObj.onError(
                      context: try FfiConverterString.lift(context),
                      message: try FfiConverterString.lift(message)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onAuthRequired: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMobileEventHandler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onAuthRequired(
                 )
             }
 
@@ -3424,6 +3855,30 @@ fileprivate struct FfiConverterOptionTypeMediaStats: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeEndReason: FfiConverterRustBuffer {
+    typealias SwiftType = EndReason?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeEndReason.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeEndReason.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionSequenceUInt8: FfiConverterRustBuffer {
     typealias SwiftType = [UInt8]?
 
@@ -3628,6 +4083,15 @@ public func initRuntime() {try! rustCall() {
 }
 }
 /**
+ * A fresh `outgoing-<uuid>` call_id for `make_call_with_id`.
+ */
+public func newOutgoingCallId() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_func_new_outgoing_call_id($0
+    )
+})
+}
+/**
  * Shut down the Rust runtime. Call on app termination.
  */
 public func shutdownRuntime() {try! rustCall() {
@@ -3652,6 +4116,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.contractVersionMismatch
     }
     if (uniffi_aria_mobile_core_checksum_func_init_runtime() != 32843) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_func_new_outgoing_call_id() != 37587) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_func_shutdown_runtime() != 2017) {
@@ -3732,6 +4199,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call() != 192) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call_with_id() != 48628) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_notify_network_change() != 62643) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3753,10 +4223,16 @@ private var initializationResult: InitializationResult = {
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_event_handler() != 11057) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_gateway_token() != 1521) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_hold() != 58318) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_mute() != 20691) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_transfer_call() != 38156) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_unregister_device() != 61754) {
@@ -3781,6 +4257,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_error() != 53165) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_auth_required() != 40744) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_platformaudiobridge_on_playback_audio() != 63626) {

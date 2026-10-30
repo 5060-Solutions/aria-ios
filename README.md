@@ -7,16 +7,19 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 - **CallKit integration** -- incoming calls show the native iOS call UI, even from lock screen
 - **PushKit VoIP push** -- instant wake on incoming calls via APNs VoIP push
 - **Full dial pad** -- T9 layout with haptic feedback
-- **Mid-call controls** -- mute, hold, speaker, DTMF keypad
+- **Mid-call controls** -- mute, hold, speaker, DTMF keypad, blind transfer, encrypted-media indicator
 - **Contacts integration** -- search and call from iOS contacts (CNContactStore)
-- **Call history** -- recent calls with direction indicators
-- **Settings** -- gateway URL, API key, SIP credentials, registration status
+- **Call history** -- incoming, outgoing and missed calls, stored on device; tap to call back
+- **Voicemail** -- list, play, mark read and delete messages via the Aria PBX API
+- **QR provisioning** -- scan, review the server it points to, then sign in
 - **Outgoing calls** -- routed through the push gateway B2BUA
+- **On-device transcription** -- optional, device builds with `AI=1` only
 
 ## Requirements
 
-- iOS 17.0+
-- Xcode 15+
+- iOS 16.0+ (the deployment target in `project.yml`)
+- Xcode 16+
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 - Rust toolchain with iOS targets:
   ```bash
   rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
@@ -26,46 +29,62 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 
 ### 1. Build the Rust core
 
+With `aria-mobile-core` checked out next to this repo:
+
 ```bash
-cd ../aria-mobile-core
-./build-ios.sh
+./build-rust.sh            # release; ./build-rust.sh debug for a debug core
+AI=1 ./build-rust.sh       # also compile on-device transcription (device slice only)
 ```
 
-This produces an XCFramework containing the static library and UniFFI-generated Swift bindings.
+This builds the static libraries, writes `AriaMobileCore.xcframework` at the
+repo root and regenerates the UniFFI Swift bindings in `AriaSoftphone/Bridge/`.
+The app links the real core; there is no stub bridge.
 
-### 2. Add to Xcode
+### 2. Generate the project and build
 
-1. Open `AriaSoftphone.xcodeproj` in Xcode
-2. Add the generated XCFramework to the project
-3. Build and run on device or simulator
+```bash
+xcodegen generate
+xcodebuild -project AriaSoftphone.xcodeproj -scheme AriaSoftphone \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project AriaSoftphone.xcodeproj -scheme AriaSoftphone \
+  -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+`project.yml` is the source of truth; regenerate after changing it. The
+simulator slice is arm64 only.
 
 ### 3. Entitlements
 
 The app requires:
-- `aps-environment` (push notifications)
-- VoIP push entitlement
-- Background modes: audio, voip, remote-notification
+- `aps-environment` -- set from `APS_ENVIRONMENT`: `development` for Debug, `production` for Release
+- VoIP push (`com.apple.developer.pushkit.unrestricted-voip`)
+- Background modes: audio, voip
 
 ## Architecture
 
 ```
 AriaSoftphone/
   App/
-    AriaSoftphoneApp.swift    -- App entry, PushKit registration
-    ContentView.swift          -- Tab navigation (Dialer, Contacts, History, Settings)
-    SipEngineManager.swift     -- ObservableObject bridging Rust engine to SwiftUI
+    AriaSoftphoneApp.swift    -- App entry, PushKit registration, session restore
+    ContentView.swift          -- Setup flow and tabs (Dialer, Contacts, History, Voicemail, Settings)
+    SipEngineManager.swift     -- Owns the Rust engine; restore, registration, event handler
   CallKit/
-    CallManager.swift          -- CXProviderDelegate, incoming/outgoing call handling
+    CallManager.swift          -- CXProviderDelegate, call lifecycle, audio route
   Push/
     PushHandler.swift          -- PKPushRegistryDelegate, VoIP push processing
   Bridge/
-    AriaMobileCore.swift       -- UniFFI stub types (replaced by generated code at build)
+    aria_mobile.swift          -- UniFFI-generated bindings (written by build-rust.sh)
+  Services/
+    AccountSettings.swift      -- Stored account and its defaults
+    AccountSession.swift       -- PBX login, gateway registration, sign-out
+    AudioBridge.swift          -- AVAudioEngine <-> core PCM, started by CallKit
+    CallHistoryStore.swift     -- On-device call history
+    VoicemailService.swift     -- Voicemail via the Aria PBX API
+    PbxApiClient.swift         -- Aria PBX REST client
+    KeychainStore.swift        -- Secrets
   Views/
-    Dialer/DialerView.swift    -- Dial pad UI
-    Call/CallView.swift        -- Full-screen active call UI
-    Call/HistoryView.swift     -- Call history list
-    Contacts/ContactsView.swift -- iOS contacts integration
-    Settings/SettingsView.swift -- Account configuration
+    Dialer/ Call/ Contacts/ Voicemail/ Settings/
+AriaSoftphoneTests/            -- Unit tests
 ```
 
 ## Ecosystem

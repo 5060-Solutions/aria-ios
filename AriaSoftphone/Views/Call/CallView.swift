@@ -11,6 +11,8 @@ struct CallView: View {
     @State private var rxLevel: Float = 0
     @State private var txLevel: Float = 0
     @State private var pulseScale: CGFloat = 1.0
+    @State private var isEncrypted = false
+    @State private var showTransfer = false
 
     var body: some View {
         ZStack {
@@ -50,9 +52,16 @@ struct CallView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
 
-                    Text(statusText)
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.8))
+                    HStack(spacing: 6) {
+                        if isActive && isEncrypted {
+                            Image(systemName: "lock.fill")
+                                .font(.caption)
+                                .accessibilityLabel("Encrypted call")
+                        }
+                        Text(statusText)
+                            .font(.subheadline)
+                    }
+                    .foregroundColor(.white.opacity(0.8))
                 }
 
                 // Audio level meters
@@ -87,11 +96,11 @@ struct CallView: View {
                         }
 
                         CallControlButton(
-                            icon: "speaker.wave.2.fill",
+                            icon: callManager.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.wave.2.fill",
                             label: "Speaker",
-                            isActive: false
+                            isActive: callManager.isSpeakerOn
                         ) {
-                            // Toggle speaker
+                            callManager.setSpeaker(!callManager.isSpeakerOn)
                         }
 
                         CallControlButton(
@@ -113,6 +122,15 @@ struct CallView: View {
                                 showDTMFKeypad.toggle()
                             }
                         }
+
+                        CallControlButton(
+                            icon: "arrow.turn.up.right",
+                            label: "Transfer",
+                            isActive: false
+                        ) {
+                            showTransfer = true
+                        }
+                        .disabled(callManager.activeCall?.callId == nil)
                     }
                 }
 
@@ -132,9 +150,7 @@ struct CallView: View {
                                 )
                         }
 
-                        Button(action: {
-                            // CallKit handles accept via CXAnswerCallAction
-                        }) {
+                        Button(action: { callManager.answerCall() }) {
                             Circle()
                                 .fill(Color.green)
                                 .frame(width: 72, height: 72)
@@ -161,6 +177,10 @@ struct CallView: View {
                 Spacer().frame(height: 40)
             }
             .padding()
+        }
+        .sheet(isPresented: $showTransfer) {
+            TransferView()
+                .environmentObject(callManager)
         }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }
@@ -214,6 +234,10 @@ struct CallView: View {
             if let callId = callManager.activeCall?.callId {
                 rxLevel = sipEngine.getRxAudioLevel(callId: callId)
                 txLevel = sipEngine.getTxAudioLevel(callId: callId)
+                // What SRTP negotiation produced, not what was configured.
+                isEncrypted = sipEngine.callIsEncrypted(callId: callId)
+            } else {
+                isEncrypted = false
             }
         }
 

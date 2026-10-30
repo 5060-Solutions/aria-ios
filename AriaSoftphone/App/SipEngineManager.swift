@@ -10,8 +10,47 @@ class SipEngineManager: ObservableObject {
     @Published var registrationError: String?
     @Published var deviceId: String?
 
-    private var engine: AriaMobileEngine?
+    /// Guarded by `stateLock`: the engine is rebuilt on the setup queue and
+    /// read from the main queue, call-action queues and push handling alike.
+    private var _engine: AriaMobileEngine?
+    /// Gateway device id from the last successful registration. Kept beside
+    /// the engine because a rebuilt engine has not registered yet.
+    private var _registeredDeviceId: String?
+    /// The gateway the current engine was built for.
+    private var configuredGatewayUrl: String?
+    /// The gateway token, and the one place it is held in memory. Every new
+    /// engine is built with it and every renewal goes through
+    /// `setGatewayToken`, so an engine can never be built with a token that
+    /// a concurrent renewal has already replaced. The Keychain only persists
+    /// it across launches.
+    private var _gatewayToken: String?
+    /// A login asked for a fresh engine while a call was up; rebuild once
+    /// the call has ended.
+    private var rebuildPending = false
+    private let stateLock = NSLock()
+
+    /// Serialises configure/register so a launch-time restore, a VoIP push
+    /// and a login cannot build two engines at once.
+    private let setupQueue = DispatchQueue(label: "com.5060.aria.engine-setup")
+
     private let eventHandler = SwiftEventHandler()
+
+    /// The one audio bridge, shared by every engine instance. CallKit owns the
+    /// audio session, so the call manager starts and stops this from the
+    /// provider's activation callbacks.
+    let audioBridge = iOSAudioBridge()
+
+    private var engine: AriaMobileEngine? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _engine
+    }
+
+    private var registeredDeviceId: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _registeredDeviceId
+    }
 
     private init() {
         eventHandler.manager = self
@@ -23,10 +62,302 @@ class SipEngineManager: ObservableObject {
             baseUrl: gatewayUrl,
             apiKey: apiKey
         )
-        engine = AriaMobileEngine(gatewayConfig: config)
-        engine?.setEventHandler(handler: eventHandler)
-        engine?.setAudioBridge(bridge: iOSAudioBridge())
-        startRemoteHangupPolling()
+        let newEngine = AriaMobileEngine(gatewayConfig: config)
+        newEngine.setEventHandler(handler: eventHandler)
+        newEngine.setAudioBridge(bridge: audioBridge)
+
+        stateLock.lock()
+        _engine = newEngine
+        _registeredDeviceId = nil
+        configuredGatewayUrl = gatewayUrl
+        _gatewayToken = apiKey
+        rebuildPending = false
+        stateLock.unlock()
+    }
+
+    /// Whether the engine has a call in any state. The engine is never
+    /// rebuilt while it does: a new engine would drop the call's media.
+    private func engineHasCall(_ engine: AriaMobileEngine?) -> Bool {
+        engine?.getActiveCall() != nil
+    }
+
+    // MARK: - Session restore
+
+    /// Bring the engine up from the stored account and register it with the
+    /// gateway, unless that has already happened.
+    ///
+    /// The engine used to be built only by an interactive login, so after a
+    /// relaunch — and in particular when PushKit cold-launches the app for an
+    /// incoming call — there was no engine and the call offer could not be
+    /// fetched. The engine also needs a registration before it holds a
+    /// gateway auth token, so configuring alone is not enough.
+    ///
+    /// Blocks on the network. Never call it on the main queue.
+    func ensureReady() throws {
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        try setupQueue.sync {
+            let account = AccountSettings.load()
+            guard account.isProvisioned, !account.gatewayUrl.isEmpty else {
+                throw SipError.notConfigured
+            }
+            stateLock.lock()
+            var tokenRead = KeychainStore.ReadResult.notFound
+            if _gatewayToken == nil {
+                tokenRead = KeychainStore.read(KeychainStore.gatewayTokenKey)
+                _gatewayToken = tokenRead.value
+            }
+            let haveToken = _gatewayToken != nil
+            stateLock.unlock()
+
+            // Before the first unlock the token is there but unreadable.
+            // Renewing would need the password, equally unreadable; wait.
+            if case .unavailable = tokenRead { throw SipError.keychainLocked }
+
+            // Only a PBX-issued gateway token will do. With none stored (an
+            // older install, or one cleared after a failed renewal), get one;
+            // the renewal hands it to `setGatewayToken`.
+            if !haveToken {
+                try GatewayTokenRenewer.shared.renewBlocking()
+            }
+
+            stateLock.lock()
+            let engine = _engine
+            let builtFor = configuredGatewayUrl
+            let registered = _engine != nil && _registeredDeviceId != nil
+            let wantsRebuild = rebuildPending
+            let token = _gatewayToken
+            stateLock.unlock()
+
+            guard let apiKey = token else { throw SipError.notConfigured }
+
+            switch Self.setupStep(
+                hasEngine: engine != nil,
+                builtFor: builtFor,
+                gatewayUrl: account.gatewayUrl,
+                rebuildPending: wantsRebuild,
+                hasCall: engineHasCall(engine),
+                registered: registered
+            ) {
+            case .ready:
+                return
+            case .rebuild:
+                configure(gatewayUrl: account.gatewayUrl, apiKey: apiKey)
+            case .register:
+                break
+            }
+
+            let password: String
+            switch KeychainStore.read(KeychainStore.sipPasswordKey) {
+            case .value(let value) where !value.isEmpty:
+                password = value
+            case .unavailable:
+                // Locked, not missing: say so, and leave the account alone.
+                throw SipError.keychainLocked
+            default:
+                throw SipError.missingCredentials
+            }
+            // An expired token is renewed and the registration retried once;
+            // this is what lets a cold-start push survive a stale token.
+            try withAuthRetry {
+                try registerDevice(
+                    pushToken: KeychainStore.get(KeychainStore.pushTokenKey) ?? "",
+                    bundleId: Bundle.main.bundleIdentifier,
+                    sip: account.sipCredentials(password: password)
+                )
+            }
+        }
+    }
+
+    enum SetupStep: Equatable {
+        /// Nothing to do.
+        case ready
+        /// Keep the engine; register it.
+        case register
+        /// Build a new engine, then register it.
+        case rebuild
+    }
+
+    /// What `ensureReady` must do. An engine carrying a call is never
+    /// replaced, even when the account or gateway has changed: that would
+    /// drop the call. The rebuild happens on the first restore after it.
+    static func setupStep(
+        hasEngine: Bool,
+        builtFor: String?,
+        gatewayUrl: String,
+        rebuildPending: Bool,
+        hasCall: Bool,
+        registered: Bool
+    ) -> SetupStep {
+        let wantsNewEngine = !hasEngine || builtFor != gatewayUrl || rebuildPending
+        if wantsNewEngine && !(hasEngine && hasCall) {
+            return .rebuild
+        }
+        return registered ? .ready : .register
+    }
+
+    // MARK: - Gateway token
+
+    /// Hand the engine a renewed gateway token. Safe mid-call: the engine
+    /// does not re-register, and its background polls pick the token up.
+    func setGatewayToken(_ token: String) {
+        stateLock.lock()
+        let engine = _engine
+        _gatewayToken = token
+        KeychainStore.set(token, forKey: KeychainStore.gatewayTokenKey)
+        stateLock.unlock()
+        engine?.setGatewayToken(token: token)
+    }
+
+    /// Run an engine call; if the gateway rejected the token, renew it and
+    /// run the call once more.
+    private func withAuthRetry<T>(_ operation: () throws -> T) throws -> T {
+        try Self.retryingOnAuthFailure(
+            renew: { try GatewayTokenRenewer.shared.renewBlocking() },
+            operation
+        )
+    }
+
+    /// `operation`, retried once after `renew` if it failed with
+    /// `AuthenticationError`. Any other error, or a second auth failure, is
+    /// thrown as is.
+    static func retryingOnAuthFailure<T>(renew: () throws -> Void, _ operation: () throws -> T) throws -> T {
+        do {
+            return try operation()
+        } catch where isAuthFailure(error) {
+            try renew()
+            return try operation()
+        }
+    }
+
+    /// The gateway answered 401: the token is missing, expired or revoked.
+    static func isAuthFailure(_ error: Error) -> Bool {
+        if case MobileError.AuthenticationError = error {
+            return true
+        }
+        return false
+    }
+
+    /// `ensureReady()` off the caller's queue.
+    func ensureReadyAsync() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try self.ensureReady()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Restore the session in the background, e.g. at launch. Failures are
+    /// surfaced as a registration error rather than thrown.
+    func restoreSessionInBackground() {
+        guard AccountSettings.load().isProvisioned else { return }
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                try self.ensureReady()
+            } catch SipError.keychainLocked {
+                // Retried when the app next becomes active, i.e. unlocked.
+                print("Session restore deferred: Keychain locked")
+            } catch {
+                print("Session restore failed: \(error)")
+                DispatchQueue.main.async {
+                    self.registrationError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Drop the engine so the next `ensureReady()` builds it from the stored
+    /// account — used when a login changes it.
+    ///
+    /// Async: it waits its turn on the setup queue, which may be busy with a
+    /// registration on the network, and must not block the caller doing so.
+    /// With a call up the engine is kept and rebuilt once the call has ended.
+    func reset() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            setupQueue.async {
+                self.stateLock.lock()
+                let engine = self._engine
+                self.stateLock.unlock()
+
+                self.stateLock.lock()
+                if self.engineHasCall(engine) {
+                    self.rebuildPending = true
+                } else {
+                    self._engine = nil
+                    self._registeredDeviceId = nil
+                    self.configuredGatewayUrl = nil
+                }
+                // The stored token may have changed with the login.
+                self._gatewayToken = nil
+                self.stateLock.unlock()
+
+                DispatchQueue.main.async {
+                    self.isRegistered = false
+                    self.deviceId = nil
+                }
+                continuation.resume()
+            }
+        }
+    }
+
+    // MARK: - Push token
+
+    /// Tell the gateway about a rotated VoIP push token.
+    ///
+    /// Without this a token rotation left the gateway pushing to a dead token
+    /// and incoming calls silently stopped. The token is persisted first, so
+    /// an engine that is not registered yet picks it up when it registers.
+    func updatePushToken(_ token: String) {
+        let previous = KeychainStore.get(KeychainStore.pushTokenKey)
+        KeychainStore.set(token, forKey: KeychainStore.pushTokenKey)
+        guard AccountSettings.load().isProvisioned else { return }
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                if previous == token, self.registeredDeviceId != nil {
+                    // PushKit redelivers the same token on every launch.
+                    return
+                }
+                if let engine = self.engine, let deviceId = self.registeredDeviceId {
+                    try self.withAuthRetry {
+                        try engine.updatePushToken(deviceId: deviceId, newToken: token)
+                    }
+                } else {
+                    // Registers with the token just stored.
+                    try self.ensureReady()
+                }
+            } catch {
+                print("Push token update failed: \(error)")
+            }
+        }
+        // The PBX keeps its own copy of the push token for the device.
+        Task {
+            await Self.updatePbxPushToken(token)
+        }
+    }
+
+    /// `PUT /api/v1/devices/{id}/push-token`. A 409 (the token is already
+    /// bound to another device record) is logged, not fatal: the gateway
+    /// registration above is what delivers pushes.
+    private static func updatePbxPushToken(_ token: String) async {
+        let defaults = UserDefaults.standard
+        guard let apiUrl = defaults.string(forKey: AccountSettings.Key.apiUrl), !apiUrl.isEmpty,
+              let deviceId = defaults.string(forKey: AccountSettings.Key.pbxDeviceId), !deviceId.isEmpty else {
+            return
+        }
+        do {
+            try await PbxSession.shared.authorized { jwt in
+                try await PbxApiClient(baseUrl: apiUrl)
+                    .updatePushToken(jwt: jwt, deviceId: deviceId, pushToken: token)
+            }
+        } catch PbxApiClient.ApiError.httpError(let code, let message) where code == 409 {
+            print("PBX kept its push token (409): \(message)")
+        } catch {
+            print("PBX push token update failed: \(error)")
+        }
     }
 
     /// Register this device with the push gateway.
@@ -48,19 +379,40 @@ class SipEngineManager: ObservableObject {
         )
 
         let response = try engine.registerDevice(registration: registration)
+        stateLock.lock()
+        if _engine === engine {
+            _registeredDeviceId = response.deviceId
+        }
+        stateLock.unlock()
         DispatchQueue.main.async {
             self.deviceId = response.deviceId
             self.isRegistered = true
+            self.registrationError = nil
         }
     }
 
-    /// Unregister from the push gateway.
-    func unregister() throws {
-        guard let engine = engine, let deviceId = deviceId else { return }
-        try engine.unregisterDevice(deviceId: deviceId)
+    /// Unregister from the push gateway and drop the engine. Blocks on the
+    /// network, so it runs on the setup queue rather than the caller's.
+    func signOut() {
+        setupQueue.async {
+            self.stateLock.lock()
+            let engine = self._engine
+            let deviceId = self._registeredDeviceId
+            self._engine = nil
+            self._registeredDeviceId = nil
+            self.configuredGatewayUrl = nil
+            self._gatewayToken = nil
+            self.rebuildPending = false
+            self.stateLock.unlock()
+
+            if let engine = engine, let deviceId = deviceId {
+                try? engine.unregisterDevice(deviceId: deviceId)
+            }
+        }
         DispatchQueue.main.async {
             self.isRegistered = false
             self.deviceId = nil
+            self.registrationError = nil
         }
     }
 
@@ -69,7 +421,7 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        return try engine.handlePushNotification(payload: payload)
+        return try withAuthRetry { try engine.handlePushNotification(payload: payload) }
     }
 
     /// Accept an incoming call.
@@ -77,10 +429,9 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        return try engine.acceptIncomingCall(
-            callToken: callToken,
-            preferredCodecs: codecs
-        )
+        return try withAuthRetry {
+            try engine.acceptIncomingCall(callToken: callToken, preferredCodecs: codecs)
+        }
     }
 
     /// Reject an incoming call.
@@ -88,25 +439,48 @@ class SipEngineManager: ObservableObject {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        try engine.rejectIncomingCall(callToken: callToken)
+        try withAuthRetry { try engine.rejectIncomingCall(callToken: callToken) }
     }
 
     /// Make an outgoing call.
-    func makeCall(uri: String, credentials: SipCredentials, codecs: [AudioCodec] = []) throws -> CallInfo {
+    ///
+    /// `callId` comes from `newOutgoingCallId()`, chosen before dialing so the
+    /// call can be hung up at any point.
+    func makeCall(callId: String, uri: String, credentials: SipCredentials, codecs: [AudioCodec] = []) throws -> CallInfo {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
-        return try engine.makeCall(
-            uri: uri,
-            credentials: credentials,
-            preferredCodecs: codecs
-        )
+        // Not retried: by the time a 401 comes back the engine has reported
+        // Ringing and Ended for the attempt, so a retry would be a new call
+        // behind the user's back. Renew so the next attempt works.
+        do {
+            return try engine.makeCallWithId(callId: callId, uri: uri, credentials: credentials, preferredCodecs: codecs)
+        } catch where Self.isAuthFailure(error) {
+            GatewayTokenRenewer.shared.renewInBackground()
+            throw error
+        }
     }
 
     /// Hang up an active call.
     func hangup(callId: String) throws {
         guard let engine = engine else { return }
-        try engine.hangup(callId: callId)
+        do {
+            try engine.hangup(callId: callId)
+        } catch where Self.isAuthFailure(error) {
+            // The call has already ended locally; renew so the core's
+            // fallback hangup and later calls can reach the gateway.
+            GatewayTokenRenewer.shared.renewInBackground()
+            throw error
+        }
+    }
+
+    /// Blind-transfer an active call. Blocks for up to about 8 s. On success
+    /// the engine reports `.ended` for the call; on failure the call stays up.
+    func transferCall(callId: String, target: String) throws {
+        guard let engine = engine else {
+            throw SipError.notConfigured
+        }
+        try withAuthRetry { try engine.transferCall(callId: callId, target: target) }
     }
 
     /// Mute/unmute.
@@ -216,30 +590,20 @@ class SipEngineManager: ObservableObject {
         return engine?.aiClearInsights() ?? 0
     }
 
-    /// Check if remote party hung up.
-    func checkRemoteHangup() -> String? {
-        return engine?.checkRemoteHangup()
+    /// Whether the call's media is encrypted, as negotiated.
+    func callIsEncrypted(callId: String) -> Bool {
+        return engine?.callIsEncrypted(callId: callId) ?? false
     }
-
-    /// Start polling for remote hangup. Call once when engine is configured.
-    func startRemoteHangupPolling() {
-        remoteHangupTimer?.invalidate()
-        remoteHangupTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            if let callId = self.checkRemoteHangup() {
-                print("Remote hangup detected: \(callId)")
-                DispatchQueue.main.async {
-                    CallManager.shared.handleRemoteHangup()
-                }
-            }
-        }
-    }
-
-    private var remoteHangupTimer: Timer?
 }
 
 // MARK: - UniFFI Event Handler Bridge
 
+/// Receives the core's events. Callbacks arrive on arbitrary threads (the
+/// core's poll threads included), so each one hops to the main queue.
+///
+/// Call state follows the core's event contract: every call id that has been
+/// reported gets exactly one `.ended`, whether from a local hangup, a remote
+/// BYE, a caller cancelling before answer, a failed `makeCall` or a transfer.
 class SwiftEventHandler: MobileEventHandler {
     weak var manager: SipEngineManager?
 
@@ -263,12 +627,22 @@ class SwiftEventHandler: MobileEventHandler {
         }
     }
 
+    /// Background work (status polls, the caller-cancel watch) had its token
+    /// rejected. Fetch a new one; the engine uses it from then on.
+    func onAuthRequired() {
+        GatewayTokenRenewer.shared.renewInBackground()
+    }
+
     func onMediaStats(callId: String, stats: MediaStats) {
         // Update stats UI if needed
     }
 
     func onError(context: String, message: String) {
         print("Aria error [\(context)]: \(message)")
+        // A hangup the gateway did not confirm: the call is over here, but
+        // the other party may still be connected. Nothing the user can act
+        // on, and not a registration problem, so it is only logged.
+        guard context != "hangup" else { return }
         DispatchQueue.main.async {
             self.manager?.registrationError = "\(context): \(message)"
         }
@@ -279,11 +653,17 @@ class SwiftEventHandler: MobileEventHandler {
 
 enum SipError: LocalizedError {
     case notConfigured
+    case missingCredentials
+    case keychainLocked
 
     var errorDescription: String? {
         switch self {
         case .notConfigured:
             return "SIP engine not configured. Set up gateway connection first."
+        case .keychainLocked:
+            return "Unlock your iPhone to connect."
+        case .missingCredentials:
+            return "The SIP password is not available. Scan your provisioning QR code again."
         }
     }
 }

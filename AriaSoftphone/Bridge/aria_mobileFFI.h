@@ -286,6 +286,13 @@ typedef void (*UniffiCallbackInterfaceMobileEventHandlerMethod4)(uint64_t, RustB
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MOBILE_EVENT_HANDLER_METHOD5
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MOBILE_EVENT_HANDLER_METHOD5
+typedef void (*UniffiCallbackInterfaceMobileEventHandlerMethod5)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PLATFORM_AUDIO_BRIDGE_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PLATFORM_AUDIO_BRIDGE_METHOD0
 typedef void (*UniffiCallbackInterfacePlatformAudioBridgeMethod0)(uint64_t, RustBuffer, uint32_t, void* _Nonnull, 
@@ -308,6 +315,7 @@ typedef struct UniffiVTableCallbackInterfaceMobileEventHandler {
     UniffiCallbackInterfaceMobileEventHandlerMethod2 _Nonnull onCallStateChanged;
     UniffiCallbackInterfaceMobileEventHandlerMethod3 _Nonnull onMediaStats;
     UniffiCallbackInterfaceMobileEventHandlerMethod4 _Nonnull onError;
+    UniffiCallbackInterfaceMobileEventHandlerMethod5 _Nonnull onAuthRequired;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMobileEventHandler;
 
@@ -461,6 +469,11 @@ void uniffi_aria_mobile_core_fn_method_ariamobileengine_hangup(void*_Nonnull ptr
 RustBuffer uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call(void*_Nonnull ptr, RustBuffer uri, RustBuffer credentials, RustBuffer preferred_codecs, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+RustBuffer uniffi_aria_mobile_core_fn_method_ariamobileengine_make_call_with_id(void*_Nonnull ptr, RustBuffer call_id, RustBuffer uri, RustBuffer credentials, RustBuffer preferred_codecs, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_NOTIFY_NETWORK_CHANGE
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_NOTIFY_NETWORK_CHANGE
 void uniffi_aria_mobile_core_fn_method_ariamobileengine_notify_network_change(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -496,6 +509,11 @@ void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_codec_preferences(vo
 void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_event_handler(void*_Nonnull ptr, uint64_t handler, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_gateway_token(void*_Nonnull ptr, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_HOLD
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_HOLD
 void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_hold(void*_Nonnull ptr, RustBuffer call_id, int8_t on_hold, RustCallStatus *_Nonnull out_status
@@ -504,6 +522,11 @@ void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_hold(void*_Nonnull p
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_SET_MUTE
 void uniffi_aria_mobile_core_fn_method_ariamobileengine_set_mute(void*_Nonnull ptr, RustBuffer call_id, int8_t muted, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_TRANSFER_CALL
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_TRANSFER_CALL
+void uniffi_aria_mobile_core_fn_method_ariamobileengine_transfer_call(void*_Nonnull ptr, RustBuffer call_id, RustBuffer target, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_METHOD_ARIAMOBILEENGINE_UNREGISTER_DEVICE
@@ -529,6 +552,12 @@ void uniffi_aria_mobile_core_fn_init_callback_vtable_platformaudiobridge(UniffiV
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_INIT_RUNTIME
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_INIT_RUNTIME
 void uniffi_aria_mobile_core_fn_func_init_runtime(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_NEW_OUTGOING_CALL_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_FN_FUNC_NEW_OUTGOING_CALL_ID
+RustBuffer uniffi_aria_mobile_core_fn_func_new_outgoing_call_id(RustCallStatus *_Nonnull out_status
     
 );
 #endif
@@ -824,6 +853,12 @@ uint16_t uniffi_aria_mobile_core_checksum_func_init_runtime(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_NEW_OUTGOING_CALL_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_NEW_OUTGOING_CALL_ID
+uint16_t uniffi_aria_mobile_core_checksum_func_new_outgoing_call_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_SHUTDOWN_RUNTIME
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_FUNC_SHUTDOWN_RUNTIME
 uint16_t uniffi_aria_mobile_core_checksum_func_shutdown_runtime(void
@@ -980,6 +1015,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_MAKE_CALL_WITH_ID
+uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call_with_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_NOTIFY_NETWORK_CHANGE
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_NOTIFY_NETWORK_CHANGE
 uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_notify_network_change(void
@@ -1022,6 +1063,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_event_hand
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_GATEWAY_TOKEN
+uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_gateway_token(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_HOLD
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_HOLD
 uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_hold(void
@@ -1031,6 +1078,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_hold(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_SET_MUTE
 uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_mute(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_TRANSFER_CALL
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_ARIAMOBILEENGINE_TRANSFER_CALL
+uint16_t uniffi_aria_mobile_core_checksum_method_ariamobileengine_transfer_call(void
     
 );
 #endif
@@ -1079,6 +1132,12 @@ uint16_t uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_media_sta
 #ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_ERROR
 #define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_ERROR
 uint16_t uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_error(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_AUTH_REQUIRED
+#define UNIFFI_FFIDEF_UNIFFI_ARIA_MOBILE_CORE_CHECKSUM_METHOD_MOBILEEVENTHANDLER_ON_AUTH_REQUIRED
+uint16_t uniffi_aria_mobile_core_checksum_method_mobileeventhandler_on_auth_required(void
     
 );
 #endif

@@ -3,12 +3,13 @@ import SwiftUI
 /// Call history view.
 struct HistoryView: View {
     @EnvironmentObject var callManager: CallManager
-    @State private var callHistory: [CallHistoryEntry] = []
+    @ObservedObject private var history = CallHistoryStore.shared
+    @State private var showClearConfirmation = false
 
     var body: some View {
         NavigationStack {
             Group {
-                if callHistory.isEmpty {
+                if history.records.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "clock")
                             .font(.system(size: 48))
@@ -23,91 +24,113 @@ struct HistoryView: View {
                     .padding()
                 } else {
                     List {
-                        ForEach(callHistory) { entry in
-                            CallHistoryRow(entry: entry) {
-                                callManager.startOutgoingCall(uri: entry.remoteUri)
+                        ForEach(history.records) { record in
+                            CallHistoryRow(record: record) {
+                                callManager.startOutgoingCall(uri: record.remoteUri)
                             }
                         }
-                        .onDelete(perform: deleteEntries)
+                        .onDelete(perform: history.remove(atOffsets:))
                     }
+                    .listStyle(.plain)
                 }
             }
             .navigationTitle("History")
             .toolbar {
-                if !callHistory.isEmpty {
-                    EditButton()
+                if !history.records.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Clear", role: .destructive) {
+                            showClearConfirmation = true
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        EditButton()
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Clear all call history?",
+                isPresented: $showClearConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Clear History", role: .destructive) {
+                    history.clear()
                 }
             }
         }
-    }
-
-    private func deleteEntries(at offsets: IndexSet) {
-        callHistory.remove(atOffsets: offsets)
-    }
-}
-
-// MARK: - Call History Entry
-
-struct CallHistoryEntry: Identifiable {
-    let id = UUID()
-    let remoteUri: String
-    let remoteName: String?
-    let direction: String  // "inbound" or "outbound"
-    let timestamp: Date
-    let duration: TimeInterval
-    let missed: Bool
-
-    var displayName: String {
-        remoteName ?? remoteUri
-    }
-
-    var icon: String {
-        if missed {
-            return "phone.arrow.down.left"
-        }
-        return direction == "inbound" ? "phone.arrow.down.left" : "phone.arrow.up.right"
-    }
-
-    var iconColor: Color {
-        missed ? .red : (direction == "inbound" ? .blue : .green)
     }
 }
 
 // MARK: - History Row
 
 struct CallHistoryRow: View {
-    let entry: CallHistoryEntry
+    let record: CallRecord
     let onCall: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: entry.icon)
-                .foregroundColor(entry.iconColor)
-                .frame(width: 24)
+        // The whole row calls back, as in the system Phone app.
+        Button(action: onCall) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(iconColor)
+                    .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.displayName)
-                    .font(.body)
-                    .foregroundColor(entry.missed ? .red : .primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(record.displayName)
+                        .font(.body)
+                        .foregroundColor(record.isMissed ? .red : .primary)
 
-                HStack(spacing: 4) {
-                    Text(entry.timestamp, style: .relative)
-                    if entry.duration > 0 {
-                        Text("(\(formatDuration(entry.duration)))")
+                    HStack(spacing: 4) {
+                        Text(subtitle)
+                        Text("·")
+                        Text(record.startedAt, style: .relative)
                     }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
 
-            Spacer()
+                Spacer()
 
-            Button(action: onCall) {
                 Image(systemName: "phone.fill")
                     .foregroundColor(.blue)
             }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
+        .accessibilityHint("Calls \(record.displayName)")
+    }
+
+    private var icon: String {
+        switch record.direction {
+        case .inbound:
+            return record.outcome == .answered || record.outcome == .transferred
+                ? "phone.arrow.down.left" : "phone.down.fill"
+        case .outbound:
+            return "phone.arrow.up.right"
+        }
+    }
+
+    private var iconColor: Color {
+        switch record.outcome {
+        case .answered, .transferred: return record.direction == .inbound ? .blue : .green
+        case .answeredElsewhere: return .secondary
+        case .missed, .failed: return .red
+        case .rejected, .cancelled: return .secondary
+        }
+    }
+
+    private var subtitle: String {
+        switch record.outcome {
+        case .answered:
+            let label = record.direction == .inbound ? "Incoming" : "Outgoing"
+            return "\(label) \(formatDuration(record.duration))"
+        case .transferred: return "Transferred \(formatDuration(record.duration))"
+        case .answeredElsewhere: return "Answered on another device"
+        case .missed: return "Missed"
+        case .rejected: return "Declined"
+        case .cancelled: return "Cancelled"
+        case .failed: return record.direction == .inbound ? "Missed" : "Failed"
+        }
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {

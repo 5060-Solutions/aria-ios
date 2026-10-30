@@ -10,8 +10,6 @@ targets:
     platform: iOS
     sources:
       - path: AriaSoftphone
-        excludes:
-          - "Aria Softphone/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria
@@ -29,6 +27,17 @@ targets:
         # Both are harmless in a build without the AI feature: nothing
         # references them and the linker drops them.
         OTHER_LDFLAGS: -lc++ -framework Accelerate
+      # Expanded into aps-environment in the entitlements file: APNs rejects a
+      # development-environment token sent to the production service and vice
+      # versa, so a Release build must ask for production.
+      configs:
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
+    scheme:
+      testTargets:
+        - AriaSoftphoneTests
     dependencies:
       - framework: AriaMobileCore.xcframework
         embed: true
@@ -49,3 +58,16 @@ targets:
             echo "note: Run ./build-rust.sh manually before building"
           fi
         basedOnDependencyAnalysis: false
+
+  AriaSoftphoneTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AriaSoftphoneTests
+    dependencies:
+      - target: AriaSoftphone
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria.tests

@@ -81,7 +81,7 @@ struct SetupView: View {
                 .frame(height: 60)
         }
         .sheet(isPresented: $showQRScanner) {
-            QRScannerView { credentials in
+            ProvisioningFlowView { credentials in
                 handleQRScanned(credentials)
                 showQRScanner = false
             }
@@ -100,16 +100,8 @@ struct SetupView: View {
     }
 
     private func handleQRScanned(_ credentials: ProvisioningCredentials) {
-        UserDefaults.standard.set(credentials.username, forKey: "sipUsername")
-        // SIP password is a secret — store it in the Keychain, never UserDefaults.
-        KeychainStore.set(credentials.password, forKey: KeychainStore.sipPasswordKey)
-        let domain = credentials.tenantDomain.isEmpty ? credentials.server : credentials.tenantDomain
-        UserDefaults.standard.set(domain, forKey: "sipDomain")
-        UserDefaults.standard.set(credentials.server, forKey: "sipRegistrar")
-        UserDefaults.standard.set(credentials.port, forKey: "sipPort")
-        UserDefaults.standard.set(credentials.displayName, forKey: "sipDisplayName")
-        UserDefaults.standard.set(credentials.transport.lowercased(), forKey: "sipTransport")
-        UserDefaults.standard.set(credentials.apiUrl, forKey: "apiUrl")
+        AccountSession.shared.applyProvisioning(credentials)
+        AccountSession.shared.login()
     }
 }
 
@@ -118,10 +110,11 @@ struct SetupView: View {
 struct MainTabView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
+    @ObservedObject private var voicemail = VoicemailService.shared
     @State private var selectedTab: Tab = .dialer
 
     enum Tab {
-        case dialer, contacts, history, settings
+        case dialer, contacts, history, voicemail, settings
     }
 
     var body: some View {
@@ -144,6 +137,13 @@ struct MainTabView: View {
                         Label("History", systemImage: "clock.fill")
                     }
                     .tag(Tab.history)
+
+                VoicemailView()
+                    .tabItem {
+                        Label("Voicemail", systemImage: "recordingtape")
+                    }
+                    .tag(Tab.voicemail)
+                    .badge(voicemail.unreadCount)
 
                 SettingsView()
                     .tabItem {

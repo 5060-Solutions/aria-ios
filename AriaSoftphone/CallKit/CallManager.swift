@@ -1,16 +1,43 @@
 import Foundation
 import CallKit
 import AVFoundation
+import UIKit
 
 /// Manages CallKit integration and call lifecycle.
+///
+/// All state is mutated on the main queue: the provider delegate runs there,
+/// and engine callbacks and background work hop back to it.
 class CallManager: NSObject, ObservableObject {
     static let shared = CallManager()
 
     @Published var activeCall: ActiveCall?
     @Published var incomingOffer: CallOffer?
+    /// Whether audio is currently going to the built-in speaker. Follows the
+    /// actual route, so it is also right after a change from Control Centre
+    /// or a Bluetooth device connecting.
+    @Published private(set) var isSpeakerOn = false
 
     private let provider: CXProvider
     private let callController = CXCallController()
+
+    /// Tokens of incoming calls that have ended here (declined, missed,
+    /// answered and hung up, refused as busy). A repeat push or a late
+    /// `onIncomingCall` for one of these is stale and must not ring again.
+    private var finishedTokens = RecentTokens(capacity: 64)
+
+    /// An accept whose result is unknown: the core reports Ended and then
+    /// hangs up or rejects the call itself.
+    static func acceptOutcomeUnknown(_ error: Error) -> Bool {
+        switch error as? MobileError {
+        case .Timeout, .NetworkError: return true
+        default: return false
+        }
+    }
+
+    static func isCancellation(_ error: Error) -> Bool {
+        if case MobileError.Cancelled = error { return true }
+        return false
+    }
 
     private override init() {
         let config = CXProviderConfiguration()
@@ -18,17 +45,45 @@ class CallManager: NSObject, ObservableObject {
         config.maximumCallsPerCallGroup = 1
         config.maximumCallGroups = 1
         config.supportedHandleTypes = [.phoneNumber, .generic]
-        config.iconTemplateImageData = nil // Set app icon data here
+        config.iconTemplateImageData = UIImage(named: "CallKitIcon")?.pngData()
 
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: DispatchQueue.main)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(audioRouteChanged),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+    }
+
+    // MARK: - Audio Route
+
+    /// Send call audio to the speaker, or back to the default route.
+    func setSpeaker(_ on: Bool) {
+        do {
+            try AVAudioSession.sharedInstance().overrideOutputAudioPort(on ? .speaker : .none)
+        } catch {
+            print("Failed to change audio route: \(error)")
+        }
+        refreshAudioRoute()
+    }
+
+    @objc private func audioRouteChanged(_ notification: Notification) {
+        DispatchQueue.main.async { self.refreshAudioRoute() }
+    }
+
+    private func refreshAudioRoute() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        isSpeakerOn = outputs.contains { $0.portType == .builtInSpeaker }
     }
 
     // MARK: - Incoming Call (from push notification)
 
-    /// Report an incoming call to CallKit (triggered by PushKit).
-    func reportIncomingCall(
+    /// Report an incoming call to CallKit.
+    private func reportIncomingCall(
         uuid: UUID,
         callerUri: String,
         callerName: String?,
@@ -50,61 +105,184 @@ class CallManager: NSObject, ObservableObject {
             if let error = error {
                 print("Failed to report incoming call: \(error)")
             }
-            completion(error)
+            DispatchQueue.main.async { completion(error) }
         }
     }
 
-    /// Handle incoming call offer from the Rust core.
-    func handleIncomingCall(offer: CallOffer) {
-        let uuid = UUID()
-        incomingOffer = offer
+    /// Report a call announced by a VoIP push.
+    ///
+    /// Call synchronously from the PushKit delegate, before any async work:
+    /// PushKit terminates an app that does not report a call for every push.
+    /// The completion runs on the main queue with an error if the call was
+    /// not taken (CallKit refused it, it duplicates a known call, or another
+    /// call is in progress); only on `nil` should the offer be fetched.
+    func reportPushIncomingCall(
+        uuid: UUID,
+        callToken: String,
+        callerUri: String,
+        callerName: String?,
+        completion: @escaping (Error?) -> Void
+    ) {
+        switch IncomingPushTriage.decide(
+            callToken: callToken,
+            activeCall: activeCall,
+            finishedTokens: finishedTokens
+        ) {
+        case .duplicate:
+            // A redelivered push for the call already ringing (or one that
+            // has ended). PushKit still needs a report, so report a call and
+            // end it at once — without touching the real one or history.
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+                if error == nil {
+                    self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+                }
+                completion(CallManagerError.duplicate)
+            }
 
-        reportIncomingCall(
-            uuid: uuid,
-            callerUri: offer.callerUri,
-            callerName: offer.callerName
-        ) { [weak self] error in
-            guard error == nil else { return }
-            self?.activeCall = ActiveCall(
+        case .busy:
+            // One call at a time: decline the second rather than let it
+            // replace the call in progress.
+            finishedTokens.insert(callToken)
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+                guard let self = self else { return }
+                if error == nil {
+                    self.provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
+                }
+                self.recordMissedCall(remoteUri: callerUri, remoteName: callerName)
+                DispatchQueue.global(qos: .utility).async {
+                    try? SipEngineManager.shared.ensureReady()
+                    try? SipEngineManager.shared.rejectCall(callToken: callToken)
+                }
+                completion(CallManagerError.busy)
+            }
+
+        case .accept:
+            // Claim the slot now, not in the completion: a second push that
+            // arrives before CallKit answers must see this call.
+            activeCall = ActiveCall(
                 uuid: uuid,
-                callToken: offer.callToken,
-                remoteUri: offer.callerUri,
-                remoteName: offer.callerName,
+                callToken: callToken,
+                remoteUri: callerUri,
+                remoteName: callerName,
                 direction: .inbound,
                 state: .incoming
             )
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    // CallKit refused it (Do Not Disturb, blocked caller):
+                    // the call is not ours to ring.
+                    if self.activeCall?.uuid == uuid {
+                        self.activeCall = nil
+                        self.incomingOffer = nil
+                    }
+                    self.finishedTokens.insert(callToken)
+                    completion(error)
+                    return
+                }
+                completion(nil)
+            }
         }
+    }
+
+    /// Attach the offer fetched for a pushed call.
+    func offerReceived(_ offer: CallOffer) {
+        guard activeCall?.callToken == offer.callToken else { return }
+        incomingOffer = offer
+    }
+
+    /// The offer for a pushed call could not be fetched: end it in CallKit.
+    /// Only a call that is still ringing — answering does not need the offer,
+    /// so a late failure must not end a call the user has picked up.
+    func failIncomingCall(uuid: UUID) {
+        guard let call = activeCall, call.uuid == uuid, call.state == .incoming else { return }
+        provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+        finishCall(call, outcome: .missed)
+    }
+
+    /// Satisfy PushKit for a push that cannot become a call (malformed, or
+    /// from a gateway we do not trust): report a call and end it at once.
+    ///
+    /// Uses the shared provider. Ending the call through a throwaway
+    /// `CXProvider` never reached the call the shared one had reported, so it
+    /// was left ringing.
+    func reportAndEndInvalidPush(completion: @escaping () -> Void) {
+        let uuid = UUID()
+        reportIncomingCall(uuid: uuid, callerUri: "Unknown", callerName: nil) { [weak self] error in
+            if error == nil {
+                self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+            }
+            completion()
+        }
+    }
+
+    /// The engine's `onIncomingCall`.
+    ///
+    /// It only fires from `handlePushNotification`, i.e. for a call PushKit
+    /// has already announced and this class has already reported, so it
+    /// never reports a call itself. On iOS every incoming call must arrive by
+    /// PushKit anyway. An offer for any other token — one that has since been
+    /// declined or missed, arriving late — is stale and dropped; reporting it
+    /// would ring a call that no longer exists.
+    func handleIncomingCall(offer: CallOffer) {
+        guard activeCall?.callToken == offer.callToken else {
+            print("Ignoring an offer for a call that is not ringing")
+            return
+        }
+        offerReceived(offer)
     }
 
     // MARK: - Outgoing Call
 
     func startOutgoingCall(uri: String) {
+        guard activeCall == nil else { return }
+
         let uuid = UUID()
+        // Set before the request so the start action finds it. The engine's
+        // id is chosen now, before dialing, so the call can be hung up by it
+        // at any point — even before makeCallWithId has run.
+        var call = ActiveCall(
+            uuid: uuid,
+            callToken: nil,
+            remoteUri: uri,
+            remoteName: nil,
+            direction: .outbound,
+            state: .connecting
+        )
+        call.engineCallId = newOutgoingCallId()
+        activeCall = call
+
         let handle = CXHandle(type: .generic, value: uri)
         let startCallAction = CXStartCallAction(call: uuid, handle: handle)
         startCallAction.isVideo = false
 
         let transaction = CXTransaction(action: startCallAction)
         callController.request(transaction) { error in
-            if let error = error {
-                print("Failed to start call: \(error)")
-                return
-            }
-
+            guard let error = error else { return }
+            print("Failed to start call: \(error)")
             DispatchQueue.main.async {
-                self.activeCall = ActiveCall(
-                    uuid: uuid,
-                    callToken: nil,
-                    remoteUri: uri,
-                    remoteName: nil,
-                    direction: .outbound,
-                    state: .connecting
-                )
+                // CallKit refused the call outright (e.g. during a cellular
+                // call); it was never placed, so it is not history.
+                if self.activeCall?.uuid == uuid {
+                    self.activeCall = nil
+                }
             }
         }
     }
 
     // MARK: - Call Actions
+
+    /// Answer the ringing call from the in-app UI. Goes through CallKit so the
+    /// system call UI and audio session follow.
+    func answerCall() {
+        guard let call = activeCall, call.state == .incoming else { return }
+        let answerAction = CXAnswerCallAction(call: call.uuid)
+        callController.request(CXTransaction(action: answerAction)) { error in
+            if let error = error {
+                print("Failed to answer call: \(error)")
+            }
+        }
+    }
 
     func endCall() {
         guard let call = activeCall else { return }
@@ -113,6 +291,35 @@ class CallManager: NSObject, ObservableObject {
         callController.request(transaction) { error in
             if let error = error {
                 print("Failed to end call: \(error)")
+            }
+        }
+    }
+
+    /// Blind-transfer the connected call to `target`.
+    ///
+    /// The engine blocks for up to about 8 s, so this runs off the main queue
+    /// and reports back there: `nil` once the PBX has taken the call (the
+    /// engine's `.ended` then ends it here and records it as transferred), or
+    /// an error to show, with the call still up.
+    func transferCall(to target: String, completion: @escaping (TransferError?) -> Void) {
+        let target = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let call = activeCall, let callId = call.callId else {
+            completion(.notActive)
+            return
+        }
+        guard TransferError.isAcceptableTarget(target) else {
+            completion(.invalidTarget)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try SipEngineManager.shared.transferCall(callId: callId, target: target)
+                // The call's Ended(Transferred) ends and records it.
+                DispatchQueue.main.async { completion(nil) }
+            } catch {
+                print("Transfer failed: \(error)")
+                DispatchQueue.main.async { completion(TransferError(error)) }
             }
         }
     }
@@ -142,39 +349,100 @@ class CallManager: NSObject, ObservableObject {
         callController.request(transaction) { _ in }
     }
 
-    /// Handle remote hangup detected by polling.
-    func handleRemoteHangup() {
-        guard let call = activeCall else { return }
-        provider.reportCall(with: call.uuid, endedAt: Date(), reason: .remoteEnded)
+    // MARK: - Lifecycle
+
+    /// The engine has a media session up for the call: mark it connected.
+    ///
+    /// Both directions come through here, so transcription capture starts for
+    /// inbound calls as well as outbound ones.
+    ///
+    /// Reached from the `Connected` event or from makeCallWithId / accept
+    /// returning, in whichever order they arrive; the second is a no-op.
+    private func callDidConnect(callId: String) {
+        guard var call = activeCall, call.connectedAt == nil else { return }
+        let now = Date()
+        call.callId = callId
+        call.state = .connected
+        call.connectedAt = now
+        activeCall = call
+
+        if call.direction == .outbound {
+            provider.reportOutgoingCall(with: call.uuid, connectedAt: now)
+        }
+        // A no-op unless transcription is on and a speech model is present.
+        CallTranscription.shared.onCallStarted(callId: callId)
+    }
+
+    /// Tear down local state for a call that has ended, however it ended.
+    /// CallKit must already have been told (by an action or `reportCall`).
+    private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
+        CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
+
         // Runs on its own queue and only if the user opted in, so a slow
         // transcription cannot hold up tearing the call down.
         if let callId = call.callId {
             CallTranscription.shared.onCallEnded(callId: callId)
         }
-        activeCall = nil
-        incomingOffer = nil
+        if call.direction == .inbound, let token = call.callToken {
+            finishedTokens.insert(token)
+        }
+        // Normally CallKit's deactivation already did this; stopping here too
+        // means a call never inherits the last one's engine or buffers.
+        SipEngineManager.shared.audioBridge.stop()
+
+        if activeCall?.uuid == call.uuid {
+            activeCall = nil
+            incomingOffer = nil
+        }
+    }
+
+    /// Record an incoming call that never became the active call.
+    private func recordMissedCall(remoteUri: String, remoteName: String?) {
+        CallHistoryStore.shared.add(CallRecord(
+            direction: .inbound,
+            remoteUri: remoteUri,
+            remoteName: remoteName,
+            startedAt: Date(),
+            duration: 0,
+            outcome: .missed
+        ))
     }
 
     // MARK: - State Updates
 
+    /// Call-state events from the engine, matched to the call by id.
+    ///
+    /// Connects are handled where `makeCall` / `acceptCall` return, since
+    /// those report what the app needs. From this path come the call's id for
+    /// an outgoing call (its first `.ringing`), hold/mute changes, and the end
+    /// of a call the user did not end here: a remote hangup, a caller
+    /// cancelling before answer, a failed outgoing call, or a completed
+    /// transfer. A local hangup's `.ended` arrives after the call is already
+    /// gone and matches nothing.
     func updateCallState(info: CallInfo) {
         guard var call = activeCall else { return }
 
+        guard call.engineCallId == info.callId else { return }
+
         switch info.state {
-        case .connected:
-            call.state = .connected
-            call.connectedAt = Date()
-            provider.reportOutgoingCall(with: call.uuid, connectedAt: call.connectedAt)
-            // A no-op unless transcription is on and a speech model is present.
-            CallTranscription.shared.onCallStarted(callId: info.callId)
         case .ended:
-            call.state = .ended
-            provider.reportCall(with: call.uuid, endedAt: Date(), reason: .remoteEnded)
-            CallTranscription.shared.onCallEnded(callId: info.callId)
-            activeCall = nil
+            let ending = CallEnding.resolve(for: call, reason: info.endReason)
+            if let reason = ending.callKitReason {
+                provider.reportCall(with: call.uuid, endedAt: Date(), reason: reason)
+            }
+            finishCall(call, outcome: ending.outcome)
             return
         case .onHold:
             call.state = .onHold
+        case .connected:
+            if call.connectedAt == nil {
+                // Events are the source of truth; the method's return may
+                // arrive before or after this.
+                callDidConnect(callId: info.callId)
+                guard let connected = activeCall, connected.uuid == call.uuid else { return }
+                call = connected
+            }
+            call.state = .connected
         default:
             break
         }
@@ -189,84 +457,195 @@ class CallManager: NSObject, ObservableObject {
 
 extension CallManager: CXProviderDelegate {
     func providerDidReset(_ provider: CXProvider) {
-        // Clean up all calls
-        activeCall = nil
+        // CallKit has dropped every call. Release ours in the engine too.
+        guard let call = activeCall else { return }
+        finishCall(call, outcome: CallOutcome.resolve(for: call, endedLocally: true))
+        hangUpInEngine(call)
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        // Configure audio session for outgoing call
-        configureAudioSession()
-
-        provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
-
-        // Make the call via Rust engine on a background thread
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let uri = action.handle.value
-                // Credentials are loaded from the registered SIP account
-                let credentials = SipCredentials(
-                    username: UserDefaults.standard.string(forKey: "sipUsername") ?? "",
-                    password: KeychainStore.get(KeychainStore.sipPasswordKey) ?? "",
-                    domain: UserDefaults.standard.string(forKey: "sipDomain") ?? "",
-                    registrar: nil,
-                    transport: UserDefaults.standard.string(forKey: "sipTransport") ?? "udp",
-                    port: UInt16(UserDefaults.standard.integer(forKey: "sipPort")),
-                    authUsername: nil,
-                    displayName: UserDefaults.standard.string(forKey: "sipDisplayName") ?? ""
-                )
-                let info = try SipEngineManager.shared.makeCall(
-                    uri: uri,
-                    credentials: credentials
-                )
-                DispatchQueue.main.async {
-                    self.activeCall?.callId = info.callId
-                    self.activeCall?.state = .connecting
-                }
-            } catch {
-                print("Failed to make outgoing call: \(error)")
-            }
-            action.fulfill()
-        }
-    }
-
-    func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        configureAudioSession()
-
-        // Accept the incoming call via Rust engine
-        guard let offer = incomingOffer else {
+        guard let call = activeCall, call.uuid == action.callUUID else {
             action.fail()
             return
         }
 
+        let account = AccountSettings.load()
+        guard account.isProvisioned,
+              let password = KeychainStore.get(KeychainStore.sipPasswordKey),
+              !password.isEmpty else {
+            print("Cannot place call: no account configured")
+            action.fail()
+            activeCall = nil
+            return
+        }
+
+        // Configure audio session for outgoing call
+        configureAudioSession()
+
+        provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
+        // Fulfil now: the engine's makeCall blocks until the far end answers,
+        // which can outlast the action's timeout. A failure from here on is
+        // reported to CallKit as a failed call instead.
+        action.fulfill()
+
+        let uuid = call.uuid
+        let uri = action.handle.value
+        let credentials = account.sipCredentials(password: password)
+        guard let callId = call.engineCallId else {
+            provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+            finishCall(call, outcome: .failed)
+            return
+        }
+
+        // Make the call via Rust engine on a background thread
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let info = try SipEngineManager.shared.acceptCall(callToken: offer.callToken)
+                try SipEngineManager.shared.ensureReady()
+                // Ended while the engine was being readied, when there may
+                // have been no engine to take the hangup: never dial. From
+                // here the engine exists, so a hangup by id cancels the call
+                // whether it lands before or during makeCallWithId.
+                let stillWanted = DispatchQueue.main.sync { self.activeCall?.uuid == uuid }
+                guard stillWanted else {
+                    throw MobileError.Cancelled(message: "ended before dialling")
+                }
+                let info = try SipEngineManager.shared.makeCall(
+                    callId: callId,
+                    uri: uri,
+                    credentials: credentials
+                )
                 DispatchQueue.main.async {
-                    self.activeCall?.state = .connected
-                    self.activeCall?.connectedAt = Date()
-                    self.activeCall?.callId = info.callId
-                    self.incomingOffer = nil
-                    action.fulfill()
+                    guard self.activeCall?.uuid == uuid else {
+                        // Hung up while it was connecting: drop the leg the
+                        // gateway has just set up.
+                        DispatchQueue.global(qos: .utility).async {
+                            try? SipEngineManager.shared.hangup(callId: info.callId)
+                        }
+                        return
+                    }
+                    self.callDidConnect(callId: info.callId)
                 }
             } catch {
-                print("Failed to accept call: \(error)")
-                action.fail()
+                let cancelled = Self.isCancellation(error)
+                if !cancelled {
+                    print("Failed to make outgoing call: \(error)")
+                }
+                DispatchQueue.main.async {
+                    guard let call = self.activeCall, call.uuid == uuid else { return }
+                    if cancelled {
+                        // Hung up while ringing. The end action normally got
+                        // here first; if not, the user still ended it, so it
+                        // is not a failure and not a remote end.
+                        self.finishCall(call, outcome: .cancelled)
+                    } else {
+                        self.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+                        self.finishCall(call, outcome: .failed)
+                    }
+                }
             }
         }
     }
 
-    func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        // Hang up via Rust engine
-        if let callId = activeCall?.callId {
-            CallTranscription.shared.onCallEnded(callId: callId)
-            try? SipEngineManager.shared.hangup(callId: callId)
-        } else if let callToken = activeCall?.callToken {
-            try? SipEngineManager.shared.rejectCall(callToken: callToken)
+    func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        // Answer with the call token from the push, not the fetched offer: the
+        // user can answer before the offer arrives, and accepting only needs
+        // the token.
+        guard let call = activeCall, call.uuid == action.callUUID,
+              let callToken = call.callToken else {
+            action.fail()
+            return
         }
 
-        activeCall = nil
-        incomingOffer = nil
+        configureAudioSession()
+        activeCall?.state = .connecting
+        let uuid = call.uuid
+
+        // Fulfil now. The accept below waits on the network (and possibly a
+        // token renewal), and holding the action that long risks CallKit
+        // timing it out with the caller still ringing; fulfilling also lets
+        // CallKit activate the audio session while the media comes up. A
+        // failure from here on is reported as a failed call.
         action.fulfill()
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try SipEngineManager.shared.ensureReady()
+                let info = try SipEngineManager.shared.acceptCall(callToken: callToken)
+                DispatchQueue.main.async {
+                    guard self.activeCall?.uuid == uuid else {
+                        // Hung up while the accept was in flight.
+                        DispatchQueue.global(qos: .utility).async {
+                            try? SipEngineManager.shared.hangup(callId: info.callId)
+                        }
+                        return
+                    }
+                    self.callDidConnect(callId: info.callId)
+                }
+            } catch {
+                print("Failed to accept call: \(error)")
+                // With an unknown outcome (Timeout, NetworkError) the core
+                // reports Ended and cleans the call up itself. A refused
+                // accept leaves it offered at the gateway, ringing the caller
+                // with nobody here, so reject it.
+                if !Self.acceptOutcomeUnknown(error) {
+                    DispatchQueue.global(qos: .utility).async {
+                        try? SipEngineManager.shared.rejectCall(callToken: callToken)
+                    }
+                }
+                DispatchQueue.main.async {
+                    guard let call = self.activeCall, call.uuid == uuid else { return }
+                    self.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+                    self.finishCall(call, outcome: .failed)
+                }
+            }
+        }
+    }
+
+    /// CallKit gave up waiting for an action. Answer and start are fulfilled
+    /// at once, so this should not happen for them, but if it does the call
+    /// is dead in CallKit and must not be left up in the engine.
+    func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+        guard let callAction = action as? CXCallAction,
+              callAction is CXAnswerCallAction || callAction is CXStartCallAction,
+              let call = activeCall, call.uuid == callAction.callUUID else { return }
+        print("CallKit timed out performing \(type(of: action))")
+        provider.reportCall(with: call.uuid, endedAt: Date(), reason: .failed)
+        finishCall(call, outcome: call.connectedAt != nil ? .answered : .failed)
+        hangUpInEngine(call)
+    }
+
+    func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        guard let call = activeCall, call.uuid == action.callUUID else {
+            action.fulfill()
+            return
+        }
+
+        finishCall(call, outcome: CallOutcome.resolve(for: call, endedLocally: true))
+        action.fulfill()
+        hangUpInEngine(call)
+    }
+
+    /// Release a call the user ended here.
+    ///
+    /// A connected call, or an outgoing call at any stage, is hung up by its
+    /// id: the core cancels a ringing call at the gateway (or never dials
+    /// one not yet sent) and `makeCallWithId` throws `Cancelled`. An
+    /// incoming call that was never answered is rejected instead. Runs off
+    /// the main queue, since it waits on the network.
+    private func hangUpInEngine(_ call: ActiveCall) {
+        switch call.releaseOnLocalEnd {
+        case .hangup(let callId):
+            DispatchQueue.global(qos: .userInitiated).async {
+                try? SipEngineManager.shared.hangup(callId: callId)
+            }
+        case .reject(let callToken):
+            DispatchQueue.global(qos: .userInitiated).async {
+                try? SipEngineManager.shared.ensureReady()
+                try? SipEngineManager.shared.rejectCall(callToken: callToken)
+            }
+        case .none:
+            break
+        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
@@ -293,26 +672,30 @@ extension CallManager: CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        // Audio session activated by CallKit — RTP can now use hardware audio
-        print("Audio session activated")
+        // CallKit has activated the session: the hardware is ours until it
+        // deactivates it. Only now may the audio engine start.
+        SipEngineManager.shared.audioBridge.start()
+        refreshAudioRoute()
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        print("Audio session deactivated")
+        SipEngineManager.shared.audioBridge.stop()
     }
 
     // MARK: - Audio Session
 
+    /// Set the category for a call. CallKit activates the session itself
+    /// (then calls `didActivate`); activating it here as well raced CallKit
+    /// and could leave the session at normal priority. Output starts on the
+    /// receiver — the speaker is the user's choice, not a default.
     private func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [
-                .allowBluetoothA2DP,
-                .defaultToSpeaker,
+                .allowBluetoothHFP,
             ])
             try session.setPreferredSampleRate(48000)
             try session.setPreferredIOBufferDuration(0.02) // 20ms
-            try session.setActive(true)
         } catch {
             print("Failed to configure audio session: \(error)")
         }
@@ -324,8 +707,20 @@ extension CallManager: CXProviderDelegate {
 struct ActiveCall: Identifiable {
     let id = UUID()
     let uuid: UUID
-    var callToken: String?
-    var callId: String?
+    /// When the call was placed or started ringing.
+    let startedAt = Date()
+    var callToken: String? {
+        didSet { deriveEngineCallId() }
+    }
+    /// The engine's id for the call once it has connected.
+    var callId: String? {
+        didSet { if let callId = callId { engineCallId = callId } }
+    }
+    /// The id the engine's events carry for this call, known before it
+    /// connects: `incoming-<call_token>` for an incoming call, and for an
+    /// outgoing one the id from its first `.ringing` event.
+    var engineCallId: String?
+
     var remoteUri: String
     var remoteName: String?
     var direction: CallDirection
@@ -333,6 +728,48 @@ struct ActiveCall: Identifiable {
     var isMuted: Bool = false
     var isOnHold: Bool = false
     var connectedAt: Date?
+
+    init(
+        uuid: UUID,
+        callToken: String?,
+        remoteUri: String,
+        remoteName: String?,
+        direction: CallDirection,
+        state: ActiveCallState
+    ) {
+        self.uuid = uuid
+        self.callToken = callToken
+        self.remoteUri = remoteUri
+        self.remoteName = remoteName
+        self.direction = direction
+        self.state = state
+        deriveEngineCallId()
+    }
+
+    private mutating func deriveEngineCallId() {
+        if engineCallId == nil, direction == .inbound, let token = callToken {
+            engineCallId = "incoming-\(token)"
+        }
+    }
+
+    /// What the engine must do when the user ends this call here.
+    enum EngineRelease: Equatable {
+        case hangup(callId: String)
+        case reject(callToken: String)
+        case none
+    }
+
+    var releaseOnLocalEnd: EngineRelease {
+        if let callId = callId { return .hangup(callId: callId) }
+        switch direction {
+        case .outbound:
+            // Chosen before dialing, so valid before, during and after it:
+            // the core cancels a ringing call at the gateway by this id.
+            return engineCallId.map { .hangup(callId: $0) } ?? .none
+        case .inbound:
+            return callToken.map { .reject(callToken: $0) } ?? .none
+        }
+    }
 
     var duration: TimeInterval {
         guard let connectedAt = connectedAt else { return 0 }
@@ -349,5 +786,207 @@ struct ActiveCall: Identifiable {
 
     enum ActiveCallState {
         case incoming, connecting, connected, onHold, ended
+    }
+}
+
+// MARK: - Call Outcome
+
+/// How a call ended, from the user's side. Recorded in call history.
+enum CallOutcome: String, Codable {
+    /// Connected, then ended by either side.
+    case answered
+    /// Connected, then handed to another party by blind transfer.
+    case transferred
+    /// Incoming, picked up on another of the user's devices.
+    case answeredElsewhere
+    /// Incoming, never answered here: the caller gave up or it could not be
+    /// delivered.
+    case missed
+    /// Incoming, declined by the user.
+    case rejected
+    /// Outgoing, abandoned by the user before it connected.
+    case cancelled
+    /// Could not be set up.
+    case failed
+
+    static func resolve(for call: ActiveCall, endedLocally: Bool) -> CallOutcome {
+        if call.connectedAt != nil { return .answered }
+        switch call.direction {
+        case .inbound: return endedLocally ? .rejected : .missed
+        case .outbound: return endedLocally ? .cancelled : .failed
+        }
+    }
+}
+
+/// How to report a call the engine ended, to CallKit and to history.
+///
+/// The core says why in `CallInfo.endReason`. Endings that follow the app's
+/// own action (a local hangup, a cancel, our own decline) were already
+/// reported to CallKit and recorded by that action, and their `Ended` arrives
+/// after the call is gone here; if one does reach a live call it is finished
+/// without a second CallKit report.
+struct CallEnding: Equatable {
+    /// nil: CallKit already knows, from the action that caused it.
+    let callKitReason: CXCallEndedReason?
+    let outcome: CallOutcome
+
+    static func resolve(for call: ActiveCall, reason: EndReason?) -> CallEnding {
+        let connected = call.connectedAt != nil
+        switch reason {
+        case .remoteHangup:
+            return CallEnding(callKitReason: .remoteEnded, outcome: connected ? .answered : unconnectedRemoteEnd(call))
+        case .callerCancelled:
+            return CallEnding(callKitReason: .unanswered, outcome: .missed)
+        case .answeredElsewhere:
+            return CallEnding(callKitReason: .answeredElsewhere, outcome: .answeredElsewhere)
+        case .rejected:
+            // Our own decline is recorded by the end action and its Ended
+            // never matches a live call, so this one was declined elsewhere.
+            return CallEnding(callKitReason: .declinedElsewhere, outcome: .rejected)
+        case .transferred:
+            return CallEnding(callKitReason: .remoteEnded, outcome: .transferred)
+        case .failed:
+            return CallEnding(callKitReason: .failed, outcome: connected ? .answered : .failed)
+        case .localHangup, .cancelled:
+            return CallEnding(callKitReason: nil, outcome: CallOutcome.resolve(for: call, endedLocally: true))
+        case nil:
+            // A core without end reasons: infer from the call's state.
+            if connected { return CallEnding(callKitReason: .remoteEnded, outcome: .answered) }
+            switch call.direction {
+            case .inbound: return CallEnding(callKitReason: .unanswered, outcome: .missed)
+            case .outbound: return CallEnding(callKitReason: .failed, outcome: .failed)
+            }
+        }
+    }
+
+    private static func unconnectedRemoteEnd(_ call: ActiveCall) -> CallOutcome {
+        call.direction == .inbound ? .missed : .failed
+    }
+}
+
+/// Why a transfer did not happen. In every case the call is still up.
+enum TransferError: LocalizedError, Equatable {
+    case invalidTarget
+    case notActive
+    /// The PBX refused the REFER, or reported that the transfer failed. The
+    /// core's message says which, with the SIP status when there is one.
+    case refused(String)
+    case timedOut
+    case unavailable
+
+    init(_ error: Error) {
+        switch error as? MobileError {
+        case .InvalidTarget: self = .invalidTarget
+        case .InvalidState: self = .notActive
+        case .CallFailed(let message): self = .refused(message)
+        case .Timeout: self = .timedOut
+        default: self = .unavailable
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidTarget:
+            return "That number can't be transferred to. Check it and try again."
+        case .notActive:
+            return "This call can't be transferred right now."
+        case .refused(let message):
+            return Self.describeRefusal(message)
+        case .timedOut:
+            return "The phone system didn't respond in time. The call has not been transferred."
+        case .unavailable:
+            return "Couldn't reach the phone system. The call has not been transferred."
+        }
+    }
+
+    /// The core's `CallFailed` message, as a sentence for the user, with the
+    /// common SIP statuses spelled out.
+    static func describeRefusal(_ message: String) -> String {
+        let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !detail.isEmpty else {
+            return "The phone system refused the transfer. You're still on the call."
+        }
+        var sentence = detail.prefix(1).uppercased() + detail.dropFirst()
+        if !sentence.hasSuffix(".") { sentence += "." }
+        if let reason = sipCode(in: detail).flatMap(sipReason) {
+            sentence += " \(reason)"
+        }
+        return sentence
+    }
+
+    private static func sipCode(in message: String) -> Int? {
+        guard let range = message.range(of: #"SIP (\d{3})"#, options: .regularExpression) else { return nil }
+        return Int(message[range].dropFirst(4))
+    }
+
+    private static func sipReason(_ code: Int) -> String? {
+        switch code {
+        case 404, 484: return "That number doesn't exist."
+        case 408, 480: return "Nobody answered there."
+        case 486, 600: return "That line is busy."
+        case 603: return "The call was declined there."
+        default: return nil
+        }
+    }
+
+    /// What the core would reject locally: empty, or characters that do not
+    /// belong in a SIP URI header.
+    static func isAcceptableTarget(_ target: String) -> Bool {
+        let forbidden = CharacterSet(charactersIn: "\r\n<>")
+        return !target.isEmpty && target.rangeOfCharacter(from: forbidden) == nil
+    }
+}
+
+/// A bounded record of recent call tokens, oldest dropped first.
+struct RecentTokens {
+    let capacity: Int
+    private var order: [String] = []
+    private var members: Set<String> = []
+
+    init(capacity: Int) {
+        self.capacity = max(1, capacity)
+    }
+
+    func contains(_ token: String) -> Bool {
+        members.contains(token)
+    }
+
+    mutating func insert(_ token: String) {
+        guard members.insert(token).inserted else { return }
+        order.append(token)
+        if order.count > capacity {
+            members.remove(order.removeFirst())
+        }
+    }
+}
+
+/// What to do with a VoIP push, given the calls already known.
+enum IncomingPushTriage: Equatable {
+    /// A new call, and the line is free.
+    case accept
+    /// The call already ringing or in progress, or one that has ended.
+    case duplicate
+    /// A different call while one is in progress.
+    case busy
+
+    static func decide(callToken: String, activeCall: ActiveCall?, finishedTokens: RecentTokens) -> IncomingPushTriage {
+        if activeCall?.callToken == callToken || finishedTokens.contains(callToken) {
+            return .duplicate
+        }
+        return activeCall == nil ? .accept : .busy
+    }
+}
+
+enum CallManagerError: LocalizedError {
+    case busy
+    case duplicate
+
+    var errorDescription: String? {
+        switch self {
+        case .busy:
+            return "Another call is in progress."
+        case .duplicate:
+            return "This call has already been reported."
+        }
     }
 }
