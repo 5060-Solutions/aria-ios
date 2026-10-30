@@ -483,6 +483,23 @@ class SipEngineManager: ObservableObject {
         try withAuthRetry { try engine.transferCall(callId: callId, target: target) }
     }
 
+    /// Attended transfer: join the far ends of `callId` (an incoming call
+    /// this phone answered) and `consultCallId` (an outgoing call it placed).
+    /// Blocks for up to about 45 s. On success the engine reports `.ended`
+    /// with reason `.transferred` for both; on failure both stay up.
+    func transferAttended(callId: String, consultCallId: String) throws {
+        guard let engine = engine else {
+            throw SipError.notConfigured
+        }
+        try withAuthRetry { try engine.transferAttended(callId: callId, consultCallId: consultCallId) }
+    }
+
+    /// Hold `activeCallId` and resume `heldCallId` in one step.
+    func swapCalls(activeCallId: String, heldCallId: String) throws {
+        guard let engine = engine else { return }
+        try engine.swapCalls(activeCallId: activeCallId, heldCallId: heldCallId)
+    }
+
     /// Mute/unmute.
     func setMute(callId: String, muted: Bool) throws {
         guard let engine = engine else { return }

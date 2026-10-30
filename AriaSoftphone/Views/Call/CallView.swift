@@ -12,9 +12,17 @@ struct CallView: View {
     @State private var txLevel: Float = 0
     @State private var pulseScale: CGFloat = 1.0
     @State private var isEncrypted = false
-    @State private var showTransfer = false
+    /// The call the transfer sheet is for, fixed when Transfer is tapped so
+    /// the sheet never moves to a call that takes the screen meanwhile.
+    @State private var transferCall: ActiveCall?
+    @State private var showAddCall = false
+    @State private var isCompletingTransfer = false
+    @State private var transferError: String?
 
     var body: some View {
+        // The call these controls were drawn for. Buttons act on it, not on
+        // whatever call is on screen when the tap lands.
+        let shown = callManager.activeCall
         ZStack {
             // Background gradient
             LinearGradient(
@@ -25,6 +33,20 @@ struct CallView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 24) {
+                // The other call: held, or the one in progress while a
+                // second call rings.
+                ForEach(callManager.otherCalls) { other in
+                    OtherCallRow(
+                        call: other,
+                        canSwap: canSwap(with: other),
+                        onSwap: {
+                            if let shown = shown {
+                                callManager.swapCalls(active: shown.uuid, held: other.uuid)
+                            }
+                        }
+                    )
+                }
+
                 Spacer()
 
                 // Caller info
@@ -78,7 +100,7 @@ struct CallView: View {
                 // DTMF overlay
                 if showDTMFKeypad {
                     DTMFKeypad { digit in
-                        callManager.sendDTMF(digit)
+                        if let shown = shown { callManager.sendDTMF(uuid: shown.uuid, digit) }
                         playDTMFTone(digit: digit)
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -92,7 +114,7 @@ struct CallView: View {
                             label: "Mute",
                             isActive: callManager.activeCall?.isMuted == true
                         ) {
-                            callManager.setMuted(!(callManager.activeCall?.isMuted ?? false))
+                            if let shown = shown { callManager.setMuted(uuid: shown.uuid, !shown.isMuted) }
                         }
 
                         CallControlButton(
@@ -108,7 +130,7 @@ struct CallView: View {
                             label: callManager.activeCall?.isOnHold == true ? "Resume" : "Hold",
                             isActive: callManager.activeCall?.isOnHold == true
                         ) {
-                            callManager.setHeld(!(callManager.activeCall?.isOnHold ?? false))
+                            if let shown = shown { callManager.setHeld(uuid: shown.uuid, !shown.isOnHold) }
                         }
                     }
 
@@ -123,23 +145,55 @@ struct CallView: View {
                             }
                         }
 
-                        CallControlButton(
-                            icon: "arrow.turn.up.right",
-                            label: "Transfer",
-                            isActive: false
-                        ) {
-                            showTransfer = true
+                        if callManager.canAddCall {
+                            CallControlButton(
+                                icon: "plus",
+                                label: "Add Call",
+                                isActive: false
+                            ) {
+                                showAddCall = true
+                            }
                         }
-                        .disabled(callManager.activeCall?.callId == nil)
+
+                        // The PBX only acts on a REFER from the side that
+                        // answered, so a call this phone placed cannot be
+                        // transferred.
+                        if callManager.activeCall?.direction == .inbound {
+                            CallControlButton(
+                                icon: "arrow.turn.up.right",
+                                label: "Transfer",
+                                isActive: false
+                            ) {
+                                transferCall = shown
+                            }
+                            .disabled(callManager.activeCall?.callId == nil)
+                        }
+                    }
+
+                    if let pair = callManager.attendedTransferPair {
+                        completeTransferButton(pair)
                     }
                 }
 
                 Spacer()
 
                 // End call / Accept-Reject buttons
-                if callManager.activeCall?.state == .incoming {
+                if callManager.activeCall?.state == .incoming, !callManager.otherCalls.isEmpty {
+                    // Call waiting: say what happens to the call in progress.
+                    HStack(spacing: 28) {
+                        AnswerChoiceButton(icon: "phone.down.fill", label: "Decline", color: .red) {
+                            if let shown = shown { callManager.endCall(uuid: shown.uuid) }
+                        }
+                        AnswerChoiceButton(icon: "phone.fill", label: "Hold & Accept", color: .green) {
+                            if let shown = shown { callManager.answerCall(uuid: shown.uuid, .holdOthers) }
+                        }
+                        AnswerChoiceButton(icon: "phone.arrow.down.left.fill", label: "End & Accept", color: .orange) {
+                            if let shown = shown { callManager.answerCall(uuid: shown.uuid, .endOthers) }
+                        }
+                    }
+                } else if callManager.activeCall?.state == .incoming {
                     HStack(spacing: 60) {
-                        Button(action: { callManager.endCall() }) {
+                        Button(action: { if let shown = shown { callManager.endCall(uuid: shown.uuid) } }) {
                             Circle()
                                 .fill(Color.red)
                                 .frame(width: 72, height: 72)
@@ -150,7 +204,7 @@ struct CallView: View {
                                 )
                         }
 
-                        Button(action: { callManager.answerCall() }) {
+                        Button(action: { if let shown = shown { callManager.answerCall(uuid: shown.uuid) } }) {
                             Circle()
                                 .fill(Color.green)
                                 .frame(width: 72, height: 72)
@@ -162,7 +216,7 @@ struct CallView: View {
                         }
                     }
                 } else {
-                    Button(action: { callManager.endCall() }) {
+                    Button(action: { if let shown = shown { callManager.endCall(uuid: shown.uuid) } }) {
                         Circle()
                             .fill(Color.red)
                             .frame(width: 72, height: 72)
@@ -178,12 +232,66 @@ struct CallView: View {
             }
             .padding()
         }
-        .sheet(isPresented: $showTransfer) {
-            TransferView()
+        .sheet(item: $transferCall) { call in
+            TransferView(callUUID: call.uuid, callerName: call.displayName)
                 .environmentObject(callManager)
+        }
+        .sheet(isPresented: $showAddCall) {
+            AddCallView()
+                .environmentObject(callManager)
+        }
+        .alert(
+            "Transfer Failed",
+            isPresented: Binding(
+                get: { transferError != nil },
+                set: { if !$0 { transferError = nil } }
+            ),
+            presenting: transferError
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
         }
         .onAppear { startTimers() }
         .onDisappear { stopTimers() }
+    }
+
+    // MARK: - Call waiting
+
+    /// Swap is offered from the talking call on screen to a held one.
+    private func canSwap(with other: ActiveCall) -> Bool {
+        guard let current = callManager.activeCall else { return false }
+        return callManager.registry.canSwap(active: current.uuid, held: other.uuid)
+    }
+
+    /// Join the caller to the consulted party and drop out of both calls.
+    private func completeTransferButton(_ pair: (transferred: ActiveCall, consult: ActiveCall)) -> some View {
+        Button {
+            isCompletingTransfer = true
+            callManager.completeAttendedTransfer(
+                transferred: pair.transferred.uuid,
+                consult: pair.consult.uuid
+            ) { error in
+                isCompletingTransfer = false
+                transferError = error?.localizedDescription
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if isCompletingTransfer {
+                    ProgressView().tint(.indigo)
+                } else {
+                    Image(systemName: "arrow.triangle.merge")
+                }
+                Text(isCompletingTransfer ? "Transferring..." : "Complete Transfer")
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(.indigo)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Capsule().fill(Color.white))
+        }
+        .disabled(isCompletingTransfer)
+        .accessibilityHint("Connects \(pair.transferred.displayName) to \(pair.consult.displayName) and ends both of your calls.")
     }
 
     // MARK: - State
@@ -261,6 +369,82 @@ struct CallView: View {
         ]
         if let soundID = toneMap[digit] {
             AudioServicesPlaySystemSound(soundID)
+        }
+    }
+}
+
+// MARK: - Other Call Row
+
+/// The call that is not on screen, with Swap when both are connected.
+struct OtherCallRow: View {
+    let call: ActiveCall
+    let canSwap: Bool
+    let onSwap: () -> Void
+
+    private var status: String {
+        switch call.state {
+        case .incoming: return "Incoming call"
+        case .connecting: return call.direction == .outbound ? "Calling..." : "Connecting..."
+        case .onHold: return "On hold"
+        case .connected: return call.isOnHold ? "On hold" : "Active"
+        case .ended: return "Call ended"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: call.isOnHold ? "pause.circle.fill" : "phone.circle.fill")
+                .font(.title2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.displayName)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(status)
+                    .font(.caption)
+                    .opacity(0.8)
+            }
+            Spacer()
+            if canSwap {
+                Button(action: onSwap) {
+                    Label("Swap", systemImage: "arrow.up.arrow.down")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.25)))
+                }
+            }
+        }
+        .foregroundColor(.white)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.15)))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Answer Choice Button
+
+/// One of the answer buttons shown when a second call rings.
+struct AnswerChoiceButton: View {
+    let icon: String
+    let label: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 64, height: 64)
+                    .overlay(
+                        Image(systemName: icon)
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    )
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.9))
+            }
         }
     }
 }

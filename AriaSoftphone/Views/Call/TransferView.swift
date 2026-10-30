@@ -1,9 +1,14 @@
 import SwiftUI
 import ContactsUI
 
-/// Blind transfer: pick a number (typed or from Contacts) and hand the call
-/// over to it.
+/// Transfer the call `callUUID`: pick a number (typed or from Contacts), then
+/// either hand the call over to it at once (blind), or call it first to
+/// introduce the caller (consult), holding this call, and complete the
+/// transfer from the call screen.
 struct TransferView: View {
+    let callUUID: UUID
+    let callerName: String
+
     @EnvironmentObject var callManager: CallManager
     @Environment(\.dismiss) private var dismiss
 
@@ -35,7 +40,16 @@ struct TransferView: View {
                     }
                     .disabled(isTransferring)
                 } footer: {
-                    Text("\(callManager.activeCall?.displayName ?? "The caller") will be connected to this number and your call will end.")
+                    Text("\(callerName) will be connected to this number and your call will end.")
+                }
+
+                Section {
+                    Button(action: consult) {
+                        Label("Consult First", systemImage: "phone.arrow.up.right")
+                    }
+                    .disabled(trimmedTarget.isEmpty || isTransferring || !callManager.canAddCall)
+                } footer: {
+                    Text("Puts \(callerName) on hold and calls this number, so you can speak to them before completing the transfer.")
                 }
 
                 if let errorMessage = errorMessage {
@@ -87,7 +101,7 @@ struct TransferView: View {
                 .ignoresSafeArea()
             }
             .onAppear { fieldFocused = true }
-            .onChange(of: callManager.activeCall == nil) { callEnded in
+            .onChange(of: callManager.registry[callUUID] == nil) { callEnded in
                 // The transfer went through (or the call ended some other way).
                 if callEnded { dismiss() }
             }
@@ -100,7 +114,7 @@ struct TransferView: View {
         errorMessage = nil
         fieldFocused = false
 
-        callManager.transferCall(to: trimmedTarget) { error in
+        callManager.transferCall(uuid: callUUID, to: trimmedTarget) { error in
             isTransferring = false
             if let error = error {
                 errorMessage = error.localizedDescription
@@ -109,13 +123,24 @@ struct TransferView: View {
             }
         }
     }
+
+    /// Call the target while this call holds; "Complete Transfer" then
+    /// appears on the call screen once the target answers.
+    private func consult() {
+        guard TransferError.isAcceptableTarget(trimmedTarget) else {
+            errorMessage = TransferError.invalidTarget.localizedDescription
+            return
+        }
+        callManager.startOutgoingCall(uri: trimmedTarget)
+        dismiss()
+    }
 }
 
 // MARK: - Contact Picker
 
 /// The system contact picker, limited to phone numbers. Runs out of process,
 /// so it needs no Contacts permission.
-private struct ContactPhonePicker: UIViewControllerRepresentable {
+struct ContactPhonePicker: UIViewControllerRepresentable {
     let onPick: (String) -> Void
 
     func makeUIViewController(context: Context) -> CNContactPickerViewController {

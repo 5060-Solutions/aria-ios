@@ -605,6 +605,9 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * `NetworkError`: the gateway may have accepted it anyway), `Ended` is
      * reported for `incoming-<call_token>`, and the core hangs the call up
      * if it was accepted or rejects it if it still rings.
+     *
+     * Throws `InvalidState`, without contacting the gateway, when two calls
+     * are already live (see `get_calls`); the call stays offered.
      */
     func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
@@ -702,9 +705,19 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func checkRemoteHangup()  -> String?
     
     /**
-     * Get current call info, if any.
+     * The connected call that is off hold, if any; otherwise the most
+     * recently created live call (held, or outgoing and ringing).
      */
     func getActiveCall()  -> CallInfo?
+    
+    /**
+     * Every live call (connected, held, or outgoing and ringing), oldest
+     * first. At most two calls are live at once: a third `make_call`,
+     * `make_call_with_id` or `accept_incoming_call` throws `InvalidState`
+     * without side effects. Incoming calls are still offered
+     * (`handle_push_notification`), so the app can show and reject them.
+     */
+    func getCalls()  -> [CallInfo]
     
     /**
      * Get media statistics for a call.
@@ -755,7 +768,8 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * end answers or the call fails, after reporting `Ringing`.
      *
      * Throws `InvalidState` for a malformed id, or one that is in use or
-     * was used recently. Because the app knows the id up front,
+     * was used recently, and, without using the id up or reporting
+     * anything, when two calls are already live (see `get_calls`). Because the app knows the id up front,
      * `hangup(call_id)` works at any point:
      * - Before this is called: `Ended` is reported at once, and this then
      *   throws `Cancelled` without reporting anything or sending a request.
@@ -821,7 +835,12 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func setGatewayToken(token: String) 
     
     /**
-     * Set hold state.
+     * Hold or resume a call. Local only: media to and from the far end
+     * stops (the RTP stream keeps running), but no re-INVITE is sent.
+     * Resuming a call first holds every other connected call, so at most one
+     * call is ever off hold; each call whose hold state changed is reported
+     * through `on_call_state_changed`. A call that connects (answered, or an
+     * outgoing call that is answered) likewise holds the others first.
      */
     func setHold(callId: String, onHold: Bool) throws 
     
@@ -829,6 +848,42 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * Set mute state.
      */
     func setMute(callId: String, muted: Bool) throws 
+    
+    /**
+     * Put `active_call_id` on hold and resume `held_call_id` in one step.
+     * Each call whose hold state changed is reported, the one going on hold
+     * first. Throws `InvalidState` unless both are distinct connected calls.
+     */
+    func swapCalls(activeCallId: String, heldCallId: String) throws 
+    
+    /**
+     * Attended (consultative) transfer: join the far ends of `call_id` and
+     * `consult_call_id` (typically a call the user placed to the transfer
+     * target while `call_id` was on hold) and drop this phone from both,
+     * then wait for the outcome as `transfer_call` does. Either call may be
+     * on hold here; the PBX bridges the far ends itself.
+     *
+     * On success both calls end: `on_call_state_changed` reports `Ended`
+     * with reason `Transferred` exactly once for each.
+     *
+     * Checked before anything is sent: `InvalidState` unless the two are
+     * distinct connected calls (not ringing, not ended);
+     * `TransferUnsupported` unless one is incoming and the other outgoing
+     * (the PBX can only join a call this phone received with one it
+     * placed). From the gateway: `InvalidState` when it does not know
+     * either call or one is not established; `TransferUnsupported` as
+     * above; `GatewayError` when a transfer of either call is already in
+     * progress; `CallFailed` when the PBX refused the REFER or reported the
+     * transfer failed (the message carries the SIP status, such as 503);
+     * `Timeout` as for `transfer_call`; `AuthenticationError` for a
+     * rejected token. All of these leave both calls up, as they were.
+     *
+     * `InvalidState` after the REFER was accepted means one of the calls
+     * ended for another reason meanwhile; that call has been reported
+     * `Ended` and the other stays up. Blocks for up to about 45 s; call it
+     * off the UI thread.
+     */
+    func transferAttended(callId: String, consultCallId: String) throws 
     
     /**
      * Blind-transfer an active call to `target` (a dial string such as
@@ -941,6 +996,9 @@ public convenience init(gatewayConfig: GatewayConfig) {
      * `NetworkError`: the gateway may have accepted it anyway), `Ended` is
      * reported for `incoming-<call_token>`, and the core hangs the call up
      * if it was accepted or rejects it if it still rings.
+     *
+     * Throws `InvalidState`, without contacting the gateway, when two calls
+     * are already live (see `get_calls`); the call stays offered.
      */
 open func acceptIncomingCall(callToken: String, preferredCodecs: [AudioCodec])throws  -> CallInfo {
     return try  FfiConverterTypeCallInfo.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
@@ -1138,11 +1196,26 @@ open func checkRemoteHangup() -> String? {
 }
     
     /**
-     * Get current call info, if any.
+     * The connected call that is off hold, if any; otherwise the most
+     * recently created live call (held, or outgoing and ringing).
      */
 open func getActiveCall() -> CallInfo? {
     return try!  FfiConverterOptionTypeCallInfo.lift(try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_get_active_call(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Every live call (connected, held, or outgoing and ringing), oldest
+     * first. At most two calls are live at once: a third `make_call`,
+     * `make_call_with_id` or `accept_incoming_call` throws `InvalidState`
+     * without side effects. Incoming calls are still offered
+     * (`handle_push_notification`), so the app can show and reject them.
+     */
+open func getCalls() -> [CallInfo] {
+    return try!  FfiConverterSequenceTypeCallInfo.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_get_calls(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -1233,7 +1306,8 @@ open func makeCall(uri: String, credentials: SipCredentials, preferredCodecs: [A
      * end answers or the call fails, after reporting `Ringing`.
      *
      * Throws `InvalidState` for a malformed id, or one that is in use or
-     * was used recently. Because the app knows the id up front,
+     * was used recently, and, without using the id up or reporting
+     * anything, when two calls are already live (see `get_calls`). Because the app knows the id up front,
      * `hangup(call_id)` works at any point:
      * - Before this is called: `Ended` is reported at once, and this then
      *   throws `Cancelled` without reporting anything or sending a request.
@@ -1349,7 +1423,12 @@ open func setGatewayToken(token: String) {try! rustCall() {
 }
     
     /**
-     * Set hold state.
+     * Hold or resume a call. Local only: media to and from the far end
+     * stops (the RTP stream keeps running), but no re-INVITE is sent.
+     * Resuming a call first holds every other connected call, so at most one
+     * call is ever off hold; each call whose hold state changed is reported
+     * through `on_call_state_changed`. A call that connects (answered, or an
+     * outgoing call that is answered) likewise holds the others first.
      */
 open func setHold(callId: String, onHold: Bool)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_hold(self.uniffiClonePointer(),
@@ -1366,6 +1445,54 @@ open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(Ffi
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_mute(self.uniffiClonePointer(),
         FfiConverterString.lower(callId),
         FfiConverterBool.lower(muted),$0
+    )
+}
+}
+    
+    /**
+     * Put `active_call_id` on hold and resume `held_call_id` in one step.
+     * Each call whose hold state changed is reported, the one going on hold
+     * first. Throws `InvalidState` unless both are distinct connected calls.
+     */
+open func swapCalls(activeCallId: String, heldCallId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_swap_calls(self.uniffiClonePointer(),
+        FfiConverterString.lower(activeCallId),
+        FfiConverterString.lower(heldCallId),$0
+    )
+}
+}
+    
+    /**
+     * Attended (consultative) transfer: join the far ends of `call_id` and
+     * `consult_call_id` (typically a call the user placed to the transfer
+     * target while `call_id` was on hold) and drop this phone from both,
+     * then wait for the outcome as `transfer_call` does. Either call may be
+     * on hold here; the PBX bridges the far ends itself.
+     *
+     * On success both calls end: `on_call_state_changed` reports `Ended`
+     * with reason `Transferred` exactly once for each.
+     *
+     * Checked before anything is sent: `InvalidState` unless the two are
+     * distinct connected calls (not ringing, not ended);
+     * `TransferUnsupported` unless one is incoming and the other outgoing
+     * (the PBX can only join a call this phone received with one it
+     * placed). From the gateway: `InvalidState` when it does not know
+     * either call or one is not established; `TransferUnsupported` as
+     * above; `GatewayError` when a transfer of either call is already in
+     * progress; `CallFailed` when the PBX refused the REFER or reported the
+     * transfer failed (the message carries the SIP status, such as 503);
+     * `Timeout` as for `transfer_call`; `AuthenticationError` for a
+     * rejected token. All of these leave both calls up, as they were.
+     *
+     * `InvalidState` after the REFER was accepted means one of the calls
+     * ended for another reason meanwhile; that call has been reported
+     * `Ended` and the other stays up. Blocks for up to about 45 s; call it
+     * off the UI thread.
+     */
+open func transferAttended(callId: String, consultCallId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_transfer_attended(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),
+        FfiConverterString.lower(consultCallId),$0
     )
 }
 }
@@ -3055,7 +3182,7 @@ public enum EndReason {
      */
     case rejected
     /**
-     * The call was blind-transferred away from this handset.
+     * The call was transferred away from this handset (blind or attended).
      */
     case transferred
     /**
@@ -3205,6 +3332,13 @@ public enum MobileError {
      */
     case Cancelled(message: String)
     
+    /**
+     * `transfer_attended` was asked to join two calls the PBX cannot join:
+     * both incoming or both outgoing. It needs one call this phone received
+     * and one it placed. Both calls stay up.
+     */
+    case TransferUnsupported(message: String)
+    
 }
 
 
@@ -3261,6 +3395,10 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
             message: try FfiConverterString.read(from: &buf)
         )
         
+        case 11: return .TransferUnsupported(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3292,6 +3430,8 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(9))
         case .Cancelled(_ /* message is ignored*/):
             writeInt(&buf, Int32(10))
+        case .TransferUnsupported(_ /* message is ignored*/):
+            writeInt(&buf, Int32(11))
 
         
         }
@@ -4053,6 +4193,31 @@ fileprivate struct FfiConverterSequenceTypeAiTranscriptSegment: FfiConverterRust
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCallInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [CallInfo]
+
+    public static func write(_ value: [CallInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCallInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CallInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CallInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCallInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeAudioCodec: FfiConverterRustBuffer {
     typealias SwiftType = [AudioCodec]
 
@@ -4181,6 +4346,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_get_active_call() != 15775) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_get_calls() != 38930) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_get_media_stats() != 33992) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4230,6 +4398,12 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_mute() != 20691) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_swap_calls() != 26608) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_transfer_attended() != 39777) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_transfer_call() != 38156) {
