@@ -183,9 +183,31 @@ final class CallWaitingTests: XCTestCase {
         }
     }
 
-    func testAttendedTransferNeedsOneCallEachWay() {
-        XCTAssertNil(registry(inbound("a", held: true), inbound("b")).attendedTransferPair)
-        XCTAssertNil(registry(outbound("outgoing-x", held: true), outbound("outgoing-y")).attendedTransferPair)
+    func testAttendedTransferJoinsCallsGoingTheSameWay() {
+        let held = inbound("a", held: true), talking = inbound("b")
+        var pair = registry(held, talking).attendedTransferPair
+        XCTAssertEqual(pair?.transferred.uuid, held.uuid)
+        XCTAssertEqual(pair?.consult.uuid, talking.uuid)
+
+        let heldOut = outbound("outgoing-x", held: true), talkingOut = outbound("outgoing-y")
+        pair = registry(talkingOut, heldOut).attendedTransferPair
+        XCTAssertEqual(pair?.transferred.uuid, heldOut.uuid)
+        XCTAssertEqual(pair?.consult.uuid, talkingOut.uuid)
+    }
+
+    func testAttendedTransferOfAPlacedCallToAnAnsweredOne() {
+        let placed = outbound("outgoing-x", held: true)
+        let answered = inbound("a")
+        let pair = registry(placed, answered).attendedTransferPair
+        XCTAssertEqual(pair?.transferred.uuid, placed.uuid)
+        XCTAssertEqual(pair?.consult.uuid, answered.uuid)
+    }
+
+    func testAttendedTransferWithBothCallsHeldUsesTheNewerAsConsultation() {
+        let first = inbound("a", held: true), second = outbound("outgoing-x", held: true)
+        let pair = registry(first, second).attendedTransferPair
+        XCTAssertEqual(pair?.transferred.uuid, first.uuid)
+        XCTAssertEqual(pair?.consult.uuid, second.uuid)
     }
 
     func testAttendedTransferNeedsBothCallsConnected() {
@@ -194,9 +216,9 @@ final class CallWaitingTests: XCTestCase {
     }
 
     func testTransferUnsupportedHasItsOwnMessage() {
-        let error = TransferError(MobileError.TransferUnsupported(message: "both outgoing"))
+        let error = TransferError(MobileError.TransferUnsupported(message: "older PBX"))
         XCTAssertEqual(error, .unsupported)
-        XCTAssertTrue(error.localizedDescription.contains("call you answered"))
+        XCTAssertTrue(error.localizedDescription.contains("can't join these calls"))
         XCTAssertTrue(error.localizedDescription.contains("still up"))
     }
 }

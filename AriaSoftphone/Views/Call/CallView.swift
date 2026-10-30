@@ -155,19 +155,14 @@ struct CallView: View {
                             }
                         }
 
-                        // The PBX only acts on a REFER from the side that
-                        // answered, so a call this phone placed cannot be
-                        // transferred.
-                        if callManager.activeCall?.direction == .inbound {
-                            CallControlButton(
-                                icon: "arrow.turn.up.right",
-                                label: "Transfer",
-                                isActive: false
-                            ) {
-                                transferCall = shown
-                            }
-                            .disabled(callManager.activeCall?.callId == nil)
+                        CallControlButton(
+                            icon: "arrow.turn.up.right",
+                            label: "Transfer",
+                            isActive: false
+                        ) {
+                            transferCall = shown
                         }
+                        .disabled(callManager.activeCall?.callId == nil)
                     }
 
                     if let pair = callManager.attendedTransferPair {
@@ -264,7 +259,8 @@ struct CallView: View {
         return callManager.registry.canSwap(active: current.uuid, held: other.uuid)
     }
 
-    /// Join the caller to the consulted party and drop out of both calls.
+    /// Join the transferred call's party to the consulted party and drop out
+    /// of both calls.
     private func completeTransferButton(_ pair: (transferred: ActiveCall, consult: ActiveCall)) -> some View {
         Button {
             isCompletingTransfer = true

@@ -394,8 +394,9 @@ class CallManager: NSObject, ObservableObject {
         registry.attendedTransferPair
     }
 
-    /// Attended transfer: connect the caller of the incoming call to the
-    /// party of the outgoing (consult) call and drop out of both.
+    /// Attended transfer: connect the far end of the `transferred` call to
+    /// the far end of the `consult` call, whichever way each went, and drop
+    /// out of both.
     ///
     /// Blocks for up to about 45 s off the main queue, then reports there:
     /// `nil` on success (each call's Ended(Transferred) then ends it here and
@@ -1094,8 +1095,8 @@ enum TransferError: LocalizedError, Equatable {
     case refused(String)
     case timedOut
     case unavailable
-    /// An attended transfer between two calls the PBX cannot join: both
-    /// incoming or both outgoing.
+    /// A transfer the gateway or PBX cannot make (an older PBX joins only a
+    /// call this phone answered to one it placed).
     case unsupported
 
     init(_ error: Error) {
@@ -1122,7 +1123,7 @@ enum TransferError: LocalizedError, Equatable {
         case .unavailable:
             return "Couldn't reach the phone system. The call has not been transferred."
         case .unsupported:
-            return "These calls can't be joined. The phone system can only transfer a call you answered to a call you placed. Both calls are still up."
+            return "The phone system can't join these calls. Both calls are still up."
         }
     }
 
@@ -1289,16 +1290,18 @@ struct CallRegistry {
             && !calls.contains { $0.state == .incoming || $0.state == .connecting }
     }
 
-    /// The calls an attended transfer would join: the PBX can only connect
-    /// an incoming call this phone answered (`transferred`) to an outgoing
-    /// call it placed (`consult`). nil unless there are exactly two connected
-    /// calls, one of each.
+    /// The calls an attended transfer would join: nil unless there are
+    /// exactly two connected calls, each either answered or placed by this
+    /// phone. The consultation call (`consult`) is the one being talked on,
+    /// or the newer one when both are held; the other is `transferred`.
     var attendedTransferPair: (transferred: ActiveCall, consult: ActiveCall)? {
         let connected = calls.filter { $0.isConnected && $0.callId != nil }
-        guard connected.count == 2,
-              let inbound = connected.first(where: { $0.direction == .inbound }),
-              let outbound = connected.first(where: { $0.direction == .outbound }) else { return nil }
-        return (inbound, outbound)
+        guard connected.count == 2 else { return nil }
+        let older = connected[0], newer = connected[1]
+        if !older.isOnHold, newer.isOnHold {
+            return (newer, older)
+        }
+        return (older, newer)
     }
 
     /// What the engine must do for a `CXSetHeldCallAction`.
