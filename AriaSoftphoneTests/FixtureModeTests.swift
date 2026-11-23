@@ -155,3 +155,15 @@ private struct AVAudioPlayerProbe {
         duration = try AVAudioPlayer(contentsOf: url).duration
     }
 }
+
+/// The fixture-mode call actions only run when the app was launched with a
+/// fixture argument, which the test host is not; their registry logic is
+/// exercised through the same `CallRegistry` rules the fixtures rely on.
+final class FixtureConferenceTests: XCTestCase {
+    func testTwoCallSceneCanMerge() {
+        var registry = CallRegistry()
+        FixtureData.calls(for: .inCallTwoCalls).forEach { registry.add($0) }
+        XCTAssertNotNil(registry.mergePair)
+        XCTAssertTrue(registry.conference.isEmpty)
+    }
+}
