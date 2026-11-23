@@ -104,6 +104,8 @@ enum ComponentSize {
     static let row: CGFloat = 52
     static let avatarList: CGFloat = 40
     static let avatarCall: CGFloat = 96
+    /// The Contacts favorites carousel: the 64 pt row height as a circle.
+    static let avatarFavorite: CGFloat = 64
     /// The glass disc behind an empty state's symbol.
     static let emptyStateIcon: CGFloat = 88
     /// The leading symbol column of a settings row.

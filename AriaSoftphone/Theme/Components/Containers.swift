@@ -63,7 +63,10 @@ extension View {
     /// inside the 20 pt screen margin; no separators.
     func ariaListRow(background: Color = AriaColor.surface) -> some View {
         self
-            .listRowInsets(EdgeInsets(top: 0, leading: Space.m, bottom: 0, trailing: Space.s))
+            // The card is inset by the screen margin; the content by the
+            // margin plus the card's padding.
+            .listRowInsets(EdgeInsets(top: 0, leading: Space.screenMargin + Space.s, bottom: 0,
+                                      trailing: Space.screenMargin + Space.xs))
             .listRowSeparator(.hidden)
             .listRowBackground(
                 RoundedRectangle(cornerRadius: Radius.contentRow, style: .continuous)
@@ -80,7 +83,6 @@ extension View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(AriaColor.background)
-            .contentMargins(.horizontal, Space.screenMargin, for: .scrollContent)
     }
 }
 

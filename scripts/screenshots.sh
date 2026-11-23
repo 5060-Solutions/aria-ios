@@ -15,6 +15,7 @@
 #   CONTENT_SIZE  a UIContentSizeCategory for large-text runs, e.g.
 #               accessibility-extra-extra-extra-large; restored afterwards
 #   SETTLE      seconds to wait after launch (default 3)
+#   APP         the .app to install (default: the build/dd Debug product)
 
 set -euo pipefail
 
@@ -29,6 +30,7 @@ SIM="${SIM:-iPhone 18 Pro Max}"
 APPEARANCES="${APPEARANCES:-light dark}"
 SETTLE="${SETTLE:-3}"
 BUNDLE=com.solutions5060.aria
+APP="${APP:-$(dirname "$0")/../build/dd/Build/Products/Debug-iphonesimulator/AriaSoftphone.app}"
 
 number() {
     local i=1
@@ -46,8 +48,8 @@ number() {
 if [ -z "${NO_REBOOT:-}" ]; then
     xcrun simctl shutdown "$SIM" 2>/dev/null || true
 fi
-xcrun simctl boot "$SIM" 2>/dev/null || true
-xcrun simctl bootstatus "$SIM" >/dev/null 2>&1 || true
+xcrun simctl bootstatus "$SIM" -b >/dev/null 2>&1 || true
+xcrun simctl install "$SIM" "$APP"
 xcrun simctl status_bar "$SIM" override --time 9:41 --dataNetwork wifi \
     --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
 
