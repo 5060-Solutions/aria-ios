@@ -1,5 +1,19 @@
 import SwiftUI
 
+// MARK: - App version
+
+enum AppVersion {
+    /// "1.0.0 (1)": the marketing version and build number from Info.plist,
+    /// which take them from MARKETING_VERSION and CURRENT_PROJECT_VERSION.
+    static func describe(_ info: [String: Any]?) -> String {
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        guard let build = info?["CFBundleVersion"] as? String, !build.isEmpty else { return version }
+        return "\(version) (\(build))"
+    }
+
+    static var current: String { describe(Bundle.main.infoDictionary) }
+}
+
 // MARK: - Indigo Theme Color
 
 extension Color {
@@ -298,7 +312,7 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 settingsRow("App", "Aria Softphone")
                 Divider().padding(.leading, 16)
-                settingsRow("Version", "v1.0.0")
+                settingsRow("Version", AppVersion.current)
                 Divider().padding(.leading, 16)
                 settingsRow("Developer", "5060 Solutions")
             }

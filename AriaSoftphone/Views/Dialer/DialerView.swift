@@ -86,20 +86,18 @@ struct DialerView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal, 20)
 
-                // Paste / Clear
+                // Paste / Clear. PasteButton reads the pasteboard only when
+                // tapped, so the dialer no longer triggers the "pasted from"
+                // banner every time it is drawn.
                 if dialedNumber.isEmpty {
-                    if let clipDigits = pasteableClipboardDigits, clipDigits.count >= 3 {
-                        Button {
-                            dialedNumber = clipDigits
-                        } label: {
-                            Text("Paste \(String(clipDigits.prefix(12)))\(clipDigits.count > 12 ? "..." : "")")
-                                .font(.caption.weight(.medium))
-                                .foregroundColor(.accentColor)
-                        }
-                        .padding(.top, 4)
-                    } else {
-                        Spacer().frame(height: 12)
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let digits = DialString.pasteable(strings.first ?? "") else { return }
+                        dialedNumber = digits
                     }
+                    .labelStyle(.titleAndIcon)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .padding(.top, 4)
                 } else {
                     Button {
                         dialedNumber = ""
@@ -164,12 +162,6 @@ struct DialerView: View {
         }
     }
 
-    private var pasteableClipboardDigits: String? {
-        guard let text = UIPasteboard.general.string else { return nil }
-        let digits = text.filter { $0.isNumber || $0 == "+" }
-        return digits.count >= 3 ? digits : nil
-    }
-
     private func makeCall() {
         guard !dialedNumber.isEmpty else { return }
         callManager.startOutgoingCall(uri: dialedNumber)
@@ -185,6 +177,25 @@ struct DialerView: View {
         if let soundID = toneMap[digit] {
             AudioServicesPlaySystemSound(soundID)
         }
+    }
+}
+
+// MARK: - Dial string
+
+enum DialString {
+    /// The dialable part of pasted text: digits, `*`, `#` and a leading `+`,
+    /// with spaces, dashes, dots and brackets dropped. nil when fewer than
+    /// three digits remain.
+    static func pasteable(_ text: String) -> String? {
+        var result = ""
+        for ch in text.trimmingCharacters(in: .whitespacesAndNewlines) {
+            if ch.isASCII && (ch.isNumber || ch == "*" || ch == "#") {
+                result.append(ch)
+            } else if ch == "+" && result.isEmpty {
+                result.append(ch)
+            }
+        }
+        return result.filter(\.isNumber).count >= 3 ? result : nil
     }
 }
 

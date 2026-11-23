@@ -4,7 +4,5 @@
 <dict>
     <key>aps-environment</key>
     <string>$(APS_ENVIRONMENT)</string>
-    <key>com.apple.developer.pushkit.unrestricted-voip</key>
-    <true/>
 </dict>
 </plist>

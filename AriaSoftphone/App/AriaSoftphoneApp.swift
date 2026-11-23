@@ -1,5 +1,6 @@
 import SwiftUI
 import PushKit
+import UserNotifications
 
 @main
 struct AriaSoftphoneApp: App {
@@ -40,15 +41,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         pushRegistry.delegate = PushHandler.shared
         pushRegistry.desiredPushTypes = [.voIP]
 
-        // Register for regular remote notifications (for non-VoIP alerts)
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .sound, .badge]
-        ) { granted, error in
-            if let error = error {
-                print("Notification auth error: \(error)")
-            }
-            print("Notification permission granted: \(granted)")
-        }
+        // Local notifications (missed calls) are shown in the foreground
+        // too. Permission is asked for after sign-in, not here.
+        UNUserNotificationCenter.current().delegate = self
 
         return true
     }
@@ -62,5 +57,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
         shutdownRuntime()
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
     }
 }

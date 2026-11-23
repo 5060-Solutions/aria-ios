@@ -534,6 +534,9 @@ class CallManager: NSObject, ObservableObject {
     /// Any other call is left as it was; a held call stays held.
     private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
         CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
+        if outcome == .missed {
+            LocalNotifications.postMissedCall(remoteUri: call.remoteUri, remoteName: call.remoteName)
+        }
 
         // Runs on its own queue and only if the user opted in, so a slow
         // transcription cannot hold up tearing the call down.
@@ -556,6 +559,7 @@ class CallManager: NSObject, ObservableObject {
 
     /// Record an incoming call that never became one of ours.
     private func recordMissedCall(remoteUri: String, remoteName: String?) {
+        LocalNotifications.postMissedCall(remoteUri: remoteUri, remoteName: remoteName)
         CallHistoryStore.shared.add(CallRecord(
             direction: .inbound,
             remoteUri: remoteUri,

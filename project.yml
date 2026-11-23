@@ -15,9 +15,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria
         INFOPLIST_FILE: AriaSoftphone/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: AriaSoftphone/Resources/AriaSoftphone.entitlements
+        # Set by Josh in Xcode or with DEVELOPMENT_TEAM=... on the command
+        # line; left empty here so the repo carries no team.
         DEVELOPMENT_TEAM: ""
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: false
+        # The version lives here, not in Info.plist: bump MARKETING_VERSION
+        # per release and CURRENT_PROJECT_VERSION per upload.
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # iPhone only, portrait only: the call screen and dial pad are laid
+        # out for a phone held upright, and iPad would need its own layout.
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # A Rust staticlib carries its own objects but not the system libraries
         # its C dependencies need — those arrive as cargo link directives that
         # only apply when cargo itself links, which it does not for a staticlib.
@@ -39,15 +49,29 @@ targets:
       testTargets:
         - AriaSoftphoneTests
     dependencies:
+      # A static library: linked into the app binary, never embedded. An
+      # embedded copy would ship a stray .a inside the bundle.
       - framework: AriaMobileCore.xcframework
-        embed: true
+        embed: false
         optional: true
     info:
       path: AriaSoftphone/Resources/Info.plist
       properties:
-        NSCameraUsageDescription: "Aria needs camera access to scan your provisioning QR code."
-        NSMicrophoneUsageDescription: "Aria needs microphone access to make and receive phone calls."
-        NSContactsUsageDescription: "Aria uses your contacts to display caller names and enable quick dialing."
+        CFBundleDisplayName: Aria
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: AriaLogo
+          UIImageRespectsSafeAreaInsets: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        NSCameraUsageDescription: "Aria uses the camera only to scan the setup QR code from your phone system."
+        NSMicrophoneUsageDescription: "Aria uses the microphone so the other person can hear you during calls."
+        NSContactsUsageDescription: "Aria shows your contacts so you can search and call them. Your contacts stay on this iPhone."
         UIBackgroundModes:
           - voip
           - audio
