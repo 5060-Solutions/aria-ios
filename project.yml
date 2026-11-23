@@ -1,6 +1,7 @@
 name: AriaSoftphone
 options:
   bundleIdPrefix: com.solutions5060
+  developmentLanguage: en
   # Liquid Glass (DESIGN.md): built with the Xcode 27 SDK, running on
   # iOS 26 and later.
   deploymentTarget:
@@ -22,6 +23,11 @@ targets:
         DEVELOPMENT_TEAM: ""
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: false
+        # String Catalogs: SwiftUI literals and String(localized:) are
+        # extracted at build time into Localizable.xcstrings; Info.plist
+        # permission strings live in InfoPlist.xcstrings.
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
         # The version lives here, not in Info.plist: bump MARKETING_VERSION
         # per release and CURRENT_PROJECT_VERSION per upload.
         MARKETING_VERSION: "1.0.0"
