@@ -153,9 +153,12 @@ class CallManager: NSObject, ObservableObject {
         uuid: UUID,
         callToken: String,
         callerUri: String,
-        callerName: String?,
+        callerName pushedName: String?,
         completion: @escaping (Error?) -> Void
     ) {
+        // The address book's name for the number when the push has none:
+        // an in-memory lookup, so the report stays synchronous.
+        let callerName = CallerNames.shared.resolve(uri: callerUri, current: pushedName)
         switch IncomingPushTriage.decide(
             callToken: callToken,
             calls: registry.calls,
@@ -670,8 +673,14 @@ class CallManager: NSObject, ObservableObject {
     /// Tear down local state for a call that has ended, however it ended.
     /// CallKit must already have been told (by an action or `reportCall`).
     /// Any other call is left as it was; a held call stays held.
+    /// Posted on the main queue after a call has ended and been recorded.
+    static let callEndedNotification = Notification.Name("AriaCallEnded")
+
     private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
-        CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
+        var named = call
+        named.remoteName = CallerNames.shared.resolve(uri: call.remoteUri, current: call.remoteName)
+        CallHistoryStore.shared.add(CallRecord(call: named, outcome: outcome))
+        defer { NotificationCenter.default.post(name: Self.callEndedNotification, object: nil) }
         // The core stops a recording when its call ends; close its entry.
         if let callId = call.callId {
             RecordingsStore.shared.finish(callId: callId, path: nil)

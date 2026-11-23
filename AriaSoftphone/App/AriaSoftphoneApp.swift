@@ -74,6 +74,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // stale; coming to the foreground is the natural retry. The restore
         // is a no-op once the engine is registered.
         SipEngineManager.shared.reconnect()
+        // Voicemail (and the badge), server history, DND and forwarding:
+        // now, then every minute while active.
+        MainActor.assumeIsolated { ActivityRefresher.shared.becameActive() }
+    }
+
+    func applicationWillResignActive(_ application: UIApplication) {
+        guard !FixtureMode.isActive else { return }
+        MainActor.assumeIsolated { ActivityRefresher.shared.resignedActive() }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
