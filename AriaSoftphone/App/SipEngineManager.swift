@@ -85,6 +85,7 @@ class SipEngineManager: ObservableObject {
         let newEngine = AriaMobileEngine(gatewayConfig: config)
         newEngine.setEventHandler(handler: eventHandler)
         newEngine.setAudioBridge(bridge: audioBridge)
+        newEngine.setCodecPreferences(codecs: CodecPreferences.load().ordered)
 
         stateLock.lock()
         _engine = newEngine
@@ -501,7 +502,7 @@ class SipEngineManager: ObservableObject {
     }
 
     /// Accept an incoming call.
-    func acceptCall(callToken: String, codecs: [AudioCodec] = []) throws -> CallInfo {
+    func acceptCall(callToken: String, codecs: [AudioCodec] = CodecPreferences.load().ordered) throws -> CallInfo {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
@@ -522,7 +523,12 @@ class SipEngineManager: ObservableObject {
     ///
     /// `callId` comes from `newOutgoingCallId()`, chosen before dialing so the
     /// call can be hung up at any point.
-    func makeCall(callId: String, uri: String, credentials: SipCredentials, codecs: [AudioCodec] = []) throws -> CallInfo {
+    func makeCall(
+        callId: String,
+        uri: String,
+        credentials: SipCredentials,
+        codecs: [AudioCodec] = CodecPreferences.load().ordered
+    ) throws -> CallInfo {
         guard let engine = engine else {
             throw SipError.notConfigured
         }
@@ -606,6 +612,11 @@ class SipEngineManager: ObservableObject {
 
     func isRecording(callId: String) -> Bool {
         engine?.isRecording(callId: callId) ?? false
+    }
+
+    /// Hand the user's codec order to the engine; later calls offer it.
+    func applyCodecPreferences(_ preferences: CodecPreferences) {
+        engine?.setCodecPreferences(codecs: preferences.ordered)
     }
 
     /// Mute/unmute.
