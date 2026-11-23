@@ -142,7 +142,7 @@ struct SettingsView: View {
                         Text(sipDisplayName.isEmpty ? String(localized: "Extension \(sipUsername)") : sipDisplayName)
                             .ariaFont(.title)
                             .foregroundStyle(AriaColor.onSurface)
-                        Text("Ext \(sipUsername) · \(sipDomain)")
+                        Text("Ext \(sipUsername) · \(sipDomain.breakingAtDots)")
                             .ariaFont(.bodySmall)
                             .foregroundStyle(AriaColor.onSurfaceVariant)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
@@ -160,7 +160,9 @@ struct SettingsView: View {
                 .padding(.bottom, Space.s)
 
                 RowDivider()
-                DetailRow(label: "Server", value: sipRegistrar.isEmpty ? sipDomain : sipRegistrar)
+                DetailRow(label: "Server", value: dynamicTypeSize.isAccessibilitySize
+                          ? (sipRegistrar.isEmpty ? sipDomain : sipRegistrar).breakingAtDots
+                          : (sipRegistrar.isEmpty ? sipDomain : sipRegistrar))
                 RowDivider()
                 DetailRow(label: "SIP transport", value: transportLabel)
 

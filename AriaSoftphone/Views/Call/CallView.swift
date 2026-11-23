@@ -37,11 +37,17 @@ struct CallView: View {
             // text sizes the rest scrolls, but Hang-up never does.
             GlassEffectContainer(spacing: Space.l) {
                 VStack(spacing: 0) {
-                    ViewThatFits(in: .vertical) {
-                        content(shown)
-                        ScrollView { content(shown) }
-                            .scrollBounceBehavior(.basedOnSize)
-                            .scrollIndicators(.hidden)
+                    // At least the available height, so the spacers lay it
+                    // out when it fits; it scrolls (with a flashed
+                    // indicator) when it does not, and never runs under
+                    // the bottom actions.
+                    GeometryReader { proxy in
+                        ScrollView {
+                            content(shown, width: proxy.size.width)
+                                .frame(minHeight: proxy.size.height)
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                        .scrollIndicatorsFlash(onAppear: true)
                     }
                     bottomActions(shown)
                         .padding(.top, Space.m)
@@ -119,7 +125,7 @@ struct CallView: View {
 
     // MARK: - Layout
 
-    private func content(_ shown: ActiveCall?) -> some View {
+    private func content(_ shown: ActiveCall?, width: CGFloat) -> some View {
             VStack(spacing: 0) {
                 topBar(shown)
                     .padding(.top, Space.xs)
@@ -146,7 +152,7 @@ struct CallView: View {
                 Spacer(minLength: Space.xl)
 
                 if let shown, phase(of: shown) != .incoming {
-                    controls(shown)
+                    controls(shown, width: width)
                     if let pair = callManager.attendedTransferPair, !callManager.isInConference {
                         completeTransferButton(pair)
                             .padding(.top, Space.m)
@@ -248,9 +254,12 @@ struct CallView: View {
 
     private func callerHeader(_ shown: ActiveCall?) -> some View {
         VStack(spacing: Space.s) {
-            Avatar(name: headerName(shown), size: ComponentSize.avatarCall, onGlass: true)
-                .glassEffectID("avatar", in: glass)
-                .padding(.bottom, Space.xxs)
+            // Left out at accessibility sizes, leaving room for the controls.
+            if !isLargeText {
+                Avatar(name: headerName(shown), size: ComponentSize.avatarCall, onGlass: true)
+                    .glassEffectID("avatar", in: glass)
+                    .padding(.bottom, Space.xxs)
+            }
 
             Text(headerName(shown))
                 .ariaFont(.headline)
@@ -258,6 +267,7 @@ struct CallView: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($nameFocused)
 
@@ -286,6 +296,7 @@ struct CallView: View {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(CallClock.format(shown.duration))
                         .ariaFont(.display)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                         .monospacedDigit()
                         .foregroundStyle(.white)
                         .contentTransition(reduceMotion ? .identity : .numericText())
@@ -332,40 +343,56 @@ struct CallView: View {
 
     // MARK: Controls
 
+    private var isLargeText: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    /// Three 96 pt cells; at accessibility sizes two columns that share the
+    /// width, so the larger labels fit without shrinking.
     private var controlColumns: [GridItem] {
-        let count = dynamicTypeSize.isAccessibilitySize ? 2 : 3
-        return Array(repeating: GridItem(.fixed(ComponentSize.callControlCell), spacing: Space.l), count: count)
+        isLargeText
+            ? Array(repeating: GridItem(.flexible(), spacing: Space.m), count: 2)
+            : Array(repeating: GridItem(.fixed(ComponentSize.callControlCell), spacing: Space.l), count: 3)
     }
 
-    private func controls(_ shown: ActiveCall) -> some View {
+    private var controlCellWidth: CGFloat? { isLargeText ? nil : ComponentSize.callControlCell }
+
+    /// The control labels, for fitting the pills.
+    private func controlLabels(_ shown: ActiveCall) -> [String] {
+        [String(localized: "Mute"), String(localized: "Keypad"), String(localized: "Speaker"),
+         String(localized: "Hold"), String(localized: "Add call"), String(localized: "Transfer")]
+    }
+
+    private func controls(_ shown: ActiveCall, width: CGFloat) -> some View {
         let connected = shown.isConnected
-        return LazyVGrid(columns: controlColumns, spacing: Space.l) {
+        let columnWidth = (width - 2 * Space.screenMargin - Space.m) / 2
+        let cap = PillLabelFit.cap(labels: controlLabels(shown), columnWidth: columnWidth,
+                                   current: dynamicTypeSize)
+        return LazyVGrid(columns: controlColumns, spacing: isLargeText ? Space.m : Space.l) {
             CallControlButton(icon: shown.isMuted ? "mic.slash.fill" : "mic.fill",
                               label: String(localized: "Mute"), isActive: shown.isMuted,
-                              glassID: "answer", namespace: glass) {
+                              glassID: "answer", namespace: glass, cellWidth: controlCellWidth, isPill: isLargeText, labelSizeCap: cap) {
                 callManager.setMuted(uuid: shown.uuid, !shown.isMuted)
             }
             CallControlButton(icon: "circle.grid.3x3.fill", label: String(localized: "Keypad"),
-                              isActive: showKeypad, isToggle: false, glassID: "keypad", namespace: glass) {
+                              isActive: showKeypad, isToggle: false, glassID: "keypad", namespace: glass, cellWidth: controlCellWidth, isPill: isLargeText, labelSizeCap: cap) {
                 showKeypad = true
             }
             CallControlButton(icon: callManager.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.wave.2.fill",
                               label: String(localized: "Speaker"), isActive: callManager.isSpeakerOn,
-                              glassID: "speaker", namespace: glass) {
+                              glassID: "speaker", namespace: glass, cellWidth: controlCellWidth, isPill: isLargeText, labelSizeCap: cap) {
                 callManager.setSpeaker(!callManager.isSpeakerOn)
             }
             CallControlButton(icon: "pause.fill", label: String(localized: "Hold"), isActive: shown.isOnHold,
-                              glassID: "hold", namespace: glass) {
+                              glassID: "hold", namespace: glass, cellWidth: controlCellWidth, isPill: isLargeText, labelSizeCap: cap) {
                 callManager.setHeld(uuid: shown.uuid, !shown.isOnHold)
             }
             .disabled(!connected)
             CallControlButton(icon: "plus", label: String(localized: "Add call"), isToggle: false,
-                              glassID: "add", namespace: glass) {
+                              glassID: "add", namespace: glass, cellWidth: controlCellWidth, isPill: isLargeText, labelSizeCap: cap) {
                 showAddCall = true
             }
             .disabled(!connected || !callManager.canAddCall)
             CallControlButton(icon: "phone.arrow.right", label: String(localized: "Transfer"), isToggle: false,
-                              glassID: "transfer", namespace: glass) {
+                              glassID: "transfer", namespace: glass, cellWidth: controlCellWidth, isPill: isLargeText, labelSizeCap: cap) {
                 transferCall = shown
             }
             .disabled(shown.callId == nil)
@@ -388,6 +415,7 @@ struct CallView: View {
             }
         }
         .foregroundStyle(.white)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .accessibilityHint(Text("Connects \(pair.transferred.displayName) to \(pair.consult.displayName) and ends both of your calls."))
     }
 

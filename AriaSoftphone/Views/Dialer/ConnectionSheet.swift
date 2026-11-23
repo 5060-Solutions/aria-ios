@@ -109,7 +109,7 @@ struct ConnectionSheet: View {
     }
 
     private func value(_ text: String) -> some View {
-        Text(text)
+        Text(dynamicTypeSize.isAccessibilitySize ? text.breakingAtDots : text)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             .truncationMode(.middle)
     }

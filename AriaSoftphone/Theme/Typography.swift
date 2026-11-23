@@ -122,10 +122,10 @@ enum AriaFont {
     }
 
     /// A UIKit font for the token, scaled for the current Dynamic Type size.
-    static func uiFont(_ style: AriaTextStyle) -> UIFont {
+    static func uiFont(_ style: AriaTextStyle, compatibleWith traits: UITraitCollection? = nil) -> UIFont {
         let base = UIFont(name: postScriptName(style.weight), size: style.size)
             ?? .systemFont(ofSize: style.size, weight: .regular)
-        return UIFontMetrics(forTextStyle: style.textStyle.uiKit).scaledFont(for: base)
+        return UIFontMetrics(forTextStyle: style.textStyle.uiKit).scaledFont(for: base, compatibleWith: traits)
     }
 }
 
@@ -158,4 +158,13 @@ extension View {
 
 extension Font {
     static func aria(_ style: AriaTextStyle) -> Font { style.font }
+}
+
+extension String {
+    /// A host or address that wraps only after its dots (and @), never
+    /// mid-label: zero-width spaces mark the break points. For display only.
+    var breakingAtDots: String {
+        replacingOccurrences(of: ".", with: ".\u{200B}")
+            .replacingOccurrences(of: "@", with: "@\u{200B}")
+    }
 }
