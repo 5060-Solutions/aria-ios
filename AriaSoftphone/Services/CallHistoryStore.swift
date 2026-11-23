@@ -60,7 +60,13 @@ struct CallRecord: Codable, Identifiable, Equatable {
 /// Newest first, capped at `maxRecords`. Writes are synchronous and small;
 /// they happen once per call.
 final class CallHistoryStore: ObservableObject {
-    static let shared = CallHistoryStore(fileURL: CallHistoryStore.defaultFileURL())
+    static let shared: CallHistoryStore = {
+        #if DEBUG
+        // In memory: fixture records never touch the real history file.
+        if FixtureMode.isActive { return CallHistoryStore(fileURL: nil, records: FixtureData.history()) }
+        #endif
+        return CallHistoryStore(fileURL: CallHistoryStore.defaultFileURL())
+    }()
 
     static let maxRecords = 500
 
@@ -71,6 +77,12 @@ final class CallHistoryStore: ObservableObject {
     init(fileURL: URL?) {
         self.fileURL = fileURL
         records = load()
+    }
+
+    /// A store starting from `records` instead of the file's contents.
+    init(fileURL: URL?, records: [CallRecord]) {
+        self.fileURL = fileURL
+        self.records = records
     }
 
     static func defaultFileURL() -> URL? {

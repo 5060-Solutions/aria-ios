@@ -6,7 +6,7 @@ import AVFoundation
 struct DialerView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
-    @State private var dialedNumber = ""
+    @State private var dialedNumber = FixtureMode.shows(.dialerNumber) ? "4155550142" : ""
 
     private let dialPad: [[DialKey]] = [
         [.init("1", ""), .init("2", "ABC"), .init("3", "DEF")],

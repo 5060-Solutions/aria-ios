@@ -25,6 +25,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        #if DEBUG
+        // UI tests and screenshots: canned data, no engine, no network, no
+        // push registration, no permission prompts.
+        if let scene = FixtureMode.scene {
+            MainActor.assumeIsolated { FixtureBootstrap.apply(scene: scene) }
+            return true
+        }
+        #endif
+
         // Migrate any secrets left in UserDefaults by older builds into the
         // Keychain, then scrub them. Runs once; a no-op thereafter.
         KeychainStore.migrateLegacyDefaultsIfNeeded()
@@ -49,6 +58,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        guard !FixtureMode.isActive else { return }
         // A launch-time restore can fail while the device is locked or
         // offline; coming to the foreground is the natural retry. A no-op
         // once the engine is registered.
@@ -56,6 +66,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
+        guard !FixtureMode.isActive else { return }
         shutdownRuntime()
     }
 }

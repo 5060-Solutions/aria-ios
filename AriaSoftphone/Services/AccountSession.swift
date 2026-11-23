@@ -19,6 +19,15 @@ final class AccountSession: ObservableObject {
         hasSession = KeychainStore.get(KeychainStore.jwtKey) != nil
     }
 
+    #if DEBUG
+    /// Fixture mode: report a session without a token in the Keychain.
+    func applyFixture(signedIn: Bool) {
+        hasSession = signedIn
+        isConnecting = false
+        errorMessage = nil
+    }
+    #endif
+
     // MARK: - Provisioning
 
     /// Persist a scanned (and confirmed) provisioning code.

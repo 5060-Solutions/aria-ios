@@ -69,7 +69,12 @@ struct VoicemailView: View {
                 }
             }
             .refreshable { await service.refresh() }
-            .task { await service.refresh() }
+            .task {
+                await service.refresh()
+                if FixtureMode.shows(.voicemailPlaying), let first = service.messages.first {
+                    play(first)
+                }
+            }
             .onDisappear { player.stop() }
             .onChange(of: callManager.activeCall != nil) { inCall in
                 // A call takes the audio session; do not fight it.
