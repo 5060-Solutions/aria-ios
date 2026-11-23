@@ -15,6 +15,9 @@ struct CallRecord: Codable, Identifiable, Equatable {
     /// Talk time; zero for a call that never connected.
     let duration: TimeInterval
     let outcome: CallOutcome
+    /// The PBX's id for the call (`/cdrs`), once matched or imported from
+    /// there. Nil for a call only this phone knows about.
+    var serverId: String?
 
     var displayName: String {
         if let name = remoteName, !name.isEmpty { return name }
@@ -97,6 +100,14 @@ final class CallHistoryStore: ObservableObject {
         if records.count > Self.maxRecords {
             records.removeLast(records.count - Self.maxRecords)
         }
+        save()
+    }
+
+    /// Merge the PBX's call records in; see `CallHistoryStore.merge`.
+    func importServerCalls(_ calls: [PbxApiClient.ServerCall], ownExtension: String) {
+        let merged = Self.merge(local: records, server: calls, ownExtension: ownExtension)
+        guard merged != records else { return }
+        records = merged
         save()
     }
 

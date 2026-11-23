@@ -164,6 +164,7 @@ final class AccountSession: ObservableObject {
         // History belongs to the account; the next one should not see it.
         CallHistoryStore.shared.clear()
         RecordingsStore.shared.clear()
+        SelfService.shared.reset()
         VoicemailService.shared.reset()
         hasSession = false
         errorMessage = nil

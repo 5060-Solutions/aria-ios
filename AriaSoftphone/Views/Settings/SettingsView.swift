@@ -67,6 +67,11 @@ struct SettingsView: View {
                     // Status section
                     statusCard
 
+                    // Do Not Disturb and call forwarding
+                    if !sipUsername.isEmpty {
+                        CallingSettingsCard()
+                    }
+
                     // Error display
                     if let error = errorMessage ?? sipEngine.registrationError {
                         errorCard(error)
