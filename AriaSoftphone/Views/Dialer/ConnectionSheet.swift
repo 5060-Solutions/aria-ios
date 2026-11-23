@@ -87,7 +87,7 @@ struct ConnectionSheet: View {
                 }
             }
         }
-        .presentationDetents([.fraction(0.75), .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .onAppear { details.startLiveUpdates() }
         .onDisappear { details.stopLiveUpdates() }
