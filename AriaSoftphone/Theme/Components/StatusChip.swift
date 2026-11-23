@@ -48,8 +48,29 @@ struct StatusChip: View {
 
     var body: some View {
         Button(action: action) {
+            // The status must always be readable: when the name and status
+            // do not both fit, the name goes.
+            ViewThatFits(in: .horizontal) {
+                content(showsName: true)
+                content(showsName: false)
+            }
+            .font(.footnote)
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: ComponentSize.iconButton - Space.xs)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .frame(minHeight: ComponentSize.iconButton)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint(Text("Shows connection details"))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func content(showsName: Bool) -> some View {
             HStack(spacing: Space.xs) {
-                if !accountName.isEmpty {
+                if showsName, !accountName.isEmpty {
                     Text(accountName)
                         .ariaFont(.label)
                         .foregroundStyle(AriaColor.onSurface)
@@ -75,18 +96,7 @@ struct StatusChip: View {
                         .foregroundStyle(AriaColor.primary)
                 }
             }
-            .font(.footnote)
-            .padding(.horizontal, Space.m)
-            .frame(minHeight: ComponentSize.iconButton - Space.xs)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .frame(minHeight: ComponentSize.iconButton)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
-        .accessibilityHint(Text("Shows connection details"))
-        .accessibilityAddTraits(.isButton)
+            .fixedSize()
     }
 
     private var accessibilityText: String {

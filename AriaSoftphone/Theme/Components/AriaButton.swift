@@ -137,6 +137,16 @@ struct CallControlButton: View {
     var glassID: String? = nil
     var namespace: Namespace.ID? = nil
     var tint: Color? = nil
+    /// The cell width; nil fills the grid column (the two-column layout at
+    /// accessibility sizes).
+    var cellWidth: CGFloat? = ComponentSize.callControlCell
+    /// Circle with the label beneath, or a 52 pt pill with the label beside
+    /// the icon: the compact form the call screen uses at accessibility
+    /// sizes, so all six controls fit above Hang-up.
+    var isPill = false
+    /// The largest text size the pill labels may use; the call screen picks
+    /// one for all six so every label is the same size (`PillLabelFit`).
+    var labelSizeCap: DynamicTypeSize = .xxxLarge
     let action: () -> Void
 
     @State private var taps = 0
@@ -151,6 +161,9 @@ struct CallControlButton: View {
         glassID: String? = nil,
         namespace: Namespace.ID? = nil,
         tint: Color? = nil,
+        cellWidth: CGFloat? = ComponentSize.callControlCell,
+        isPill: Bool = false,
+        labelSizeCap: DynamicTypeSize = .xxxLarge,
         action: @escaping () -> Void
     ) {
         self.icon = icon
@@ -160,6 +173,9 @@ struct CallControlButton: View {
         self.glassID = glassID
         self.namespace = namespace
         self.tint = tint
+        self.cellWidth = cellWidth
+        self.isPill = isPill
+        self.labelSizeCap = labelSizeCap
         self.action = action
     }
 
@@ -168,34 +184,76 @@ struct CallControlButton: View {
             taps += 1
             action()
         } label: {
+            if isPill { pill } else { circle }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isToggle ? Text(isActive ? "On" : "Off") : Text(""))
+        .accessibilityAddTraits(isActive && isToggle ? .isSelected : [])
+    }
+
+    private var iconColor: Color {
+        isActive ? AriaColor.callBackdrop : Color.white.opacity(isEnabled ? 1 : 0.4)
+    }
+
+    private var pill: some View {
+        HStack(spacing: PillLabelFit.iconSpacing) {
+            Image(systemName: icon)
+                .font(.title3.weight(.medium))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .contentTransition(.symbolEffect(.replace))
+                .foregroundStyle(iconColor)
+                .frame(width: ComponentSize.rowIcon)
+            // One size for every pill (see PillLabelFit): no label shrinks
+            // below the others, and words never break mid-word.
+            Text(label)
+                .ariaFont(.label)
+                .foregroundStyle(isActive ? AriaColor.callBackdrop : .white)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .dynamicTypeSize(...labelSizeCap)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, PillLabelFit.horizontalPadding)
+        .padding(.vertical, Space.xs)
+        .frame(maxWidth: .infinity, minHeight: ComponentSize.primaryButton)
+        .glassEffect(glass, in: .capsule)
+        .modifier(GlassIDModifier(id: glassID, namespace: namespace))
+        .opacity(isEnabled ? 1 : 0.45)
+        .contentShape(.capsule)
+    }
+
+    private var circle: some View {
             VStack(spacing: Space.xs) {
                 Image(systemName: icon)
                     .font(.title2.weight(.medium))
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .contentTransition(.symbolEffect(.replace))
                     .symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? 0 : taps)
-                    .foregroundStyle(isActive ? AriaColor.callBackdrop : Color.white.opacity(isEnabled ? 1 : 0.4))
+                    .foregroundStyle(iconColor)
                     .frame(width: ComponentSize.callControl, height: ComponentSize.callControl)
                     .glassEffect(glass, in: .circle)
                     .modifier(GlassIDModifier(id: glassID, namespace: namespace))
 
-                // One line, shrinking rather than breaking a word in the
-                // 96 pt cell at the largest text sizes.
+                // Every label follows one rule, so none shrinks below the
+                // others: full size, up to two lines broken at spaces, in the
+                // cell plus the gap beside it (a single long word such as
+                // "Lautsprecher" fits there up to the largest standard size).
+                // Accessibility sizes use wide two-column cells instead.
                 Text(label)
                     .ariaFont(.label)
                     .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: cellWidth.map { $0 + Space.l })
+                    .frame(maxWidth: cellWidth == nil ? .infinity : nil)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
-            .frame(width: ComponentSize.callControlCell)
+            .frame(width: cellWidth)
+            .frame(maxWidth: cellWidth == nil ? .infinity : nil)
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityValue(isToggle ? Text(isActive ? "On" : "Off") : Text(""))
-        .accessibilityAddTraits(isActive && isToggle ? .isSelected : [])
     }
 
     private var glass: Glass {
@@ -277,5 +335,41 @@ struct GlassIDModifier: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+// MARK: - Pill label fit
+
+/// Picks one text size for all the call screen's pill labels: the largest
+/// (up to the largest standard size) at which every word of every label fits
+/// on a line of its pill. Labels then wrap only at spaces and all match.
+enum PillLabelFit {
+    static let horizontalPadding = Space.s
+    static let iconSpacing = Space.xs
+
+    static let candidates: [DynamicTypeSize] = [.xxxLarge, .xxLarge, .xLarge, .large, .medium, .small, .xSmall]
+
+    /// The width a pill leaves for its label in a column `columnWidth` wide.
+    /// Less a safety margin: SwiftUI's line breaking runs a little short of
+    /// the measured width, and breaks the word when it does not fit.
+    static func textWidth(columnWidth: CGFloat) -> CGFloat {
+        columnWidth - 2 * horizontalPadding - ComponentSize.rowIcon - iconSpacing - Space.s
+    }
+
+    static func cap(labels: [String], columnWidth: CGFloat, current: DynamicTypeSize) -> DynamicTypeSize {
+        let available = textWidth(columnWidth: columnWidth)
+        let words = labels.flatMap { $0.split(separator: " ").map(String.init) }
+        let start = min(current, .xxxLarge)
+        for candidate in candidates where candidate <= start {
+            if words.allSatisfy({ width(of: $0, at: candidate) <= available }) { return candidate }
+        }
+        return .xSmall
+    }
+
+    /// The label token's width for `word` at a Dynamic Type size.
+    static func width(of word: String, at size: DynamicTypeSize) -> CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+        let font = AriaFont.uiFont(.label, compatibleWith: traits)
+        return ceil((word as NSString).size(withAttributes: [.font: font]).width)
     }
 }
