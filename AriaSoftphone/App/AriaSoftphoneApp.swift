@@ -47,7 +47,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // could neither place calls nor fetch an incoming call's offer.
         SipEngineManager.shared.restoreSessionInBackground()
 
-        // Register for VoIP pushes
+        // Tell the core about every network change (Wi-Fi <-> cellular, a
+        // new address, the network coming back) so it re-checks its gateway
+        // connection at once instead of on its next heartbeat.
+        SipEngineManager.shared.startNetworkMonitoring()
+
+        // Register for VoIP pushes. PushKit is the incoming-call path
+        // whatever the state of the gateway connection or the network
+        // monitor: the delegate is set here, synchronously, so a push that
+        // cold-launched the app is delivered and reported to CallKit before
+        // any engine restore finishes.
         pushRegistry.delegate = PushHandler.shared
         pushRegistry.desiredPushTypes = [.voIP]
 
@@ -61,9 +70,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         guard !FixtureMode.isActive else { return }
         // A launch-time restore can fail while the device is locked or
-        // offline; coming to the foreground is the natural retry. A no-op
-        // once the engine is registered.
-        SipEngineManager.shared.restoreSessionInBackground()
+        // offline, and a backgrounded app's gateway connection may have gone
+        // stale; coming to the foreground is the natural retry. The restore
+        // is a no-op once the engine is registered.
+        SipEngineManager.shared.reconnect()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
