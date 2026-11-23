@@ -34,18 +34,18 @@ struct DialerView: View {
                 }
                 .padding(.top, Space.xs)
 
+                // The pad sits low, as in Phone: free space goes above the
+                // number, not between it and the keys.
                 Spacer(minLength: Space.m)
 
                 numberDisplay
 
-                Spacer(minLength: Space.m)
-
                 keypad
+                    .padding(.top, Space.xl)
 
                 bottomRow
                     .padding(.top, ComponentSize.dialKeyGapV + Space.xs)
-
-                Spacer(minLength: Space.xl)
+                    .padding(.bottom, Space.xl)
             }
             .padding(.horizontal, Space.screenMargin)
             .frame(maxWidth: .infinity)
@@ -79,7 +79,15 @@ struct DialerView: View {
     private var numberDisplay: some View {
         VStack(spacing: Space.xxs) {
             ZStack {
-                if dialedNumber.isEmpty {
+                if dialedNumber.isEmpty, !pasteboardHasText {
+                    Text("Enter a number")
+                        .ariaFont(.display)
+                        .foregroundStyle(AriaColor.onSurfaceVariant.opacity(0.45))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                } else if dialedNumber.isEmpty {
                     // Only when there is text to paste: an empty pasteboard
                     // draws the system control dimmed. `hasStrings` does not
                     // read the pasteboard, so no paste banner.

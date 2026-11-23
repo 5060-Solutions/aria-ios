@@ -57,3 +57,19 @@ final class DialerTests: XCTestCase {
         }
     }
 }
+
+final class ConnectionSheetFormatTests: XCTestCase {
+    func testHostAndPort() {
+        XCTAssertEqual(ConnectionSheet.splitHostPort("gw1.push.ariaroute.com:443").host, "gw1.push.ariaroute.com")
+        XCTAssertEqual(ConnectionSheet.splitHostPort("gw1.push.ariaroute.com:443").port, "443")
+        XCTAssertNil(ConnectionSheet.splitHostPort("push.ariaroute.com").port)
+        XCTAssertEqual(ConnectionSheet.splitHostPort("[2001:db8::1]:443").host, "[2001:db8::1]")
+        XCTAssertNil(ConnectionSheet.splitHostPort("2001:db8::1").port)
+        XCTAssertEqual(ConnectionSheet.splitHostPort("").host, "")
+    }
+
+    func testTransportLabel() {
+        XCTAssertEqual(ConnectionSheet.transportLabel("TLS : 5061"), "TLS · 5061")
+        XCTAssertEqual(ConnectionSheet.transportLabel("UDP"), "UDP")
+    }
+}

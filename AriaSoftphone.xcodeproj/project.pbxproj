@@ -87,6 +87,7 @@
 		BDDE708BD9056D3C958F3910 /* GatewayAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */; };
 		BDF6DCE8A5DBABD3726D886B /* PushHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA09A8B3618AFA053C391608 /* PushHandler.swift */; };
 		BE8191D0406DE3070E720DA0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A53C9EA5B271932D7716F16D /* Assets.xcassets */; };
+		BFC368D5F03C50A0B8318FAC /* VoicemailViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 328ED2C538886F86066176F6 /* VoicemailViewTests.swift */; };
 		BFDB396080906CC7971C5BDD /* NetworkMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B632B22EA9CBA7C639DAA8 /* NetworkMonitorTests.swift */; };
 		C0ACA95616AB1C59C2494CB3 /* PushGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */; };
 		C5E703CB1557F4AD8DBDBE66 /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E64C5BF1246947DB6972B39 /* DeepLink.swift */; };
@@ -145,6 +146,7 @@
 		30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PbxApiClient.swift; sourceTree = "<group>"; };
 		31A81048D28AF4D85B189D2B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayAuthTests.swift; sourceTree = "<group>"; };
+		328ED2C538886F86066176F6 /* VoicemailViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailViewTests.swift; sourceTree = "<group>"; };
 		3BBEE7A6559A1073A7F736BD /* Figtree-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Regular.ttf"; sourceTree = "<group>"; };
 		3C4D5B9CA8E2429DAB24FDEE /* RecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsView.swift; sourceTree = "<group>"; };
 		3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSetupTests.swift; sourceTree = "<group>"; };
@@ -346,6 +348,7 @@
 				835F7B404CAD1B41B1AAFDA6 /* SetupAndLinksTests.swift */,
 				2F6B96E5828C9B4D4BB38550 /* StubURLProtocol.swift */,
 				A767DC4DFC564AC998BCDB13 /* TransferTests.swift */,
+				328ED2C538886F86066176F6 /* VoicemailViewTests.swift */,
 			);
 			path = AriaSoftphoneTests;
 			sourceTree = "<group>";
@@ -692,6 +695,7 @@
 				5B8295BCAC2E953FAB9EDE86 /* SetupAndLinksTests.swift in Sources */,
 				F19CA286DA66AD0D21D004F0 /* StubURLProtocol.swift in Sources */,
 				2A5D9796A0DF921D4EE8A47D /* TransferTests.swift in Sources */,
+				BFC368D5F03C50A0B8318FAC /* VoicemailViewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
