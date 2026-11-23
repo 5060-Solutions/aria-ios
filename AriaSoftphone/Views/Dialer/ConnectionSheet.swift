@@ -23,10 +23,21 @@ struct ConnectionSheet: View {
                             }
                         }
                         SectionRow(title: Text("Gateway node"), systemImage: "server.rack") {
-                            value(snapshot.gatewayNode.isEmpty ? String(localized: "Not set") : snapshot.gatewayNode)
+                            let node = Self.splitHostPort(snapshot.gatewayNode)
+                            if node.host.isEmpty {
+                                value(String(localized: "Not set"))
+                            } else {
+                                VStack(alignment: .trailing, spacing: 0) {
+                                    value(node.host)
+                                    if let port = node.port {
+                                        Text("Port \(port)")
+                                            .ariaFont(.bodySmall)
+                                    }
+                                }
+                            }
                         }
-                        SectionRow(title: Text("Transport"), systemImage: "lock.fill") {
-                            value(snapshot.transport.isEmpty ? "–" : snapshot.transport)
+                        SectionRow(title: Text("SIP transport"), systemImage: "lock.fill") {
+                            value(snapshot.transport.isEmpty ? "–" : Self.transportLabel(snapshot.transport))
                         }
                         if let codec = snapshot.codec {
                             SectionRow(title: Text("Codec"), systemImage: "waveform") {
@@ -121,6 +132,22 @@ struct ConnectionSheet: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Radius.card, style: .continuous))
         .accessibilityElement(children: .combine)
         .padding(.top, Space.xs)
+    }
+
+    /// "gw1.push.ariaroute.com:443" → host and port. IPv6 literals keep
+    /// their brackets.
+    static func splitHostPort(_ value: String) -> (host: String, port: String?) {
+        guard let colon = value.lastIndex(of: ":"), !value.hasSuffix("]") else { return (value, nil) }
+        let port = value[value.index(after: colon)...]
+        guard !port.isEmpty, port.allSatisfy(\.isNumber) else { return (value, nil) }
+        let host = String(value[..<colon])
+        if host.contains(":"), !host.hasPrefix("[") { return (value, nil) }
+        return (host, String(port))
+    }
+
+    /// "TLS : 5061" → "TLS · 5061".
+    static func transportLabel(_ value: String) -> String {
+        value.split(separator: ":").map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " · ")
     }
 
     static func detail(for state: ConnectionState) -> String {

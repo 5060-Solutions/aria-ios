@@ -173,6 +173,10 @@ struct CallView: View {
         .frame(minHeight: ComponentSize.iconButton)
     }
 
+    /// The top row's glass, tinted with the mesh's primary so the chip and
+    /// the overflow match wherever the gradient has drifted.
+    static let topBarGlass = Glass.regular.tint(AriaColor.callMesh[1].opacity(0.55))
+
     /// One glass capsule: the SRTP lock and the call quality.
     private var linkChip: some View {
         HStack(spacing: Space.s) {
@@ -199,7 +203,7 @@ struct CallView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, Space.s)
         .frame(minHeight: ComponentSize.iconButton - Space.xs)
-        .glassEffect(.regular, in: .capsule)
+        .glassEffect(Self.topBarGlass, in: .capsule)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(linkAccessibilityText))
     }
@@ -232,7 +236,7 @@ struct CallView: View {
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .foregroundStyle(.white)
                 .frame(width: ComponentSize.iconButton, height: ComponentSize.iconButton)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .glassEffect(Self.topBarGlass.interactive(), in: .circle)
         }
         .accessibilityLabel(Text("More call actions"))
     }
