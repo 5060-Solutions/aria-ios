@@ -21,60 +21,68 @@ struct ManualSetupView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    field(.domain, "Tenant domain", text: $form.domain, prompt: "acme.ariaroute.com",
-                          content: .URL, keyboard: .URL)
-                    field(.extensionNumber, "Extension", text: $form.extensionNumber, prompt: "1001",
-                          content: .username, keyboard: .asciiCapable)
-                    VStack(alignment: .leading, spacing: 4) {
-                        SecureField("Password", text: $form.password)
-                            .textContentType(.password)
-                            .focused($focused, equals: .password)
-                            .submitLabel(.go)
-                            .onSubmit(submit)
-                            .accessibilityIdentifier("manualSetup.password")
-                        problemText(.password)
-                    }
-                } header: {
-                    Text("Account")
-                } footer: {
-                    Text("Your administrator can give you these details. The password is your extension's SIP password.")
-                }
-
-                Section {
-                    DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
-                        field(.server, "SIP server", text: $form.server, prompt: "Same as tenant domain",
-                              content: .URL, keyboard: .URL)
-                        field(.apiUrl, "API address", text: $form.apiUrl, prompt: ManualSetup.defaultApiUrl,
-                              content: .URL, keyboard: .URL)
-                    }
-                    .accessibilityIdentifier("manualSetup.advanced")
-                } footer: {
-                    Text("The API address must use HTTPS. Leave these empty unless your administrator gave you different values.")
-                }
-
-                if let message = session.errorMessage {
-                    Section {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.xl) {
+                    if let message = session.errorMessage {
+                        Banner(message: .error(message))
                             .accessibilityIdentifier("manualSetup.error")
                     }
+
+                    SectionCard(
+                        title: Text("Account"),
+                        footer: Text("Your administrator can give you these details. The password is your extension's SIP password.")
+                    ) {
+                        textField(.domain, "Tenant domain", text: $form.domain, prompt: "acme.ariaroute.com",
+                                  content: .URL, keyboard: .URL)
+                        textField(.extensionNumber, "Extension", text: $form.extensionNumber, prompt: "1001",
+                                  content: .username, keyboard: .asciiCapable)
+                        FieldBlock(label: "Password", problem: problems[.password]?.message,
+                                   problemIdentifier: "manualSetup.password.problem") {
+                            SecureField("Password", text: $form.password)
+                                .textContentType(.password)
+                                .focused($focused, equals: .password)
+                                .submitLabel(.go)
+                                .onSubmit(submit)
+                                .ariaField(invalid: problems[.password] != nil)
+                                .accessibilityIdentifier("manualSetup.password")
+                        }
+                    }
+
+                    SectionCard(
+                        footer: Text("The API address must use HTTPS. Leave these empty unless your administrator gave you different values.")
+                    ) {
+                        DisclosureGroup(isExpanded: $showAdvanced) {
+                            textField(.server, "SIP server", text: $form.server, prompt: String(localized: "Same as tenant domain"),
+                                      content: .URL, keyboard: .URL)
+                            textField(.apiUrl, "API address", text: $form.apiUrl, prompt: ManualSetup.defaultApiUrl,
+                                      content: .URL, keyboard: .URL)
+                        } label: {
+                            Text("Advanced")
+                                .ariaFont(.body)
+                                .foregroundStyle(AriaColor.onSurface)
+                                .frame(minHeight: ComponentSize.row)
+                        }
+                        .tint(AriaColor.primary)
+                        .accessibilityIdentifier("manualSetup.advanced")
+                    }
                 }
+                .padding(.horizontal, Space.screenMargin)
+                .padding(.vertical, Space.m)
+            }
+            .background(AriaColor.background)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom) {
+                AriaButton("Sign In", kind: .prominent, size: .primary, fullWidth: true,
+                           isLoading: session.isConnecting, action: submit)
+                    .accessibilityIdentifier("manualSetup.signIn")
+                    .padding(.horizontal, Space.screenMargin)
+                    .padding(.bottom, Space.xs)
             }
             .navigationTitle("Enter Manually")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if session.isConnecting {
-                        ProgressView()
-                    } else {
-                        Button("Sign In", action: submit)
-                            .accessibilityIdentifier("manualSetup.signIn")
-                    }
                 }
             }
         }
@@ -93,7 +101,7 @@ struct ManualSetupView: View {
         dismiss()
     }
 
-    private func field(
+    private func textField(
         _ field: ManualSetup.Field,
         _ title: LocalizedStringKey,
         text: Binding<String>,
@@ -101,7 +109,9 @@ struct ManualSetupView: View {
         content: UITextContentType,
         keyboard: UIKeyboardType
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let id = Self.identifier(field)
+        return FieldBlock(label: title, problem: problems[field]?.message,
+                          problemIdentifier: "manualSetup.\(id).problem") {
             TextField(title, text: text, prompt: Text(prompt))
                 .textContentType(content)
                 .keyboardType(keyboard)
@@ -109,18 +119,8 @@ struct ManualSetupView: View {
                 .autocorrectionDisabled()
                 .focused($focused, equals: field)
                 .submitLabel(.next)
-                .accessibilityIdentifier("manualSetup.\(Self.identifier(field))")
-            problemText(field)
-        }
-    }
-
-    @ViewBuilder
-    private func problemText(_ field: ManualSetup.Field) -> some View {
-        if let problem = problems[field] {
-            Text(problem.message)
-                .font(.footnote)
-                .foregroundStyle(.red)
-                .accessibilityIdentifier("manualSetup.\(Self.identifier(field)).problem")
+                .ariaField(invalid: problems[field] != nil)
+                .accessibilityIdentifier("manualSetup.\(id)")
         }
     }
 

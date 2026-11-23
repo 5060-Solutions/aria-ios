@@ -13,6 +13,7 @@
 		087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */; };
 		09D6319B4286D7DBF34175AD /* aria_mobile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DF83E37DCF9E007E2250A /* aria_mobile.swift */; };
 		0B24667155E538C464FDF2AF /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93F504888B299C9B1D0EE5D /* StatusChip.swift */; };
+		0B2F0B695495784B22B67D4B /* FixtureConnectionDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = A730566A1D7D31C3E18565D0 /* FixtureConnectionDetails.swift */; };
 		0C6B5F50EBA3875E5B10BA3F /* EngineSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */; };
 		0CA0A4884B34CEA3645CDD66 /* EmergencyDialer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08AADD51FE1DAE857DB3B47E /* EmergencyDialer.swift */; };
 		13F7A2BA1EBF70A9A922CA55 /* Figtree-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 47F986B73A3EF9C08711F1FB /* Figtree-OFL.txt */; };
@@ -61,6 +62,7 @@
 		7EBD2F47C15BA63CF2548F23 /* DialerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1BFE08E58ED03840CB1AB8 /* DialerTests.swift */; };
 		80FC14C0EB49B84D765A0887 /* AudioConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */; };
 		8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125317FA44A9C196C3BE928E /* CallManager.swift */; };
+		81FFEF637871A78E8FC5AFF3 /* FeatureFormStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6543A3ADEA1BFA74052AC847 /* FeatureFormStyles.swift */; };
 		8333D2D36C5C000857E8E755 /* DialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56151D77272EC8CB85003538 /* DialKey.swift */; };
 		89B14486BF48BCF41F66E55D /* RecordingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4D5B9CA8E2429DAB24FDEE /* RecordingsView.swift */; };
 		8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA65EE9BC777C87EE95AB48C /* DialerView.swift */; };
@@ -161,6 +163,7 @@
 		5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryStore.swift; sourceTree = "<group>"; };
 		5D2B681CC713818FFF6DA338 /* CallingSettingsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallingSettingsCard.swift; sourceTree = "<group>"; };
 		5F417E48E79AC5552D6F060B /* ConnectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSheet.swift; sourceTree = "<group>"; };
+		6543A3ADEA1BFA74052AC847 /* FeatureFormStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFormStyles.swift; sourceTree = "<group>"; };
 		6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
 		69917C126F3D6E94542ECD66 /* Figtree-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Light.ttf"; sourceTree = "<group>"; };
 		7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSetupView.swift; sourceTree = "<group>"; };
@@ -182,6 +185,7 @@
 		A53C9EA5B271932D7716F16D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A5752021CA663F956C6D8E52 /* Containers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Containers.swift; sourceTree = "<group>"; };
 		A61A866AA7CCBD9158452698 /* Banner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Banner.swift; sourceTree = "<group>"; };
+		A730566A1D7D31C3E18565D0 /* FixtureConnectionDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureConnectionDetails.swift; sourceTree = "<group>"; };
 		A767DC4DFC564AC998BCDB13 /* TransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferTests.swift; sourceTree = "<group>"; };
 		A7D12A31C44E2BBDAA718E4B /* FixtureBackends.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureBackends.swift; sourceTree = "<group>"; };
 		A93F504888B299C9B1D0EE5D /* StatusChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChip.swift; sourceTree = "<group>"; };
@@ -288,6 +292,7 @@
 			isa = PBXGroup;
 			children = (
 				A7D12A31C44E2BBDAA718E4B /* FixtureBackends.swift */,
+				A730566A1D7D31C3E18565D0 /* FixtureConnectionDetails.swift */,
 				F97BB4AF45FE5EAB1592B4E7 /* FixtureData.swift */,
 				3FFE77B64955D99259D32A57 /* FixtureMode.swift */,
 				EFBE7E0D5C044DD7C960B8DD /* FixtureSelfService.swift */,
@@ -462,6 +467,7 @@
 		C250B8EB145343BE264FAC85 /* Setup */ = {
 			isa = PBXGroup;
 			children = (
+				6543A3ADEA1BFA74052AC847 /* FeatureFormStyles.swift */,
 				7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */,
 				00AB7DCF5FC490DCD0F924A3 /* SetupLinkConfirmView.swift */,
 			);
@@ -713,7 +719,9 @@
 				8333D2D36C5C000857E8E755 /* DialKey.swift in Sources */,
 				8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */,
 				0CA0A4884B34CEA3645CDD66 /* EmergencyDialer.swift in Sources */,
+				81FFEF637871A78E8FC5AFF3 /* FeatureFormStyles.swift in Sources */,
 				5D91850E6984353257363948 /* FixtureBackends.swift in Sources */,
+				0B2F0B695495784B22B67D4B /* FixtureConnectionDetails.swift in Sources */,
 				286151679C9D90210BFB06D8 /* FixtureData.swift in Sources */,
 				CECAD1A1927DA5D1C243D471 /* FixtureMode.swift in Sources */,
 				76D53B2687CB11FD85112733 /* FixtureSelfService.swift in Sources */,

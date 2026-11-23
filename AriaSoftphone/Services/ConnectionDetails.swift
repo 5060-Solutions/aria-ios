@@ -9,7 +9,7 @@ import Combine
 /// as the gateway uses it, and the gateway is the app's server.
 @MainActor
 final class ConnectionDetails: ObservableObject {
-    static let shared = ConnectionDetails(source: .live)
+    static let shared = ConnectionDetails(source: .current)
 
     struct Snapshot: Equatable {
         var state: ConnectionState = .offline
@@ -46,6 +46,11 @@ final class ConnectionDetails: ObservableObject {
         var activeCallId: () -> String?
         var isEncrypted: (String) -> Bool
         var mediaStats: (String) -> MediaStats?
+        /// The gateway instance in use, when known; nil means the
+        /// configured host.
+        var gatewayNode: () -> String? = { nil }
+        /// The call's negotiated codec, when known.
+        var codec: (String) -> String? = { _ in nil }
     }
 
     @Published private(set) var snapshot = Snapshot()
@@ -64,7 +69,7 @@ final class ConnectionDetails: ObservableObject {
         next.account = account.isProvisioned ? "\(account.username)@\(account.domain)" : ""
         next.deviceId = source.deviceId()
         next.gatewayUrl = account.gatewayUrl
-        next.gatewayNode = URLComponents(string: account.gatewayUrl)?.host ?? ""
+        next.gatewayNode = source.gatewayNode() ?? URLComponents(string: account.gatewayUrl)?.host ?? ""
         next.transport = account.isProvisioned
             ? "\(account.effectiveTransport.uppercased()) : \(account.effectivePort)" : ""
         next.lastError = source.lastError()
@@ -73,6 +78,7 @@ final class ConnectionDetails: ObservableObject {
         if let callId = source.activeCallId() {
             next.callId = callId
             next.srtp = source.isEncrypted(callId)
+            next.codec = source.codec(callId)
             next.stats = source.mediaStats(callId)
         }
         if next != snapshot { snapshot = next }
@@ -139,6 +145,14 @@ final class ConnectionDetails: ObservableObject {
 }
 
 extension ConnectionDetails.Source {
+    /// Fixtures in fixture mode, else the live engine.
+    static var current: ConnectionDetails.Source {
+        #if DEBUG
+        if FixtureMode.isActive { return .fixture }
+        #endif
+        return .live
+    }
+
     static let live = ConnectionDetails.Source(
         state: { SipEngineManager.shared.connectionState },
         account: { AccountSettings.load() },
