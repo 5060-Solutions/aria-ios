@@ -16,7 +16,7 @@ enum FixtureData {
         var port = 5061
         var transport = "tls"
         var apiUrl = "https://api.fixture.invalid"
-        var gatewayUrl = "https://push.fixture.invalid"
+        var gatewayUrl = "https://push.ariaroute.com"
         var voicemailNumber = "*97"
         var extensionId = "ext-fixture-1001"
         var tenantId = "tenant-fixture"

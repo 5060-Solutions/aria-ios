@@ -255,7 +255,7 @@ struct CallActionButton: View {
                         .multilineTextAlignment(.center)
                 }
             }
-            .frame(minWidth: ComponentSize.callControlCell)
+            .frame(minWidth: caption == nil ? nil : ComponentSize.callControlCell)
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(.rect)
         }

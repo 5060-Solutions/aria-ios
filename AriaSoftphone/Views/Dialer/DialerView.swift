@@ -1,177 +1,232 @@
 import SwiftUI
 import AudioToolbox
-import AVFoundation
 
-/// Dial pad view for making outgoing calls.
+/// The dial pad (DESIGN.md §5 Dialer): status chip, number display with a
+/// contact match line, the 4×3 keys, and Call with backspace.
 struct DialerView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
-    @State private var dialedNumber = FixtureMode.shows(.dialerNumber) ? "4155550142" : ""
+    @ObservedObject private var selfService = SelfService.shared
+    @ObservedObject private var history = CallHistoryStore.shared
+    @ObservedObject private var directory = ContactDirectory.shared
 
-    private let dialPad = DialPadKey.rows
+    @AppStorage(AccountSettings.Key.displayName) private var displayName = ""
+    @AppStorage(AccountSettings.Key.username) private var username = ""
+
+    @State private var dialedNumber = FixtureMode.shows(.dialerNumber) ? "4155550142" : ""
+    @State private var showConnection = FixtureMode.shows(.connectionSheet)
+    @State private var banner: BannerMessage?
+    @State private var keyTaps = 0
+    @State private var pasteboardHasText = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Header: identity + status
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let displayName = UserDefaults.standard.string(forKey: "sipDisplayName"),
-                           !displayName.isEmpty {
-                            Text(displayName)
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        if let ext = UserDefaults.standard.string(forKey: "sipUsername"),
-                           !ext.isEmpty {
-                            let domain = UserDefaults.standard.string(forKey: "sipDomain") ?? ""
-                            Text("Ext \(ext)" + (domain.isEmpty ? "" : " · \(domain)"))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    Spacer()
-                    // Status chip
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(sipEngine.isRegistered ? Color.green : Color.red)
-                            .frame(width: 7, height: 7)
-                        Text(sipEngine.isRegistered ? "Online" : "Offline")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(sipEngine.isRegistered ? .green : .red)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        (sipEngine.isRegistered ? Color.green : Color.red)
-                            .opacity(0.14)
-                    )
-                    .clipShape(Capsule())
+                StatusChip(
+                    accountName: displayName.isEmpty ? username : displayName,
+                    state: sipEngine.connectionState,
+                    isDoNotDisturb: selfService.doNotDisturb == true,
+                    isForwarding: selfService.isForwardingAll
+                ) {
+                    showConnection = true
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.top, Space.xs)
 
-                Spacer(minLength: 0)
+                Spacer(minLength: Space.m)
 
-                // Number display
-                HStack {
-                    Text(dialedNumber.isEmpty ? "Enter number" : dialedNumber)
-                        .font(.system(size: dialedNumber.count > 12 ? 24 : 32, weight: dialedNumber.isEmpty ? .regular : .medium))
-                        .foregroundColor(dialedNumber.isEmpty ? .secondary.opacity(0.5) : .primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .frame(maxWidth: .infinity)
-                        .tracking(2)
+                numberDisplay
 
-                    if !dialedNumber.isEmpty {
-                        Button(action: {
-                            dialedNumber = String(dialedNumber.dropLast())
-                            let impact = UIImpactFeedbackGenerator(style: .light)
-                            impact.impactOccurred()
-                        }) {
-                            Image(systemName: "delete.backward")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(width: 44, height: 44)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .background(Color(.systemGray6).opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal, 20)
+                Spacer(minLength: Space.m)
 
-                // Paste / Clear. PasteButton reads the pasteboard only when
-                // tapped, so the dialer no longer triggers the "pasted from"
-                // banner every time it is drawn.
+                keypad
+
+                bottomRow
+                    .padding(.top, ComponentSize.dialKeyGapV + Space.xs)
+
+                Spacer(minLength: Space.xl)
+            }
+            .padding(.horizontal, Space.screenMargin)
+            .frame(maxWidth: .infinity)
+            .background(AriaColor.background.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            .banner($banner)
+            .sheet(isPresented: $showConnection) {
+                ConnectionSheet()
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: keyTaps)
+            .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification).merge(
+                with: NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification))
+            ) { _ in
+                pasteboardHasText = UIPasteboard.general.hasStrings
+            }
+            .task {
+                pasteboardHasText = UIPasteboard.general.hasStrings
+                await directory.loadIfAuthorized()
+                await selfService.refresh()
+            }
+        }
+    }
+
+    // MARK: - Number
+
+    private var matcher: ContactMatcher {
+        ContactMatcher(contacts: directory.contacts, history: history.records)
+    }
+
+    private var numberDisplay: some View {
+        VStack(spacing: Space.xxs) {
+            ZStack {
                 if dialedNumber.isEmpty {
-                    PasteButton(payloadType: String.self) { strings in
+                    // Only when there is text to paste: an empty pasteboard
+                    // draws the system control dimmed. `hasStrings` does not
+                    // read the pasteboard, so no paste banner.
+                    if pasteboardHasText {
+                        PasteButton(payloadType: String.self) { strings in
                         guard let digits = DialString.pasteable(strings.first ?? "") else { return }
                         dialedNumber = digits
                     }
                     .labelStyle(.titleAndIcon)
                     .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-                    .padding(.top, 4)
-                } else {
-                    Button {
-                        dialedNumber = ""
-                    } label: {
-                        Text("Clear")
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(.secondary)
+                    .tint(AriaColor.primary)
+                    .transition(.opacity)
                     }
-                    .padding(.top, 4)
-                }
-
-                Spacer().frame(height: 12)
-
-                // Dial pad grid
-                VStack(spacing: 10) {
-                    ForEach(dialPad, id: \.self) { row in
-                        HStack(spacing: 0) {
-                            ForEach(row) { key in
-                                DialKey(key: key) {
-                                    dialedNumber.append(key.digit)
-                                    playDTMFTone(digit: key.digit)
-                                    let impact = UIImpactFeedbackGenerator(style: .light)
-                                    impact.impactOccurred()
-                                } onLongPress: {
-                                    if key.digit == "0" {
-                                        dialedNumber.append("+")
-                                        let impact = UIImpactFeedbackGenerator(style: .medium)
-                                        impact.impactOccurred()
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
+                } else {
+                    Text(DialFormatter.format(dialedNumber))
+                        .ariaFont(.display)
+                        .monospacedDigit()
+                        .foregroundStyle(AriaColor.onSurface)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.45)
+                        .contentTransition(reduceMotion ? .identity : .numericText())
+                        .contextMenu {
+                            Button("Copy", systemImage: "doc.on.doc") {
+                                UIPasteboard.general.string = dialedNumber
                             }
                         }
+                        .accessibilityLabel(Text("Number"))
+                        .accessibilityValue(Text(dialedNumber.map(String.init).joined(separator: " ")))
+                }
+            }
+            .frame(minHeight: AriaTextStyle.display.lineHeight)
+
+            // Reserve the line so the keypad does not jump when a match appears.
+            Text(matchedName ?? " ")
+                .ariaFont(.bodySmall)
+                .foregroundStyle(AriaColor.primary)
+                .lineLimit(1)
+                .opacity(matchedName == nil ? 0 : 1)
+                .accessibilityHidden(matchedName == nil)
+        }
+        .animation(Motion.snappy(reduceMotion: reduceMotion), value: dialedNumber)
+    }
+
+    private var matchedName: String? { matcher.name(for: dialedNumber) }
+
+    // MARK: - Keys
+
+    private var keypad: some View {
+        Grid(horizontalSpacing: ComponentSize.dialKeyGapH, verticalSpacing: ComponentSize.dialKeyGapV) {
+            ForEach(DialPadKey.rows, id: \.self) { row in
+                GridRow {
+                    ForEach(row) { key in
+                        DialKey(key: key, action: { press(key.digit) },
+                                onLongPress: key.digit == "0" ? { press("+") } : nil)
                     }
                 }
-                .padding(.horizontal, 16)
-
-                Spacer().frame(height: 16)
-
-                // Call button with glow
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.12))
-                        .frame(width: 74, height: 74)
-                    Button(action: makeCall) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 66, height: 66)
-                            .shadow(color: .green.opacity(0.3), radius: 6, y: 3)
-                            .overlay(
-                                Image(systemName: "phone.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                            )
-                    }
-                    .disabled(dialedNumber.isEmpty)
-                    .opacity(dialedNumber.isEmpty ? 0.5 : 1.0)
-                }
-
-                Spacer(minLength: 8)
             }
         }
     }
 
-    private func makeCall() {
-        guard !dialedNumber.isEmpty else { return }
-        callManager.startOutgoingCall(uri: dialedNumber)
+    private var bottomRow: some View {
+        Grid(horizontalSpacing: ComponentSize.dialKeyGapH) {
+            GridRow {
+                Color.clear
+                    .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+                    .accessibilityHidden(true)
+
+                CallActionButton(role: .call, accessibilityLabel: String(localized: "Call"), action: call)
+                    .accessibilityHint(dialedNumber.isEmpty ? Text("Shows the last number you called") : Text(""))
+                    .frame(width: ComponentSize.dialKey)
+
+                ZStack {
+                    if !dialedNumber.isEmpty {
+                        backspace
+                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    }
+                }
+                .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+            }
+        }
     }
 
-    private func playDTMFTone(digit: String) {
-        let toneMap: [String: SystemSoundID] = [
-            "1": 1200, "2": 1201, "3": 1202,
-            "4": 1203, "5": 1204, "6": 1205,
-            "7": 1206, "8": 1207, "9": 1208,
-            "*": 1210, "0": 1209, "#": 1211,
-        ]
-        if let soundID = toneMap[digit] {
-            AudioServicesPlaySystemSound(soundID)
+    private var backspace: some View {
+        Button {
+            dialedNumber.removeLast()
+            keyTaps += 1
+        } label: {
+            Image(systemName: "delete.backward.fill")
+                .font(.title2)
+                .foregroundStyle(AriaColor.onSurfaceVariant)
+                .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+                .contentShape(.circle)
         }
+        .buttonStyle(.plain)
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in
+            dialedNumber = ""
+        })
+        .accessibilityLabel(Text("Delete"))
+        .accessibilityHint(Text("Double-tap and hold to clear the number"))
+        .accessibilityAction(named: Text("Clear")) { dialedNumber = "" }
+    }
+
+    // MARK: - Actions
+
+    private func press(_ symbol: String) {
+        if symbol == "+" {
+            // Long-press 0: the 0 was not added (DialKey suppresses it).
+            dialedNumber.append("+")
+        } else {
+            dialedNumber.append(symbol)
+            DTMFTone.play(symbol)
+        }
+        keyTaps += 1
+    }
+
+    private func call() {
+        guard !dialedNumber.isEmpty else {
+            // As in Phone: an empty Call brings back the last number dialed.
+            if let last = history.records.first(where: { $0.direction == .outbound }) {
+                dialedNumber = last.remoteUri
+            }
+            return
+        }
+        switch callManager.startOutgoingCall(uri: dialedNumber) {
+        case .placed:
+            dialedNumber = ""
+        case .emergencyHandoff:
+            dialedNumber = ""
+            banner = .info(String(localized: "Emergency calls are placed by your phone, not over Aria."))
+        case .refused:
+            banner = .error(String(localized: "Can't place another call right now."))
+        }
+    }
+}
+
+// MARK: - Tones
+
+enum DTMFTone {
+    private static let sounds: [String: SystemSoundID] = [
+        "1": 1200, "2": 1201, "3": 1202,
+        "4": 1203, "5": 1204, "6": 1205,
+        "7": 1206, "8": 1207, "9": 1208,
+        "*": 1210, "0": 1209, "#": 1211,
+    ]
+
+    static func play(_ digit: String) {
+        if let sound = sounds[digit] { AudioServicesPlaySystemSound(sound) }
     }
 }
 
