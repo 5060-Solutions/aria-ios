@@ -32,23 +32,28 @@ struct CallView: View {
         let shown = callManager.activeCall
         let screen = ZStack {
             CallBackground()
-            // One container, so Answer can morph into the controls. The
-            // bottom actions sit outside the scroll view: at the largest
-            // text sizes the rest scrolls, but Hang-up never does.
-            GlassEffectContainer(spacing: Space.l) {
-                VStack(spacing: 0) {
-                    // At least the available height, so the spacers lay it
-                    // out when it fits; it scrolls (with a flashed
-                    // indicator) when it does not, and never runs under
-                    // the bottom actions.
-                    GeometryReader { proxy in
-                        ScrollView {
+            // The controls scroll in their own glass container; glass from
+            // a container outside a scroll view is drawn unclipped, so
+            // scrolled content would show over Hang-up. Hang-up and the
+            // answer buttons sit below in theirs: Decline morphs into
+            // Hang-up, and at the largest text sizes the rest scrolls while
+            // Hang-up never does.
+            VStack(spacing: 0) {
+                // At least the available height, so the spacers lay it out
+                // when it fits; it scrolls (with a flashed indicator) when
+                // it does not.
+                GeometryReader { proxy in
+                    ScrollView {
+                        GlassEffectContainer(spacing: Space.l) {
                             content(shown, width: proxy.size.width)
                                 .frame(minHeight: proxy.size.height)
                         }
-                        .scrollBounceBehavior(.basedOnSize)
-                        .scrollIndicatorsFlash(onAppear: true)
                     }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollIndicatorsFlash(onAppear: true)
+                    .clipped()
+                }
+                GlassEffectContainer(spacing: Space.l) {
                     bottomActions(shown)
                         .padding(.top, Space.m)
                         .padding(.bottom, Space.l)
@@ -325,6 +330,9 @@ struct CallView: View {
         }
         .font(AriaTextStyle.title.font)
         .foregroundStyle(.white.opacity(0.85))
+        .multilineTextAlignment(.center)
+        // Capped so a long word ("Eingehender") never breaks mid-word.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .frame(minHeight: AriaTextStyle.display.lineHeight)
     }
 
