@@ -87,15 +87,7 @@ struct SetupView: View {
             }
         }
         .sheet(isPresented: $showManualSetup) {
-            NavigationStack {
-                SettingsView()
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button("Cancel") { showManualSetup = false }
-                        }
-                    }
-            }
+            ManualSetupView()
         }
     }
 
