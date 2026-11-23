@@ -47,12 +47,15 @@ case "$AI" in
 esac
 if [ -n "$AI_FEATURES" ]; then
     echo "On-device AI enabled for device build: $AI_FEATURES"
-    # Rust defaults aarch64-apple-ios to a 10.0 deployment target, but
-    # whisper.cpp compiles against the current SDK and emits __chkstk_darwin,
-    # which does not exist that far back — the link then fails with
-    # "Undefined symbols for architecture arm64". The app targets iOS 16.
-    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
 fi
+
+# Build the C dependencies (opus, and whisper.cpp with AI) for the app's
+# deployment target. Unset, the cc crate targets the SDK version, so the
+# objects are newer than the app and the linker warns; whisper.cpp also emits
+# __chkstk_darwin, which does not exist on older targets. Keep in step with
+# project.yml.
+export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-26.0}"
+export IPHONESIMULATOR_DEPLOYMENT_TARGET="${IPHONESIMULATOR_DEPLOYMENT_TARGET:-$IPHONEOS_DEPLOYMENT_TARGET}"
 
 # Build static libraries for all iOS targets
 echo "Building aarch64-apple-ios (device)..."

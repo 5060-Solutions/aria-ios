@@ -1,8 +1,10 @@
 name: AriaSoftphone
 options:
   bundleIdPrefix: com.solutions5060
+  # Liquid Glass (DESIGN.md): built with the Xcode 27 SDK, running on
+  # iOS 26 and later.
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "26.0"
   xcodeVersion: "16.0"
 targets:
   AriaSoftphone:
@@ -72,6 +74,14 @@ targets:
         NSCameraUsageDescription: "Aria uses the camera only to scan the setup QR code from your phone system."
         NSMicrophoneUsageDescription: "Aria uses the microphone so the other person can hear you during calls."
         NSContactsUsageDescription: "Aria shows your contacts so you can search and call them. Your contacts stay on this iPhone."
+        # Figtree (OFL, Resources/Fonts/Figtree-OFL.txt): static weights
+        # instanced from the desktop's variable font.
+        UIAppFonts:
+          - Figtree-Light.ttf
+          - Figtree-Regular.ttf
+          - Figtree-Medium.ttf
+          - Figtree-SemiBold.ttf
+          - Figtree-Bold.ttf
         UIBackgroundModes:
           - voip
           - audio

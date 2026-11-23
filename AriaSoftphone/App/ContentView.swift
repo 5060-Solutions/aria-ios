@@ -99,70 +99,60 @@ struct SetupView: View {
 
 // MARK: - Main Tab View (shown after setup)
 
+/// The five tabs, in DESIGN.md order.
+enum AppTab: Hashable {
+    case dialer, history, contacts, voicemail, settings
+
+    /// The tab a fixture scene opens on; the Dialer otherwise.
+    init(fixtureScene: FixtureScene?) {
+        switch fixtureScene {
+        case .history: self = .history
+        case .contacts: self = .contacts
+        case .voicemail, .voicemailPlaying: self = .voicemail
+        case .settings, .forwarding: self = .settings
+        default: self = .dialer
+        }
+    }
+}
+
+/// The Liquid Glass tab bar shell, with the call screen over it.
 struct MainTabView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
     @ObservedObject private var voicemail = VoicemailService.shared
-    @State private var selectedTab: Tab = Tab(fixtureScene: FixtureMode.scene)
-
-    enum Tab {
-        case dialer, contacts, history, voicemail, settings
-
-        /// The tab a fixture scene opens on; the Dialer otherwise.
-        init(fixtureScene: FixtureScene?) {
-            switch fixtureScene {
-            case .history: self = .history
-            case .contacts: self = .contacts
-            case .voicemail, .voicemailPlaying: self = .voicemail
-            case .settings, .forwarding: self = .settings
-            default: self = .dialer
-            }
-        }
-    }
+    @State private var selectedTab = AppTab(fixtureScene: FixtureMode.scene)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             TabView(selection: $selectedTab) {
-                DialerView()
-                    .tabItem {
-                        Label("Dialer", systemImage: "phone.fill")
-                    }
-                    .tag(Tab.dialer)
-
-                ContactsView()
-                    .tabItem {
-                        Label("Contacts", systemImage: "person.crop.circle.fill")
-                    }
-                    .tag(Tab.contacts)
-
-                HistoryView()
-                    .tabItem {
-                        Label("History", systemImage: "clock.fill")
-                    }
-                    .tag(Tab.history)
-
-                VoicemailView()
-                    .tabItem {
-                        Label("Voicemail", systemImage: "recordingtape")
-                    }
-                    .tag(Tab.voicemail)
-                    .badge(voicemail.unreadCount)
-
-                SettingsView()
-                    .tabItem {
-                        Label("Settings", systemImage: "gear")
-                    }
-                    .tag(Tab.settings)
+                Tab("Dialer", systemImage: "circle.grid.3x3.fill", value: AppTab.dialer) {
+                    DialerView()
+                }
+                Tab("History", systemImage: "clock", value: AppTab.history) {
+                    HistoryView()
+                }
+                Tab("Contacts", systemImage: "person.2", value: AppTab.contacts) {
+                    ContactsView()
+                }
+                Tab("Voicemail", systemImage: "recordingtape", value: AppTab.voicemail) {
+                    VoicemailView()
+                }
+                .badge(voicemail.unreadCount)
+                Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
+                    SettingsView()
+                }
             }
-            .tint(.ariaIndigo)
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tint(AriaColor.primary)
 
             // Full-screen call overlay
             if callManager.activeCall != nil {
                 CallView()
-                    .transition(.move(edge: .bottom))
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom))
             }
         }
-        .animation(.easeInOut, value: callManager.activeCall != nil)
+        .animation(Motion.standard(reduceMotion: reduceMotion), value: callManager.activeCall != nil)
     }
 }
 
