@@ -6,18 +6,21 @@ struct ForwardingView: View {
     @ObservedObject private var service = SelfService.shared
 
     var body: some View {
-        Form {
-            ForEach(SelfService.ForwardType.allCases) { type in
-                ForwardSection(type: type, existing: service.forward(type))
-            }
-            if let error = service.errorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.xl) {
+                if let error = service.errorMessage {
+                    Banner(message: .error(error)) { service.errorMessage = nil }
                         .accessibilityIdentifier("forwarding.error")
                 }
+                ForEach(SelfService.ForwardType.allCases) { type in
+                    ForwardSection(type: type, existing: service.forward(type))
+                }
             }
+            .padding(.horizontal, Space.screenMargin)
+            .padding(.vertical, Space.m)
         }
+        .background(AriaColor.background)
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Call Forwarding")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
@@ -48,51 +51,59 @@ private struct ForwardSection: View {
     }
 
     var body: some View {
-        Section {
-            Toggle(isOn: Binding(
+        SectionCard(footer: Text(Self.footer(type))) {
+            ToggleRow(title: Self.title(type), systemImage: Self.icon(type), isOn: Binding(
                 get: { isEnabled },
                 set: { on in Task { await toggle(on) } }
-            )) {
-                Label(Self.title(type), systemImage: Self.icon(type))
-            }
+            ))
             .disabled(saving || (existing == nil && trimmed.isEmpty))
             .accessibilityIdentifier("forwarding.\(type.rawValue).toggle")
 
-            TextField("Number or extension", text: $destination)
-                .keyboardType(.phonePad)
-                .textContentType(.telephoneNumber)
-                .accessibilityIdentifier("forwarding.\(type.rawValue).destination")
+            FieldBlock(label: "Forward to") {
+                TextField("Number or extension", text: $destination)
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
+                    .ariaField()
+                    .accessibilityIdentifier("forwarding.\(type.rawValue).destination")
+            }
 
             if type == .noAnswer {
                 Stepper(value: $ringTimeout, in: 5...300, step: 5) {
                     Text("After \(ringTimeout) seconds")
+                        .ariaFont(.body)
+                        .foregroundStyle(AriaColor.onSurface)
                 }
+                .frame(minHeight: ComponentSize.row)
                 .accessibilityIdentifier("forwarding.noAnswer.timeout")
             }
 
-            if isEdited && !trimmed.isEmpty {
-                Button(existing == nil ? "Turn On" : "Save") {
-                    Task { await save(enabled: existing == nil ? true : isEnabled) }
-                }
-                .disabled(saving)
-                .accessibilityIdentifier("forwarding.\(type.rawValue).save")
-            }
-            if existing != nil {
-                Button("Remove", role: .destructive) {
-                    Task {
-                        saving = true
-                        await service.removeForward(type)
-                        saving = false
-                        destination = ""
+            if (isEdited && !trimmed.isEmpty) || existing != nil {
+                HStack(spacing: Space.s) {
+                    if isEdited && !trimmed.isEmpty {
+                        AriaButton(existing == nil ? "Turn On" : "Save", kind: .prominent, isLoading: saving) {
+                            Task { await save(enabled: existing == nil ? true : isEnabled) }
+                        }
+                        .accessibilityIdentifier("forwarding.\(type.rawValue).save")
+                    }
+                    Spacer()
+                    if existing != nil {
+                        AriaButton("Remove", kind: .plain) {
+                            Task {
+                                saving = true
+                                await service.removeForward(type)
+                                saving = false
+                                destination = ""
+                            }
+                        }
+                        .foregroundStyle(AriaColor.error)
+                        .disabled(saving)
                     }
                 }
-                .disabled(saving)
+                .padding(.vertical, Space.xs)
             }
-        } footer: {
-            Text(Self.footer(type))
         }
         .onAppear(perform: load)
-        .onChange(of: existing) { _ in load() }
+        .onChange(of: existing) { load() }
     }
 
     private func load() {
