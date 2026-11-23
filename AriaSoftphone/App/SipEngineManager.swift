@@ -500,6 +500,38 @@ class SipEngineManager: ObservableObject {
         try engine.swapCalls(activeCallId: activeCallId, heldCallId: heldCallId)
     }
 
+    /// Mix two connected calls into a local three-way conference. The core
+    /// takes both off hold and reports each `Connected` with `inConference`.
+    /// Throws `InvalidState` unless both are connected and neither is
+    /// already conferenced.
+    func conferenceMerge(callA: String, callB: String) throws {
+        guard let engine = engine else { throw SipError.notConfigured }
+        try engine.conferenceMerge(callA: callA, callB: callB)
+    }
+
+    /// End the conference: the newer call stays connected, the older one is
+    /// held.
+    func conferenceSplit() throws {
+        guard let engine = engine else { throw SipError.notConfigured }
+        try engine.conferenceSplit()
+    }
+
+    /// Record a connected call to a new WAV file at `path`.
+    func startRecording(callId: String, path: String) throws {
+        guard let engine = engine else { throw SipError.notConfigured }
+        try engine.startRecording(callId: callId, path: path)
+    }
+
+    /// Stop recording; returns the WAV file's path.
+    func stopRecording(callId: String) throws -> String {
+        guard let engine = engine else { throw SipError.notConfigured }
+        return try engine.stopRecording(callId: callId)
+    }
+
+    func isRecording(callId: String) -> Bool {
+        engine?.isRecording(callId: callId) ?? false
+    }
+
     /// Mute/unmute.
     func setMute(callId: String, muted: Bool) throws {
         guard let engine = engine else { return }
