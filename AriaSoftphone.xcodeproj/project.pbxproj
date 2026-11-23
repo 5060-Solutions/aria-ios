@@ -58,6 +58,7 @@
 		79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */; };
 		7AE6A6C9AC950F292CBFFE22 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE69EC6A23C8B126C1AC79B /* DiagnosticsView.swift */; };
 		7CC7D6530E82B9FEBC519F62 /* ConnectionDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850E9F3CBF3AD64722A79348 /* ConnectionDetails.swift */; };
+		7EBD2F47C15BA63CF2548F23 /* DialerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1BFE08E58ED03840CB1AB8 /* DialerTests.swift */; };
 		80FC14C0EB49B84D765A0887 /* AudioConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */; };
 		8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125317FA44A9C196C3BE928E /* CallManager.swift */; };
 		8333D2D36C5C000857E8E755 /* DialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56151D77272EC8CB85003538 /* DialKey.swift */; };
@@ -76,6 +77,7 @@
 		A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */; };
 		A1D13B0B40B4723A786AA67D /* RecordingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF21325E1CE3B995317606A /* RecordingsStore.swift */; };
 		A35E09B3F3E7B88D3C3E9D19 /* Figtree-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 244C9E498E95F1F3C1A7EC17 /* Figtree-Bold.ttf */; };
+		A4095C5EC6063E1A5634F8CD /* DialFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = F88C3F8913EA93E0A8443936 /* DialFormatting.swift */; };
 		A5FA14D96A0C378A2547F298 /* VoicemailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9BAB46772E8DA53C11AF76 /* VoicemailView.swift */; };
 		AD294B76D2C8420FF343DEB7 /* AudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF0491015FDD77DD4568E4C0 /* AudioBridge.swift */; };
 		BDDE708BD9056D3C958F3910 /* GatewayAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */; };
@@ -96,6 +98,7 @@
 		E4FD4F5AC5A91C5C856E6F84 /* DeepLinkHandling.swift in Sources */ = {isa = PBXBuildFile; fileRef = CACF86647ED1812F92243E9E /* DeepLinkHandling.swift */; };
 		E8B63C7CA74C0374F1190497 /* AriaMobileCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; };
 		EAE0B2670FFC393C7066FF2A /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70BD257DEA8C77B7FCC1F88 /* Avatar.swift */; };
+		EB0DC0E6B79631E00D3825EE /* ConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F417E48E79AC5552D6F060B /* ConnectionSheet.swift */; };
 		EE9FADDB11605BDADFAD4689 /* ActivityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3EF068B7199B2FE8D0C28B /* ActivityRefresher.swift */; };
 		F19CA286DA66AD0D21D004F0 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6B96E5828C9B4D4BB38550 /* StubURLProtocol.swift */; };
 		F891814AFF53997FE76EAFE2 /* GatewayTokenRenewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF1D09026AEB6AD0B4D98388 /* GatewayTokenRenewer.swift */; };
@@ -154,8 +157,10 @@
 		557297B649EDAE0B0C3B837E /* AriaSoftphone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AriaSoftphone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		56151D77272EC8CB85003538 /* DialKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialKey.swift; sourceTree = "<group>"; };
 		576DF83E37DCF9E007E2250A /* aria_mobile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = aria_mobile.swift; sourceTree = "<group>"; };
+		5A1BFE08E58ED03840CB1AB8 /* DialerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerTests.swift; sourceTree = "<group>"; };
 		5AE93BD0B6656A5839ECC05B /* CallHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryStore.swift; sourceTree = "<group>"; };
 		5D2B681CC713818FFF6DA338 /* CallingSettingsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallingSettingsCard.swift; sourceTree = "<group>"; };
+		5F417E48E79AC5552D6F060B /* ConnectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSheet.swift; sourceTree = "<group>"; };
 		6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
 		69917C126F3D6E94542ECD66 /* Figtree-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Light.ttf"; sourceTree = "<group>"; };
 		7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSetupView.swift; sourceTree = "<group>"; };
@@ -210,6 +215,7 @@
 		EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SipEngineManager.swift; sourceTree = "<group>"; };
 		EFBE7E0D5C044DD7C960B8DD /* FixtureSelfService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureSelfService.swift; sourceTree = "<group>"; };
 		F853B949444400FBD15B95AE /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
+		F88C3F8913EA93E0A8443936 /* DialFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialFormatting.swift; sourceTree = "<group>"; };
 		F91DF635F6790BD0BEE5A8DF /* SelfService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfService.swift; sourceTree = "<group>"; };
 		F97BB4AF45FE5EAB1592B4E7 /* FixtureData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureData.swift; sourceTree = "<group>"; };
 		FA1037FD2749085B2D44D7FA /* ForwardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForwardingView.swift; sourceTree = "<group>"; };
@@ -310,6 +316,7 @@
 				2EBE7C651B0DA004A9B08D56 /* ConferenceTests.swift */,
 				1AD66021B6BD28240DCC2EED /* DesignSystemTests.swift */,
 				A0217225FEAE80967892E255 /* DiagnosticsTests.swift */,
+				5A1BFE08E58ED03840CB1AB8 /* DialerTests.swift */,
 				4D5708DF1A3E6AC9E0008A59 /* EmergencyDialerTests.swift */,
 				3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */,
 				E32FED50CF08223E364A6773 /* FixtureModeTests.swift */,
@@ -516,7 +523,9 @@
 		FC4046F03F5A1663FDFE023D /* Dialer */ = {
 			isa = PBXGroup;
 			children = (
+				5F417E48E79AC5552D6F060B /* ConnectionSheet.swift */,
 				BA65EE9BC777C87EE95AB48C /* DialerView.swift */,
+				F88C3F8913EA93E0A8443936 /* DialFormatting.swift */,
 			);
 			path = Dialer;
 			sourceTree = "<group>";
@@ -649,6 +658,7 @@
 				E1FFEC9E720627C72A6DB7F1 /* ConferenceTests.swift in Sources */,
 				9E36868952B9A025D214772E /* DesignSystemTests.swift in Sources */,
 				E0AA026B5218CD156B43932B /* DiagnosticsTests.swift in Sources */,
+				7EBD2F47C15BA63CF2548F23 /* DialerTests.swift in Sources */,
 				30BC50E2582C817510273F01 /* EmergencyDialerTests.swift in Sources */,
 				0C6B5F50EBA3875E5B10BA3F /* EngineSetupTests.swift in Sources */,
 				8BC3D666C26DF14A313243A1 /* FixtureModeTests.swift in Sources */,
@@ -691,6 +701,7 @@
 				D60F75EC7DBCD5137BCCC551 /* CodecPreferences.swift in Sources */,
 				390BC905A3C3559885B519C3 /* CodecSettingsView.swift in Sources */,
 				7CC7D6530E82B9FEBC519F62 /* ConnectionDetails.swift in Sources */,
+				EB0DC0E6B79631E00D3825EE /* ConnectionSheet.swift in Sources */,
 				9E52F9C472C0935C00C801B5 /* ContactsSource.swift in Sources */,
 				4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */,
 				52EC2AB979BAC079955053DA /* Containers.swift in Sources */,
@@ -698,6 +709,7 @@
 				C5E703CB1557F4AD8DBDBE66 /* DeepLink.swift in Sources */,
 				E4FD4F5AC5A91C5C856E6F84 /* DeepLinkHandling.swift in Sources */,
 				7AE6A6C9AC950F292CBFFE22 /* DiagnosticsView.swift in Sources */,
+				A4095C5EC6063E1A5634F8CD /* DialFormatting.swift in Sources */,
 				8333D2D36C5C000857E8E755 /* DialKey.swift in Sources */,
 				8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */,
 				0CA0A4884B34CEA3645CDD66 /* EmergencyDialer.swift in Sources */,

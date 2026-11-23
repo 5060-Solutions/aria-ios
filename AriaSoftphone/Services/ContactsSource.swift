@@ -14,10 +14,17 @@ struct ContactEntry: Identifiable {
 /// Where the Contacts tab gets its contacts. Live: the system address book.
 /// Fixture mode swaps in canned contacts (see `FixtureBackends.swift`).
 protocol ContactsSource {
+    /// Whether access is already granted, without asking.
+    var isAuthorized: Bool { get }
     /// Ask for (or confirm) access; false when the user has refused it.
     func requestAccess() async throws -> Bool
     /// Every contact with a phone number, sorted by given name.
     func fetchContacts() throws -> [ContactEntry]
+}
+
+extension ContactsSource {
+    /// Sources without a permission model (test fakes) are always readable.
+    var isAuthorized: Bool { true }
 }
 
 enum ContactsSources {
@@ -33,6 +40,13 @@ enum ContactsSources {
 /// The system address book.
 struct SystemContactsSource: ContactsSource {
     private let store = CNContactStore()
+
+    var isAuthorized: Bool {
+        switch CNContactStore.authorizationStatus(for: .contacts) {
+        case .authorized, .limited: return true
+        default: return false
+        }
+    }
 
     func requestAccess() async throws -> Bool {
         try await store.requestAccess(for: .contacts)
@@ -63,5 +77,35 @@ struct SystemContactsSource: ContactsSource {
             ))
         }
         return fetched
+    }
+}
+
+/// The address book, loaded once for screens that only look names up (the
+/// dialer's match line). Never asks for access: it loads only when access
+/// has already been granted, and again once the Contacts tab is granted it.
+@MainActor
+final class ContactDirectory: ObservableObject {
+    static let shared = ContactDirectory(source: ContactsSources.current)
+
+    @Published private(set) var contacts: [ContactEntry] = []
+    private let source: ContactsSource
+    private var loaded = false
+
+    init(source: ContactsSource) {
+        self.source = source
+    }
+
+    func loadIfAuthorized() async {
+        guard !loaded, source.isAuthorized else { return }
+        loaded = true
+        let source = self.source
+        let fetched = await Task.detached { (try? source.fetchContacts()) ?? [] }.value
+        contacts = fetched
+    }
+
+    /// Use contacts another screen has just fetched.
+    func update(_ contacts: [ContactEntry]) {
+        loaded = true
+        self.contacts = contacts
     }
 }

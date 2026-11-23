@@ -54,9 +54,16 @@ struct DialKey: View {
             action()
         } label: {
             VStack(spacing: 0) {
-                Text(key.digit)
-                    .ariaFont(.dialDigit)
-                    .monospacedDigit()
+                if key.digit == "*" {
+                    // Figtree's asterisk sits small and high; the symbol
+                    // matches the digits' weight and centre.
+                    Image(systemName: "asterisk")
+                        .font(.title2.weight(.light))
+                } else {
+                    Text(key.digit)
+                        .ariaFont(.dialDigit)
+                        .monospacedDigit()
+                }
                 if !key.letters.isEmpty, !dynamicTypeSize.isAccessibilitySize {
                     Text(key.letters)
                         .ariaFont(.dialLetters)

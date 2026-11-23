@@ -51,6 +51,7 @@ struct FixtureContactsSource: ContactsSource {
     var contacts = FixtureData.contacts
     var accessGranted = true
 
+    var isAuthorized: Bool { accessGranted }
     func requestAccess() async throws -> Bool { accessGranted }
     func fetchContacts() throws -> [ContactEntry] { contacts }
 }
