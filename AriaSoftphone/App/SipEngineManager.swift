@@ -9,6 +9,26 @@ class SipEngineManager: ObservableObject {
     @Published var isRegistered = false
     @Published var registrationError: String?
     @Published var deviceId: String?
+    /// The network has a usable path (from `NetworkMonitor`).
+    @Published var isNetworkAvailable = true
+    /// A restore or reconnect is under way.
+    @Published var isConnecting = false
+
+    /// What the status chip shows: see `ConnectionState.derive`.
+    var connectionState: ConnectionState {
+        ConnectionState.derive(
+            isProvisioned: AccountSettings.load().isProvisioned,
+            isNetworkAvailable: isNetworkAvailable,
+            isRegistered: isRegistered,
+            isConnecting: isConnecting,
+            error: registrationError
+        )
+    }
+
+    /// Watches the network; started once at launch.
+    private lazy var networkMonitor = NetworkMonitor(monitor: SystemPathMonitor()) { [weak self] change, _ in
+        self?.networkChanged(change)
+    }
 
     /// Guarded by `stateLock`: the engine is rebuilt on the setup queue and
     /// read from the main queue, call-action queues and push handling alike.
@@ -255,19 +275,73 @@ class SipEngineManager: ObservableObject {
     /// surfaced as a registration error rather than thrown.
     func restoreSessionInBackground() {
         guard AccountSettings.load().isProvisioned else { return }
+        setConnecting(true)
         DispatchQueue.global(qos: .utility).async {
             do {
                 try self.ensureReady()
+                DispatchQueue.main.async {
+                    self.isConnecting = false
+                    // Still registered from before: a no-op restore leaves
+                    // nothing to report, so clear a stale error.
+                    if self.registeredDeviceId != nil {
+                        self.isRegistered = true
+                        self.registrationError = nil
+                    }
+                }
             } catch SipError.keychainLocked {
                 // Retried when the app next becomes active, i.e. unlocked.
                 print("Session restore deferred: Keychain locked")
+                self.setConnecting(false)
             } catch {
                 print("Session restore failed: \(error)")
                 DispatchQueue.main.async {
+                    self.isConnecting = false
                     self.registrationError = error.localizedDescription
                 }
             }
         }
+    }
+
+    private func setConnecting(_ value: Bool) {
+        if Thread.isMainThread {
+            isConnecting = value
+        } else {
+            DispatchQueue.main.async { self.isConnecting = value }
+        }
+    }
+
+    // MARK: - Network
+
+    /// Start watching the network. Called once at launch; never in fixture
+    /// mode.
+    func startNetworkMonitoring() {
+        networkMonitor.start()
+    }
+
+    /// The network changed: an interface switch, a new address, or the
+    /// network coming or going.
+    ///
+    /// The core is told about every change (`notify_network_change`), so it
+    /// refreshes its gateway connection from the new path. When the network
+    /// comes back the session is restored as well, in case it was lost while
+    /// offline. Incoming calls do not depend on any of this: they arrive by
+    /// PushKit whatever the state here.
+    func networkChanged(_ change: NetworkChange) {
+        let available = change != .becameUnreachable
+        DispatchQueue.main.async { self.isNetworkAvailable = available }
+        guard available else { return }
+        engine?.notifyNetworkChange()
+        if change == .becameReachable {
+            restoreSessionInBackground()
+        }
+    }
+
+    /// Re-establish after coming to the foreground, or when the user asks
+    /// (the connection sheet's Reconnect): tell the core to re-check its
+    /// gateway connection and restore the session if it is gone.
+    func reconnect() {
+        engine?.notifyNetworkChange()
+        restoreSessionInBackground()
     }
 
     /// Drop the engine so the next `ensureReady()` builds it from the stored
@@ -298,6 +372,7 @@ class SipEngineManager: ObservableObject {
                 DispatchQueue.main.async {
                     self.isRegistered = false
                     self.deviceId = nil
+                    self.isConnecting = false
                 }
                 continuation.resume()
             }
@@ -413,6 +488,7 @@ class SipEngineManager: ObservableObject {
             self.isRegistered = false
             self.deviceId = nil
             self.registrationError = nil
+            self.isConnecting = false
         }
     }
 
@@ -694,6 +770,46 @@ class SwiftEventHandler: MobileEventHandler {
         guard context != "hangup" else { return }
         DispatchQueue.main.async {
             self.manager?.registrationError = "\(context): \(message)"
+        }
+    }
+}
+
+// MARK: - Connection state
+
+/// The registration state the status chip and connection sheet show.
+enum ConnectionState: Equatable {
+    /// No account, or no network.
+    case offline
+    case connecting
+    case registered
+    case error(String)
+
+    /// Offline without an account or a network; registered while the
+    /// gateway has the device (a foreground re-check does not flicker it to
+    /// connecting); connecting while a restore runs; otherwise the last
+    /// error, or connecting when there is none yet (a launch restore that
+    /// has not reported).
+    static func derive(
+        isProvisioned: Bool,
+        isNetworkAvailable: Bool,
+        isRegistered: Bool,
+        isConnecting: Bool,
+        error: String?
+    ) -> ConnectionState {
+        guard isProvisioned, isNetworkAvailable else { return .offline }
+        if isRegistered { return .registered }
+        if isConnecting { return .connecting }
+        if let error = error, !error.isEmpty { return .error(error) }
+        return .connecting
+    }
+
+    /// The label paired with the status colour.
+    var label: String {
+        switch self {
+        case .offline: return String(localized: "Offline")
+        case .connecting: return String(localized: "Connecting")
+        case .registered: return String(localized: "Registered")
+        case .error: return String(localized: "Error")
         }
     }
 }
