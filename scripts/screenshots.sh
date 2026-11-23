@@ -55,7 +55,7 @@ xcrun simctl status_bar "$SIM" override --time 9:41 --dataNetwork wifi \
     --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
 
 # No permission alerts over the shots.
-for service in contacts microphone; do
+for service in contacts microphone camera; do
     xcrun simctl privacy "$SIM" grant "$service" "$BUNDLE" 2>/dev/null || true
 done
 

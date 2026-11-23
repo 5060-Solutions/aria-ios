@@ -44,75 +44,58 @@ struct ProvisioningConfirmView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    row("Server", apiHost)
-                    row("SIP Server", credentials.server)
-                    row("Domain", account.domain)
-                } header: {
-                    Text("Connect to")
-                } footer: {
-                    Text("Your extension password will be sent to \(apiHost). Only continue if you recognise this server.")
-                }
-
-                Section("Account") {
-                    row("Extension", credentials.username)
-                    if !credentials.displayName.isEmpty && credentials.displayName != credentials.username {
-                        row("Name", credentials.displayName)
+            ScrollView {
+                VStack(spacing: Space.sectionGap) {
+                    SectionCard(
+                        title: Text("Connect to"),
+                        footer: Text("Your extension password will be sent to \(apiHost). Only continue if you recognise this server.")
+                    ) {
+                        DetailRow(label: "Server", value: apiHost)
+                        RowDivider()
+                        DetailRow(label: "SIP server", value: credentials.server)
+                        RowDivider()
+                        DetailRow(label: "Domain", value: account.domain)
                     }
-                    row("Transport", "\(account.effectiveTransport.uppercased()) : \(account.effectivePort)")
-                }
 
-                if account.effectiveTransport != "tls" {
-                    Section {
-                        Label(
-                            "This code uses \(account.effectiveTransport.uppercased()), so call signalling will not be encrypted.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    SectionCard(title: Text("Account")) {
+                        DetailRow(label: "Extension", value: credentials.username)
+                        if !credentials.displayName.isEmpty && credentials.displayName != credentials.username {
+                            RowDivider()
+                            DetailRow(label: "Name", value: credentials.displayName)
+                        }
+                        RowDivider()
+                        DetailRow(label: "SIP transport",
+                                  value: "\(account.effectiveTransport.uppercased()) · \(account.effectivePort)")
+                    }
+
+                    if account.effectiveTransport != "tls" {
+                        Banner(message: BannerMessage(
+                            kind: .error,
+                            text: String(localized: "This code uses \(account.effectiveTransport.uppercased()), so call signalling will not be encrypted."),
+                            duration: nil))
                     }
                 }
+                .padding(.horizontal, Space.screenMargin)
+                .padding(.top, Space.s)
+                .padding(.bottom, Space.xl)
             }
+            .background(AriaColor.background)
+            .scrollEdgeEffectStyle(.hard, for: .bottom)
             .navigationTitle("Confirm Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel", systemImage: "xmark") { dismiss() }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    Button {
-                        onConfirm()
-                    } label: {
-                        Text("Connect")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.ariaIndigo)
-
-                    Button("Scan a Different Code", action: onRescan)
-                        .font(.subheadline)
-                        .foregroundColor(.ariaIndigo)
+            .safeAreaBar(edge: .bottom) {
+                VStack(spacing: Space.xs) {
+                    AriaButton("Connect", kind: .prominent, size: .primary, fullWidth: true, action: onConfirm)
+                    AriaButton("Scan a Different Code", kind: .plain, action: onRescan)
                 }
-                .padding()
-                .background(.bar)
+                .padding(.horizontal, Space.screenMargin)
+                .padding(.vertical, Space.s)
             }
-        }
-    }
-
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.trailing)
-                .textSelection(.enabled)
         }
     }
 }

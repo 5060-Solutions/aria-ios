@@ -22,6 +22,7 @@
 		19B126C073701906B6E7C230 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1925854638E35A495F340AE4 /* AccountSettings.swift */; };
 		1AC1F17DB93780A10AC66F65 /* ProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */; };
 		1B2F40C3FDD9E6AB2000E019 /* SelfServiceApiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DEE0E5CE91522BB4A28F2F /* SelfServiceApiTests.swift */; };
+		1DE075FE932FDE5606B40D85 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9E9BA1E1A7310EBC601FFCE /* OnboardingView.swift */; };
 		1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */; };
 		22DC926F77D2695161AA16B0 /* CallerNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3725B4A968B21A006B806EF /* CallerNames.swift */; };
 		286151679C9D90210BFB06D8 /* FixtureData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F97BB4AF45FE5EAB1592B4E7 /* FixtureData.swift */; };
@@ -209,6 +210,7 @@
 		BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PbxApiDecodingTests.swift; sourceTree = "<group>"; };
 		C3091A422CF0D40BAA59CEF7 /* Figtree-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Medium.ttf"; sourceTree = "<group>"; };
 		C46419C0A3ACBEDE7447B33D /* ManualSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSetup.swift; sourceTree = "<group>"; };
+		C9E9BA1E1A7310EBC601FFCE /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		CACF86647ED1812F92243E9E /* DeepLinkHandling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkHandling.swift; sourceTree = "<group>"; };
 		CAF467C7C5DBB5F4CF9BB338 /* VoicemailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailService.swift; sourceTree = "<group>"; };
 		CD136F883471E79C252749B7 /* LocalNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotifications.swift; sourceTree = "<group>"; };
@@ -487,6 +489,7 @@
 			children = (
 				6543A3ADEA1BFA74052AC847 /* FeatureFormStyles.swift */,
 				7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */,
+				C9E9BA1E1A7310EBC601FFCE /* OnboardingView.swift */,
 				00AB7DCF5FC490DCD0F924A3 /* SetupLinkConfirmView.swift */,
 			);
 			path = Setup;
@@ -757,6 +760,7 @@
 				D4338A2D06CC2410BA2028F5 /* ManualSetup.swift in Sources */,
 				D15F4BAA0B13A594B979A82A /* ManualSetupView.swift in Sources */,
 				2F571E85A2EA921540C8DF07 /* NetworkMonitor.swift in Sources */,
+				1DE075FE932FDE5606B40D85 /* OnboardingView.swift in Sources */,
 				A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */,
 				3446FFC3AFDFCBD191801367 /* PbxSession.swift in Sources */,
 				9223B14C13B80FC194F9C1C8 /* ProvisioningFlowView.swift in Sources */,
