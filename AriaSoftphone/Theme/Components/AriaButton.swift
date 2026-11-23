@@ -308,11 +308,15 @@ struct CallActionButton: View {
                     .modifier(GlassIDModifier(id: glassID, namespace: namespace))
                     .ariaGlow(role.color, isEnabled: isEnabled)
                 if let caption {
+                    // Capped so single words ("Ablehnen") fit on one line
+                    // and never break mid-word; several words wrap at spaces.
                     Text(caption)
                         .ariaFont(.label)
                         .foregroundStyle(captionColor)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 }
             }
             .frame(minWidth: caption == nil ? nil : ComponentSize.callControlCell)
