@@ -7,6 +7,8 @@ import Foundation
 ///     -ScreenshotMode              the same; the name screenshot scripts use
 ///     -FixtureScene <scene>        open on one screen of DESIGN.md §8,
 ///                                  e.g. `-FixtureScene in-call`
+///     -FixtureReconnecting         the core is recovering after a network
+///                                  change (the amber "Reconnecting…" chip)
 ///
 /// DEBUG builds only: in Release `isActive` is always false and the fixture
 /// data is not compiled in. The data lives in `FixtureData`, the stand-in
@@ -16,6 +18,16 @@ import Foundation
 enum FixtureMode {
     static let activatingArguments: Set<String> = ["-UITestMode", "-ScreenshotMode"]
     static let sceneArgument = "-FixtureScene"
+    static let reconnectingArgument = "-FixtureReconnecting"
+
+    /// Whether the fixture shows the core recovering (DEBUG only).
+    static var isReconnecting: Bool {
+        #if DEBUG
+        return isActive && ProcessInfo.processInfo.arguments.contains(reconnectingArgument)
+        #else
+        return false
+        #endif
+    }
 
     /// True when the app was launched with a fixture argument (DEBUG only).
     static var isActive: Bool {

@@ -51,19 +51,27 @@ struct DetailRow: View {
     let value: String
     var valueColor: Color = AriaColor.onSurface
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+        // At accessibility sizes the value goes under the label so neither
+        // breaks mid-word.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.xxs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Space.s))
+        layout {
             Text(label)
                 .ariaFont(.body)
                 .foregroundStyle(AriaColor.onSurfaceVariant)
-            Spacer(minLength: Space.s)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Space.s) }
             Text(value)
                 .ariaFont(.body)
                 .fontWeight(.medium)
                 .foregroundStyle(valueColor)
-                .multilineTextAlignment(.trailing)
+                .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
                 .textSelection(.enabled)
         }
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? Space.xs : 0)
         .frame(minHeight: ComponentSize.row)
         .accessibilityElement(children: .combine)
     }

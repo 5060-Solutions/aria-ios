@@ -197,3 +197,23 @@ final class DesignSystemTests: XCTestCase {
         XCTAssertNotEqual(BannerMessage.info("x").id, BannerMessage.info("x").id)
     }
 }
+
+final class SettingsTests: XCTestCase {
+    func testAppearanceMapsToColorScheme() {
+        XCTAssertNil(AppAppearance.system.colorScheme)
+        XCTAssertEqual(AppAppearance.light.colorScheme, .light)
+        XCTAssertEqual(AppAppearance.dark.colorScheme, .dark)
+        XCTAssertEqual(AppAppearance(rawValue: "dark"), .dark)
+        XCTAssertEqual(AppAppearance.allCases.count, 3)
+    }
+
+    func testAboutLinksAreHTTPS() {
+        XCTAssertEqual(AboutLinks.website.scheme, "https")
+        XCTAssertEqual(AboutLinks.acknowledgements.scheme, "https")
+    }
+
+    func testVersionDescription() {
+        XCTAssertEqual(AppVersion.describe(["CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "7"]), "1.0.0 (7)")
+        XCTAssertEqual(AppVersion.describe(["CFBundleShortVersionString": "1.0.0"]), "1.0.0")
+    }
+}

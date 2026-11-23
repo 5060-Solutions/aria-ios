@@ -7,6 +7,7 @@ struct ConnectionSheet: View {
     @EnvironmentObject var sipEngine: SipEngineManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var snapshot: ConnectionDetails.Snapshot { details.snapshot }
 
@@ -27,7 +28,7 @@ struct ConnectionSheet: View {
                             if node.host.isEmpty {
                                 value(String(localized: "Not set"))
                             } else {
-                                VStack(alignment: .trailing, spacing: 0) {
+                                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
                                     value(node.host)
                                     if let port = node.port {
                                         Text("Port \(port)")
@@ -82,7 +83,10 @@ struct ConnectionSheet: View {
                 .padding(.bottom, Space.xl)
             }
             .background(AriaColor.background)
-            .safeAreaInset(edge: .bottom) {
+            .scrollEdgeEffectStyle(.hard, for: .bottom)
+            // A bar, not a plain inset: the scroll edge effect sits behind
+            // Reconnect, so rows scrolled beneath it never show through.
+            .safeAreaBar(edge: .bottom) {
                 AriaButton("Reconnect", systemImage: "arrow.clockwise", kind: .prominent,
                            size: .primary, fullWidth: true, isLoading: sipEngine.isConnecting) {
                     details.reconnect()
@@ -106,7 +110,7 @@ struct ConnectionSheet: View {
 
     private func value(_ text: String) -> some View {
         Text(text)
-            .lineLimit(1)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             .truncationMode(.middle)
     }
 

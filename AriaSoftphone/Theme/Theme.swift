@@ -47,6 +47,10 @@ enum AriaColor {
 }
 
 extension Color {
+    /// The brand indigo of the Aria logo (#6366F1), for the logo's
+    /// surroundings only; the UI chrome is green.
+    static let ariaIndigo = Color(hex: 0x6366F1)
+
     /// An sRGB colour from 0xRRGGBB.
     init(hex: UInt32) {
         self.init(.sRGB,
