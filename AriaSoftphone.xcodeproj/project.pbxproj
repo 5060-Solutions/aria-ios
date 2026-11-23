@@ -34,6 +34,7 @@
 		3008C61D179FF9E3E70B41BB /* ServerCallHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2113F4B394A54ACB9986933 /* ServerCallHistory.swift */; };
 		30A7E7C7875C7524F241921B /* VoicemailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF467C7C5DBB5F4CF9BB338 /* VoicemailService.swift */; };
 		30BC50E2582C817510273F01 /* EmergencyDialerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5708DF1A3E6AC9E0008A59 /* EmergencyDialerTests.swift */; };
+		331670677B6B4185A536FEBC /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 1D6AD3DA7C63F7FF12B2275B /* Localizable.xcstrings */; };
 		3446FFC3AFDFCBD191801367 /* PbxSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D985033888E69896F0701B4 /* PbxSession.swift */; };
 		34936821AD741DA8EF4AC5B5 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461C9F297FCCEA7348A009EA /* QRScannerView.swift */; };
 		34FB3320BED1B942749D7E4E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = E22D855711EEB598AE8EC939 /* PrivacyInfo.xcprivacy */; };
@@ -81,6 +82,7 @@
 		9E36868952B9A025D214772E /* DesignSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD66021B6BD28240DCC2EED /* DesignSystemTests.swift */; };
 		9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977335B2802A80180636380B /* SettingsView.swift */; };
 		9E52F9C472C0935C00C801B5 /* ContactsSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12FFD860ED72E944CC5F47F /* ContactsSource.swift */; };
+		9EF0BB9E545BCDC56D8C0A26 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 9413BD30F0D5C2BCEB76CECC /* InfoPlist.xcstrings */; };
 		A0085E00B369764DA6AF026C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */; };
 		A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */; };
 		A1D13B0B40B4723A786AA67D /* RecordingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF21325E1CE3B995317606A /* RecordingsStore.swift */; };
@@ -147,6 +149,7 @@
 		125317FA44A9C196C3BE928E /* CallManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallManager.swift; sourceTree = "<group>"; };
 		1925854638E35A495F340AE4 /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
 		1AD66021B6BD28240DCC2EED /* DesignSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystemTests.swift; sourceTree = "<group>"; };
+		1D6AD3DA7C63F7FF12B2275B /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		216C23B5CF220D5FF02B4D4A /* FixtureEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureEvents.swift; sourceTree = "<group>"; };
 		244C9E498E95F1F3C1A7EC17 /* Figtree-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Bold.ttf"; sourceTree = "<group>"; };
 		265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AriaMobileCore.xcframework; sourceTree = "<group>"; };
@@ -198,6 +201,7 @@
 		850E9F3CBF3AD64722A79348 /* ConnectionDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionDetails.swift; sourceTree = "<group>"; };
 		8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		93BFE1053CFB3959B1113A72 /* HistoryContactsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryContactsTests.swift; sourceTree = "<group>"; };
+		9413BD30F0D5C2BCEB76CECC /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTranscription.swift; sourceTree = "<group>"; };
 		977335B2802A80180636380B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		997DB051E23D4E120FF4CE70 /* KeychainMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainMigrationTests.swift; sourceTree = "<group>"; };
@@ -276,6 +280,8 @@
 				7FD9B9788212C3083231C8D0 /* AriaSoftphone.entitlements */,
 				A53C9EA5B271932D7716F16D /* Assets.xcassets */,
 				31A81048D28AF4D85B189D2B /* Info.plist */,
+				9413BD30F0D5C2BCEB76CECC /* InfoPlist.xcstrings */,
+				1D6AD3DA7C63F7FF12B2275B /* Localizable.xcstrings */,
 				E22D855711EEB598AE8EC939 /* PrivacyInfo.xcprivacy */,
 				9258BFF6212D06A5568AB3CF /* Fonts */,
 			);
@@ -667,7 +673,10 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
+				de,
 				en,
+				es,
+				fr,
 			);
 			mainGroup = EE50315A76A6DDA4D1F24E08;
 			minimizedProjectReferenceProxies = 1;
@@ -695,6 +704,8 @@
 				13F7A2BA1EBF70A9A922CA55 /* Figtree-OFL.txt in Resources */,
 				44BEF44E5F91F55EFEB5079A /* Figtree-Regular.ttf in Resources */,
 				289B3EDDD1262B0884CCAFAD /* Figtree-SemiBold.ttf in Resources */,
+				9EF0BB9E545BCDC56D8C0A26 /* InfoPlist.xcstrings in Resources */,
+				331670677B6B4185A536FEBC /* Localizable.xcstrings in Resources */,
 				34FB3320BED1B942749D7E4E /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1017,10 +1028,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = "-lc++ -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.solutions5060.aria;
 				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -1045,10 +1058,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = "-lc++ -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.solutions5060.aria;
 				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
