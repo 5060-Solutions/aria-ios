@@ -122,7 +122,7 @@ struct ConnectionSheet: View {
                 .foregroundStyle(state.statusColor)
                 .symbolEffect(.pulse, isActive: state.status == .connecting && !reduceMotion)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hairline) {
                 Text(state.label)
                     .ariaFont(.title)
                     .foregroundStyle(AriaColor.onSurface)

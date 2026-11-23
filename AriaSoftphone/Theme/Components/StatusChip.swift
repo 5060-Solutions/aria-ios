@@ -55,7 +55,7 @@ struct StatusChip: View {
                         .foregroundStyle(AriaColor.onSurface)
                         .lineLimit(1)
                     Divider()
-                        .frame(height: 12)
+                        .frame(height: Space.s)
                 }
                 Image(systemName: "circle.fill")
                     .font(.system(.caption2))

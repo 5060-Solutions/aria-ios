@@ -24,7 +24,7 @@ struct AriaListRow<Leading: View, Trailing: View>: View {
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.xs))
                 : AnyLayout(HStackLayout(alignment: .center, spacing: Space.s))
             layout {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hairline) {
                     title
                         .ariaFont(.body)
                         .foregroundStyle(titleColor)

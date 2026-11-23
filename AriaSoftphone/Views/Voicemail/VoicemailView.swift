@@ -286,7 +286,7 @@ private struct VoicemailPlayerControls: View {
                 .disabled(!canPlay)
                 .accessibilityLabel(Text(isCurrent && player.isPlaying ? "Pause" : "Play"))
 
-                VStack(spacing: 2) {
+                VStack(spacing: Space.hairline) {
                     Slider(
                         value: Binding(get: { position }, set: { player.seek(to: $0) }),
                         in: 0...max(duration, 1)

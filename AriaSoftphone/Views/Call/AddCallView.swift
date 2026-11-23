@@ -8,8 +8,6 @@ struct AddCallView: View {
 
     @State private var number = ""
     @State private var errorMessage: String?
-    @State private var showContactPicker = false
-    @FocusState private var fieldFocused: Bool
 
     private var trimmedNumber: String {
         number.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -17,63 +15,39 @@ struct AddCallView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Number or extension", text: $number)
-                        .keyboardType(.phonePad)
-                        .textContentType(.telephoneNumber)
-                        .font(.title3)
-                        .focused($fieldFocused)
-
-                    Button {
-                        showContactPicker = true
-                    } label: {
-                        Label("Choose from Contacts", systemImage: "person.crop.circle")
-                    }
-                } footer: {
-                    Text("\(callManager.activeCall?.displayName ?? "Your current call") will be put on hold while you make this call.")
-                }
-
-                if let errorMessage = errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                            .font(.subheadline)
-                    }
-                }
+            CallTargetForm(
+                number: $number,
+                explanation: Text("\(callManager.activeCall?.displayName ?? String(localized: "Your current call")) will be put on hold while you make this call."),
+                errorMessage: errorMessage
+            ) {
+                AriaButton("Call", systemImage: "phone.fill", kind: .prominent, size: .primary,
+                           fullWidth: true, action: call)
+                    .disabled(trimmedNumber.isEmpty || !callManager.canAddCall)
             }
             .navigationTitle("Add Call")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Call", action: call)
-                        .disabled(trimmedNumber.isEmpty || !callManager.canAddCall)
+                    Button("Cancel", systemImage: "xmark") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showContactPicker) {
-                ContactPhonePicker { picked in
-                    // Contacts store numbers formatted for reading.
-                    number = picked.filter { !" ()-.\u{00A0}".contains($0) }
-                    errorMessage = nil
-                }
-                .ignoresSafeArea()
-            }
-            .onAppear { fieldFocused = true }
-            .onChange(of: callManager.activeCall == nil) { callsEnded in
+            .onChange(of: callManager.activeCall == nil) { _, callsEnded in
                 if callsEnded { dismiss() }
             }
         }
+        .presentationDetents([.large])
     }
 
     private func call() {
         guard TransferError.isAcceptableTarget(trimmedNumber) else {
-            errorMessage = "That number can't be called. Check it and try again."
+            errorMessage = String(localized: "That number can't be called. Check it and try again.")
             return
         }
-        callManager.startOutgoingCall(uri: trimmedNumber)
-        dismiss()
+        switch callManager.startOutgoingCall(uri: trimmedNumber) {
+        case .placed, .emergencyHandoff:
+            dismiss()
+        case .refused:
+            errorMessage = String(localized: "Can't place another call right now.")
+        }
     }
 }
