@@ -75,6 +75,18 @@ targets:
         UIBackgroundModes:
           - voip
           - audio
+        # aria:// setup links and actions; sip:/sips: links from other apps.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.solutions5060.aria
+            CFBundleURLSchemes:
+              - aria
+          - CFBundleURLName: com.solutions5060.aria.sip
+            CFBundleURLSchemes:
+              - sip
+              - sips
+        # CallKit Recents and Siri call-backs arrive as this activity.
+        NSUserActivityTypes:
+          - INStartCallIntent
     preBuildScripts:
       - name: Build Rust Library
         script: |

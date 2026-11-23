@@ -13,6 +13,7 @@ struct AriaSoftphoneApp: App {
             ContentView()
                 .environmentObject(callManager)
                 .environmentObject(sipEngine)
+                .modifier(DeepLinkHandling())
         }
     }
 }
