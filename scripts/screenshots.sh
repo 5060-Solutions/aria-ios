@@ -41,9 +41,20 @@ number() {
     exit 1
 }
 
+# A fresh boot: SpringBoard alerts can outlive an uninstall and land in a shot.
+# Set NO_REBOOT=1 to skip.
+if [ -z "${NO_REBOOT:-}" ]; then
+    xcrun simctl shutdown "$SIM" 2>/dev/null || true
+fi
 xcrun simctl boot "$SIM" 2>/dev/null || true
+xcrun simctl bootstatus "$SIM" >/dev/null 2>&1 || true
 xcrun simctl status_bar "$SIM" override --time 9:41 --dataNetwork wifi \
     --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+
+# No permission alerts over the shots.
+for service in contacts microphone; do
+    xcrun simctl privacy "$SIM" grant "$service" "$BUNDLE" 2>/dev/null || true
+done
 
 if [ -n "${CONTENT_SIZE:-}" ]; then
     xcrun simctl ui "$SIM" content_size "$CONTENT_SIZE"

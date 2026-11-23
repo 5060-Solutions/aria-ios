@@ -34,6 +34,26 @@ enum AriaColor {
     static let answer = Color("Theme/CallAnswer")
     /// The dark end of the call screen's gradient.
     static let callBackdrop = Color("Theme/CallBackdrop")
+
+    /// The call screen's 3×3 mesh, row by row: primary at the top drifting
+    /// to the dark background, with a hint of the brand indigo. The call
+    /// screen is dark in both appearances; white text clears 4.5:1 on every
+    /// stop.
+    static let callMesh: [Color] = [
+        Color(hex: 0x1F7A5E), Color(hex: 0x155C47), Color(hex: 0x23406E),
+        Color(hex: 0x0F4A39), Color(hex: 0x0B3D2E), Color(hex: 0x132E45),
+        Color(hex: 0x07261C), Color(hex: 0x0A1C15), Color(hex: 0x0F1511),
+    ]
+}
+
+extension Color {
+    /// An sRGB colour from 0xRRGGBB.
+    init(hex: UInt32) {
+        self.init(.sRGB,
+                  red: Double((hex >> 16) & 0xff) / 255,
+                  green: Double((hex >> 8) & 0xff) / 255,
+                  blue: Double(hex & 0xff) / 255)
+    }
 }
 
 // MARK: - Spacing, shape and size
