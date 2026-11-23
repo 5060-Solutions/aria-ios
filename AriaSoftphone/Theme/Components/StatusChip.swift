@@ -18,7 +18,7 @@ extension ConnectionState {
     var status: Status {
         switch self {
         case .registered: return .registered
-        case .connecting: return .connecting
+        case .connecting, .reconnecting: return .connecting
         case .error: return .error
         case .offline: return .offline
         }

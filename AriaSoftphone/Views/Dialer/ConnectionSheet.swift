@@ -37,7 +37,7 @@ struct ConnectionSheet: View {
                             }
                         }
                         SectionRow(title: Text("SIP transport"), systemImage: "lock.fill") {
-                            value(snapshot.transport.isEmpty ? "–" : Self.transportLabel(snapshot.transport))
+                            value(snapshot.sipTransport.isEmpty ? "–" : Self.transportLabel(snapshot.sipTransport))
                         }
                         if let codec = snapshot.codec {
                             SectionRow(title: Text("Codec"), systemImage: "waveform") {
@@ -154,6 +154,7 @@ struct ConnectionSheet: View {
         switch state {
         case .registered: return String(localized: "Calls can reach this iPhone.")
         case .connecting: return String(localized: "Signing in to your phone system.")
+        case .reconnecting: return String(localized: "The network changed. Reconnecting; calls continue.")
         case .offline: return String(localized: "No network, or no account set up.")
         case .error: return String(localized: "Incoming calls may not reach this iPhone.")
         }

@@ -724,6 +724,14 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func conferenceSplit() throws 
     
     /**
+     * The gateway instance holding this device's registration, as
+     * `host:port` (the SRV target, e.g. `gw2.ariaroute.com:443`), or null
+     * before `register_device`. For diagnostics: it changes on failover and
+     * failback.
+     */
+    func currentGateway()  -> String?
+    
+    /**
      * The connected call that is off hold, if any; otherwise the most
      * recently created live call (held, or outgoing and ringing).
      */
@@ -809,11 +817,16 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func makeCallWithId(callId: String, uri: String, credentials: SipCredentials, preferredCodecs: [AudioCodec]) throws  -> CallInfo
     
     /**
-     * Notify the core of a network connectivity change.
-     * Call this from the platform when WiFi/cellular changes, or after reconnect.
-     * Returns at once. The gateway heartbeat it triggers runs in the
-     * background, and a burst of changes is coalesced: at most one heartbeat
-     * is in flight, followed by one more if changes arrived meanwhile.
+     * Notify the core of a network path change: Wi-Fi/cellular switch, a
+     * new IP, back online, and on returning to the foreground. Returns at
+     * once; recovery runs in the background (README "Network changes"):
+     * live calls move their media to the new network at once (new RTP
+     * socket, STUN, re-INVITE through the gateway) and are never ended by
+     * it; the gateway SRV name is looked up again; the registration is
+     * heartbeated, re-registered or moved to another gateway instance.
+     * Progress is reported through `on_registration_changed`
+     * (`recovering`, then `registered`, `failed` or `auth_required`).
+     * A burst of changes is coalesced.
      */
     func notifyNetworkChange() 
     
@@ -854,7 +867,9 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     /**
      * Replace the bearer token used for all gateway requests, including the
      * background call-status polls. Pass a token fetched from the PBX
-     * (`POST /api/v1/devices/{id}/gateway-token`). Does not re-register.
+     * (`POST /api/v1/devices/{id}/gateway-token`). Does not re-register,
+     * except that a network-change recovery that stopped at a 401
+     * (`auth_required`) resumes with the new token.
      */
     func setGatewayToken(token: String) 
     
@@ -1274,6 +1289,19 @@ open func conferenceSplit()throws  {try rustCallWithError(FfiConverterTypeMobile
 }
     
     /**
+     * The gateway instance holding this device's registration, as
+     * `host:port` (the SRV target, e.g. `gw2.ariaroute.com:443`), or null
+     * before `register_device`. For diagnostics: it changes on failover and
+     * failback.
+     */
+open func currentGateway() -> String? {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_current_gateway(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The connected call that is off hold, if any; otherwise the most
      * recently created live call (held, or outgoing and ringing).
      */
@@ -1421,11 +1449,16 @@ open func makeCallWithId(callId: String, uri: String, credentials: SipCredential
 }
     
     /**
-     * Notify the core of a network connectivity change.
-     * Call this from the platform when WiFi/cellular changes, or after reconnect.
-     * Returns at once. The gateway heartbeat it triggers runs in the
-     * background, and a burst of changes is coalesced: at most one heartbeat
-     * is in flight, followed by one more if changes arrived meanwhile.
+     * Notify the core of a network path change: Wi-Fi/cellular switch, a
+     * new IP, back online, and on returning to the foreground. Returns at
+     * once; recovery runs in the background (README "Network changes"):
+     * live calls move their media to the new network at once (new RTP
+     * socket, STUN, re-INVITE through the gateway) and are never ended by
+     * it; the gateway SRV name is looked up again; the registration is
+     * heartbeated, re-registered or moved to another gateway instance.
+     * Progress is reported through `on_registration_changed`
+     * (`recovering`, then `registered`, `failed` or `auth_required`).
+     * A burst of changes is coalesced.
      */
 open func notifyNetworkChange() {try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_notify_network_change(self.uniffiClonePointer(),$0
@@ -1502,7 +1535,9 @@ open func setEventHandler(handler: MobileEventHandler) {try! rustCall() {
     /**
      * Replace the bearer token used for all gateway requests, including the
      * background call-status polls. Pass a token fetched from the PBX
-     * (`POST /api/v1/devices/{id}/gateway-token`). Does not re-register.
+     * (`POST /api/v1/devices/{id}/gateway-token`). Does not re-register,
+     * except that a network-change recovery that stopped at a 401
+     * (`auth_required`) resumes with the new token.
      */
 open func setGatewayToken(token: String) {try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_gateway_token(self.uniffiClonePointer(),
@@ -2293,6 +2328,11 @@ public struct CallInfo {
      * False on the `Ended` event: recording stops when the call ends.
      */
     public var recording: Bool
+    /**
+     * The negotiated audio codec by its SDP name (`PCMU`, `PCMA`, `opus`,
+     * `G729`), once the call has media; null before then.
+     */
+    public var codec: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2307,7 +2347,11 @@ public struct CallInfo {
         /**
          * This call is being recorded to a WAV file (`start_recording`).
          * False on the `Ended` event: recording stops when the call ends.
-         */recording: Bool = false) {
+         */recording: Bool = false, 
+        /**
+         * The negotiated audio codec by its SDP name (`PCMU`, `PCMA`, `opus`,
+         * `G729`), once the call has media; null before then.
+         */codec: String? = nil) {
         self.callId = callId
         self.remoteUri = remoteUri
         self.remoteName = remoteName
@@ -2319,6 +2363,7 @@ public struct CallInfo {
         self.endReason = endReason
         self.inConference = inConference
         self.recording = recording
+        self.codec = codec
     }
 }
 
@@ -2359,6 +2404,9 @@ extension CallInfo: Equatable, Hashable {
         if lhs.recording != rhs.recording {
             return false
         }
+        if lhs.codec != rhs.codec {
+            return false
+        }
         return true
     }
 
@@ -2374,6 +2422,7 @@ extension CallInfo: Equatable, Hashable {
         hasher.combine(endReason)
         hasher.combine(inConference)
         hasher.combine(recording)
+        hasher.combine(codec)
     }
 }
 
@@ -2395,7 +2444,8 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
                 durationSecs: FfiConverterUInt64.read(from: &buf), 
                 endReason: FfiConverterOptionTypeEndReason.read(from: &buf), 
                 inConference: FfiConverterBool.read(from: &buf), 
-                recording: FfiConverterBool.read(from: &buf)
+                recording: FfiConverterBool.read(from: &buf), 
+                codec: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -2411,6 +2461,7 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
         FfiConverterOptionTypeEndReason.write(value.endReason, into: &buf)
         FfiConverterBool.write(value.inConference, into: &buf)
         FfiConverterBool.write(value.recording, into: &buf)
+        FfiConverterOptionString.write(value.codec, into: &buf)
     }
 }
 
@@ -4033,7 +4084,15 @@ extension ProvisionError: Foundation.LocalizedError {
 public protocol MobileEventHandler : AnyObject {
     
     /**
-     * Called when registration state changes.
+     * Called when registration state changes. `status` is one of:
+     * `registered` (after `register_device`, `update_push_token`, a
+     * network-change recovery, or a move to another gateway instance; the
+     * `device_id` may then be new: use the latest one), `unregistered`,
+     * `recovering` (a network change is being recovered from), `failed`
+     * (`error` says why; incoming calls may not arrive until the next
+     * network change or `register_device` succeeds), and `auth_required`
+     * (the token was refused: `on_auth_required` has fired; recovery
+     * resumes by itself after `set_gateway_token`).
      */
     func onRegistrationChanged(deviceId: String, status: String, error: String?) 
     
@@ -4971,6 +5030,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_conference_split() != 4102) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_current_gateway() != 15205) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_get_active_call() != 15775) {

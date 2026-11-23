@@ -48,6 +48,18 @@ struct CodecPreferences: Equatable {
         }
     }
 
+    /// A codec the core reports by SDP name (`PCMU`, `PCMA`, `opus`,
+    /// `G729`), for display. Unknown names are shown as given.
+    static func displayName(sdpName: String) -> String {
+        switch sdpName.lowercased() {
+        case "pcmu": return name(.pcmu)
+        case "pcma": return name(.pcma)
+        case "opus": return name(.opus)
+        case "g729": return name(.g729)
+        default: return sdpName
+        }
+    }
+
     private static func codec(forKey key: String) -> AudioCodec? {
         [AudioCodec.opus, .pcmu, .pcma, .g729].first { Self.key($0) == key }
     }

@@ -31,7 +31,7 @@ struct DiagnosticsView: View {
                     footer: Text("Aria connects to the phone system through the gateway. Calls arrive by push even when this shows offline.")
                 ) {
                     row("Server", value: s.gatewayNode.isEmpty ? "—" : s.gatewayNode)
-                    row("SIP transport", value: s.transport.isEmpty ? "—" : s.transport)
+                    row("SIP transport", value: s.sipTransport.isEmpty ? "—" : s.sipTransport)
                     row("Network", value: s.network)
                 }
 
@@ -124,7 +124,7 @@ struct DiagnosticsView: View {
     static func color(for state: ConnectionState) -> Color {
         switch state {
         case .registered: return AriaColor.success
-        case .connecting: return Color.orange
+        case .connecting, .reconnecting: return Color.orange
         case .error: return AriaColor.error
         case .offline: return AriaColor.onSurfaceVariant
         }

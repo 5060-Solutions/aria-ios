@@ -23,8 +23,10 @@ extension ConnectionDetails.Source {
                               bytesSent: base * 160, bytesReceived: (base - 7) * 160,
                               jitterMs: 3.4, packetLoss: 7, rttMs: 38.0)
         },
-        gatewayNode: { "node1.push.ariaroute.com" },
-        codec: { _ in "Opus 48 kHz" }
+        // As the core reports them: the SRV target as host:port, and the
+        // codec by its SDP name.
+        gatewayNode: { "gw1.push.ariaroute.com:443" },
+        codec: { _ in CodecPreferences.displayName(sdpName: "opus") }
     )
 
     private static let fixtureStart = Date()

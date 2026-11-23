@@ -13,6 +13,10 @@ class SipEngineManager: ObservableObject {
     @Published var isNetworkAvailable = true
     /// A restore or reconnect is under way.
     @Published var isConnecting = false
+    /// The core is recovering the gateway registration after a network
+    /// change (`recovering`, or `auth_required` while a token is fetched).
+    /// Calls continue meanwhile.
+    @Published var isRecovering = false
 
     /// What the status chip shows: see `ConnectionState.derive`.
     var connectionState: ConnectionState {
@@ -21,6 +25,7 @@ class SipEngineManager: ObservableObject {
             isNetworkAvailable: isNetworkAvailable,
             isRegistered: isRegistered,
             isConnecting: isConnecting,
+            isRecovering: isRecovering,
             error: registrationError
         )
     }
@@ -336,19 +341,83 @@ class SipEngineManager: ObservableObject {
         AppLog.shared.log("network", "\(change)")
         let available = change != .becameUnreachable
         DispatchQueue.main.async { self.isNetworkAvailable = available }
-        guard available else { return }
-        engine?.notifyNetworkChange()
-        if change == .becameReachable {
-            restoreSessionInBackground()
-        }
+        // Every change, the network going away included: the core moves
+        // live calls' media and recovers the registration itself, and
+        // reports progress through onRegistrationChanged.
+        networkNotifier.signal()
+        if available { restoreIfNeverRegistered() }
     }
 
     /// Re-establish after coming to the foreground, or when the user asks
-    /// (the connection sheet's Reconnect): tell the core to re-check its
-    /// gateway connection and restore the session if it is gone.
+    /// (the connection sheet's Reconnect): the core re-checks its gateway
+    /// registration. A session that was never registered is restored.
     func reconnect() {
-        engine?.notifyNetworkChange()
+        networkNotifier.signal()
+        restoreIfNeverRegistered()
+    }
+
+    /// Only an engine that has no registration at all (a launch restore that
+    /// failed offline, a Keychain that was locked) needs the app to register
+    /// it; an existing registration is the core's to recover.
+    private func restoreIfNeverRegistered() {
+        guard registeredDeviceId == nil else { return }
         restoreSessionInBackground()
+    }
+
+    /// `notify_network_change`, coalesced: a burst of path updates (an
+    /// interface switch reports several) becomes one call 500 ms after the
+    /// last of them.
+    private lazy var networkNotifier = Debouncer(delay: 0.5) { [weak self] in
+        self?.engine?.notifyNetworkChange()
+    }
+
+    /// The gateway instance holding the registration (`host:port`), for
+    /// diagnostics. Changes on failover and failback.
+    func currentGateway() -> String? {
+        engine?.currentGateway()
+    }
+
+    // MARK: - Registration status
+
+    /// The core's `on_registration_changed`. `deviceId` is the gateway's id
+    /// for this device; it can change on failover or failback, so the latest
+    /// one is kept for push-token updates and unregistering. (The PBX's
+    /// device id, used for token renewal, is a different id and never
+    /// changes here.)
+    func registrationChanged(deviceId: String, status: String, error: String?) {
+        let update = RegistrationUpdate(status: status, error: error)
+        AppLog.shared.log("gateway", "Registration \(status)\(error.map { ": \($0)" } ?? "")")
+        if update.replacesDeviceId, !deviceId.isEmpty {
+            stateLock.lock()
+            _registeredDeviceId = deviceId
+            stateLock.unlock()
+        }
+        if update.needsToken {
+            GatewayTokenRenewer.shared.renewInBackground()
+        }
+        DispatchQueue.main.async {
+            var state = RegistrationUpdate.State(
+                isRegistered: self.isRegistered, isRecovering: self.isRecovering,
+                error: self.registrationError, deviceId: self.deviceId
+            )
+            update.apply(to: &state, deviceId: deviceId)
+            self.isRegistered = state.isRegistered
+            self.isRecovering = state.isRecovering
+            self.registrationError = state.error
+            self.deviceId = state.deviceId
+        }
+    }
+
+    /// The gateway device id the engine currently registers under.
+    var gatewayDeviceId: String? { registeredDeviceId }
+
+    /// Tests: run against `engine` as if it had registered as `deviceId`.
+    func installEngineForTesting(_ engine: AriaMobileEngine?, registeredDeviceId deviceId: String?) {
+        stateLock.lock()
+        _engine = engine
+        _registeredDeviceId = deviceId
+        configuredGatewayUrl = engine == nil ? nil : AccountSettings.load().gatewayUrl
+        stateLock.unlock()
     }
 
     /// Drop the engine so the next `ensureReady()` builds it from the stored
@@ -751,12 +820,7 @@ class SwiftEventHandler: MobileEventHandler {
     weak var manager: SipEngineManager?
 
     func onRegistrationChanged(deviceId: String, status: String, error: String?) {
-        AppLog.shared.log("gateway", "Registration \(status)\(error.map { ": \($0)" } ?? "")")
-        DispatchQueue.main.async {
-            self.manager?.isRegistered = (status == "registered")
-            self.manager?.registrationError = error
-            self.manager?.deviceId = deviceId
-        }
+        manager?.registrationChanged(deviceId: deviceId, status: status, error: error)
     }
 
     func onIncomingCall(offer: CallOffer) {
@@ -803,7 +867,11 @@ enum ConnectionState: Equatable {
     case registered
     case error(String)
 
-    /// Offline without an account or a network; registered while the
+    /// Recovering after a network change; calls continue.
+    case reconnecting
+
+    /// Offline without an account or a network; reconnecting while the core
+    /// recovers after a network change; registered while the
     /// gateway has the device (a foreground re-check does not flicker it to
     /// connecting); connecting while a restore runs; otherwise the last
     /// error, or connecting when there is none yet (a launch restore that
@@ -813,9 +881,11 @@ enum ConnectionState: Equatable {
         isNetworkAvailable: Bool,
         isRegistered: Bool,
         isConnecting: Bool,
+        isRecovering: Bool = false,
         error: String?
     ) -> ConnectionState {
         guard isProvisioned, isNetworkAvailable else { return .offline }
+        if isRecovering { return .reconnecting }
         if isRegistered { return .registered }
         if isConnecting { return .connecting }
         if let error = error, !error.isEmpty { return .error(error) }
@@ -827,9 +897,105 @@ enum ConnectionState: Equatable {
         switch self {
         case .offline: return String(localized: "Offline")
         case .connecting: return String(localized: "Connecting")
+        case .reconnecting: return String(localized: "Reconnecting…")
         case .registered: return String(localized: "Registered")
         case .error: return String(localized: "Error")
         }
+    }
+}
+
+// MARK: - Registration updates
+
+/// One `on_registration_changed` from the core, and what it does to the
+/// app's registration state.
+struct RegistrationUpdate: Equatable {
+    enum Status: Equatable {
+        case registered
+        case unregistered
+        /// A network change is being recovered from; calls continue.
+        case recovering
+        /// Recovery failed; the next network change retries.
+        case failed
+        /// The gateway refused the token; `on_auth_required` has fired and
+        /// recovery resumes once a new token is set.
+        case authRequired
+        case unknown(String)
+    }
+
+    struct State: Equatable {
+        var isRegistered: Bool
+        var isRecovering: Bool
+        var error: String?
+        var deviceId: String?
+    }
+
+    let status: Status
+    let error: String?
+
+    init(status: String, error: String?) {
+        switch status {
+        case "registered": self.status = .registered
+        case "unregistered": self.status = .unregistered
+        case "recovering": self.status = .recovering
+        case "failed": self.status = .failed
+        case "auth_required": self.status = .authRequired
+        default: self.status = .unknown(status)
+        }
+        self.error = error
+    }
+
+    /// A `registered` names the device's current gateway id, which a
+    /// failover or failback may have changed.
+    var replacesDeviceId: Bool { status == .registered }
+
+    /// Make sure a token renewal runs (the core also fired
+    /// `on_auth_required`; the renewer coalesces).
+    var needsToken: Bool { status == .authRequired }
+
+    func apply(to state: inout State, deviceId: String) {
+        switch status {
+        case .registered:
+            state.isRegistered = true
+            state.isRecovering = false
+            state.error = nil
+            if !deviceId.isEmpty { state.deviceId = deviceId }
+        case .unregistered:
+            state.isRegistered = false
+            state.isRecovering = false
+            state.error = error
+        case .recovering, .authRequired:
+            state.isRecovering = true
+        case .failed:
+            state.isRegistered = false
+            state.isRecovering = false
+            state.error = (error?.isEmpty == false) ? error : String(localized: "Couldn't reach the phone system.")
+        case .unknown:
+            break
+        }
+    }
+}
+
+/// Runs `action` once, `delay` after the last `signal()`.
+final class Debouncer {
+    private let delay: TimeInterval
+    private let queue: DispatchQueue
+    private let action: () -> Void
+    private let lock = NSLock()
+    private var pending: DispatchWorkItem?
+
+    init(delay: TimeInterval, queue: DispatchQueue = .global(qos: .utility), action: @escaping () -> Void) {
+        self.delay = delay
+        self.queue = queue
+        self.action = action
+    }
+
+    func signal() {
+        let item = DispatchWorkItem { [action] in action() }
+        lock.lock()
+        pending?.cancel()
+        pending = item
+        lock.unlock()
+        queue.asyncAfter(deadline: .now() + delay, execute: item)
     }
 }
 
