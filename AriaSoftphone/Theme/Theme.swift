@@ -64,6 +64,9 @@ extension Color {
 
 /// The 4 pt spacing scale.
 enum Space {
+    /// Between a line and its own subtitle, inside one text stack. Not a
+    /// layout gap.
+    static let hairline: CGFloat = 2
     static let xxs: CGFloat = 4
     static let xs: CGFloat = 8
     static let s: CGFloat = 12

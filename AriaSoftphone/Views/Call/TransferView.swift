@@ -15,8 +15,6 @@ struct TransferView: View {
     @State private var target = ""
     @State private var isTransferring = false
     @State private var errorMessage: String?
-    @State private var showContactPicker = false
-    @FocusState private var fieldFocused: Bool
 
     private var trimmedTarget: String {
         target.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -24,95 +22,47 @@ struct TransferView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Number or extension", text: $target)
-                        .keyboardType(.phonePad)
-                        .textContentType(.telephoneNumber)
-                        .font(.title3)
-                        .focused($fieldFocused)
-                        .disabled(isTransferring)
-
-                    Button {
-                        showContactPicker = true
-                    } label: {
-                        Label("Choose from Contacts", systemImage: "person.crop.circle")
-                    }
-                    .disabled(isTransferring)
-                } footer: {
-                    Text("\(callerName) will be connected to this number and your call will end.")
-                }
-
-                Section {
-                    Button(action: consult) {
-                        Label("Consult First", systemImage: "phone.arrow.up.right")
-                    }
+            CallTargetForm(
+                number: $target,
+                explanation: Text("Transfer connects \(callerName) to this number and ends your call. Consult first to speak to them before you hand over."),
+                errorMessage: errorMessage,
+                isDisabled: isTransferring
+            ) {
+                AriaButton(isTransferring ? "Transferring…" : "Transfer Now", systemImage: "phone.arrow.right",
+                           kind: .prominent, size: .primary, fullWidth: true, isLoading: isTransferring,
+                           action: transfer)
+                    .disabled(trimmedTarget.isEmpty)
+                AriaButton("Consult First", systemImage: "phone.arrow.up.right", kind: .standard,
+                           size: .primary, fullWidth: true, action: consult)
                     .disabled(trimmedTarget.isEmpty || isTransferring || !callManager.canAddCall)
-                } footer: {
-                    Text("Puts \(callerName) on hold and calls this number, so you can speak to them before completing the transfer.")
-                }
-
-                if let errorMessage = errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                            .font(.subheadline)
-                    }
+                if isTransferring {
+                    // The core waits for the PBX to report the outcome.
+                    Text("This can take up to 45 seconds.")
+                        .ariaFont(.bodySmall)
+                        .foregroundStyle(AriaColor.onSurfaceVariant)
                 }
             }
-            .navigationTitle("Transfer Call")
+            .navigationTitle("Transfer \(callerName)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel", systemImage: "xmark") { dismiss() }
                         .disabled(isTransferring)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if isTransferring {
-                        ProgressView()
-                    } else {
-                        Button("Transfer", action: transfer)
-                            .disabled(trimmedTarget.isEmpty)
-                    }
-                }
-            }
-            .overlay {
-                if isTransferring {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Transferring...")
-                            .font(.subheadline)
-                        // The core waits for the PBX to report the outcome.
-                        Text("This can take up to 45 seconds.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(24)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
             }
             .interactiveDismissDisabled(isTransferring)
-            .sheet(isPresented: $showContactPicker) {
-                ContactPhonePicker { number in
-                    // Contacts store numbers formatted for reading.
-                    target = number.filter { !" ()-.\u{00A0}".contains($0) }
-                    errorMessage = nil
-                }
-                .ignoresSafeArea()
-            }
-            .onAppear { fieldFocused = true }
-            .onChange(of: callManager.registry[callUUID] == nil) { callEnded in
+            .onChange(of: callManager.registry[callUUID] == nil) { _, callEnded in
                 // The transfer went through (or the call ended some other way).
                 if callEnded { dismiss() }
             }
         }
+        .presentationDetents([.large])
     }
 
     private func transfer() {
         guard !trimmedTarget.isEmpty, !isTransferring else { return }
         isTransferring = true
         errorMessage = nil
-        fieldFocused = false
 
         callManager.transferCall(uuid: callUUID, to: trimmedTarget) { error in
             isTransferring = false

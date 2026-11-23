@@ -95,6 +95,7 @@
 		C0ACA95616AB1C59C2494CB3 /* PushGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */; };
 		C5E703CB1557F4AD8DBDBE66 /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E64C5BF1246947DB6972B39 /* DeepLink.swift */; };
 		C83FF6A53FEE2BA978A2B9A7 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4869ED93080641E10B496E /* HistoryView.swift */; };
+		CC2A95EA71B47BEB57658186 /* CallTargetForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F35BC41BC19899BB95CFA77 /* CallTargetForm.swift */; };
 		CECAD1A1927DA5D1C243D471 /* FixtureMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFE77B64955D99259D32A57 /* FixtureMode.swift */; };
 		D15F4BAA0B13A594B979A82A /* ManualSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */; };
 		D27BE0A8ECBE26473F9EEAE6 /* AccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B38590F217DB8452C47ADF6 /* AccountSession.swift */; };
@@ -176,6 +177,7 @@
 		69917C126F3D6E94542ECD66 /* Figtree-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Light.ttf"; sourceTree = "<group>"; };
 		7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSetupView.swift; sourceTree = "<group>"; };
 		7E64C5BF1246947DB6972B39 /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLink.swift; sourceTree = "<group>"; };
+		7F35BC41BC19899BB95CFA77 /* CallTargetForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTargetForm.swift; sourceTree = "<group>"; };
 		7FCAF29FDDD3647DD5435D32 /* AriaSoftphoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AriaSoftphoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FD9B9788212C3083231C8D0 /* AriaSoftphone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AriaSoftphone.entitlements; sourceTree = "<group>"; };
 		82FA4F51DB0AD99FAF2D6607 /* CodecPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodecPreferences.swift; sourceTree = "<group>"; };
@@ -443,6 +445,7 @@
 			children = (
 				06147D89CDEF0D5858BE5B89 /* AddCallView.swift */,
 				E5B1F13CA04BA56BB70F0849 /* CallScreenParts.swift */,
+				7F35BC41BC19899BB95CFA77 /* CallTargetForm.swift */,
 				8AB2C430FBD880BA7F2FEEE0 /* CallView.swift */,
 				9A4869ED93080641E10B496E /* HistoryView.swift */,
 				4713290CD5C956B6844E622F /* TransferView.swift */,
@@ -727,6 +730,7 @@
 				8180B53AF55910A509FDBFBB /* CallManager.swift in Sources */,
 				0329E06FC3B04D474AEFEF33 /* CallNotices.swift in Sources */,
 				638573F26962287F12B24D8D /* CallScreenParts.swift in Sources */,
+				CC2A95EA71B47BEB57658186 /* CallTargetForm.swift in Sources */,
 				5CD9C9891C5EFDEDE1EA8586 /* CallTranscription.swift in Sources */,
 				A0085E00B369764DA6AF026C /* CallView.swift in Sources */,
 				22DC926F77D2695161AA16B0 /* CallerNames.swift in Sources */,

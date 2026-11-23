@@ -22,31 +22,32 @@ struct TranscriptionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Space.sectionGap) {
                 Text("Calls are transcribed on this phone. Audio and transcripts never leave the device.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .ariaFont(.bodySmall)
+                    .foregroundStyle(AriaColor.onSurfaceVariant)
 
                 if loading {
-                    ProgressView().padding()
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
                 } else if !supported {
                     // Say plainly that this build cannot do it, rather than
                     // showing an empty list that looks like a loading failure.
-                    Text("This version of Aria was built without transcription support.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    EmptyState(systemImage: "text.bubble", title: Text("Not in This Build"),
+                               message: Text("This version of Aria was built without transcription support."))
                 } else {
                     if let errorMessage {
-                        Text(errorMessage).font(.footnote).foregroundStyle(.red)
+                        Banner(message: BannerMessage(kind: .error, text: errorMessage, duration: nil))
                     }
                     optInCard
                     modelsSection
                     transcriptsSection
                 }
             }
-            .padding(16)
+            .padding(.horizontal, Space.screenMargin)
+            .padding(.vertical, Space.m)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AriaColor.background)
         .navigationTitle("Transcription")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -58,34 +59,25 @@ struct TranscriptionView: View {
     /// Capturing call audio is a recording, so it stays off until the user asks
     /// for it — having a model installed is not consent on its own.
     private var optInCard: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: Binding(
+        SectionCard(footer: Text(sttInstalled
+                                 ? "Both sides of the call are transcribed on this phone."
+                                 : "Download a speech model below to turn this on.")) {
+            ToggleRow(title: "Transcribe My Calls", systemImage: "text.bubble", isOn: Binding(
                 get: { transcribeCalls && sttInstalled },
                 set: { on in
                     transcribeCalls = on
                     CallTranscription.shared.isEnabled = on
                 }
-            )) {
-                Text("Transcribe my calls").font(.body)
-            }
+            ))
             .disabled(!sttInstalled)
-
-            Text(sttInstalled
-                 ? "Both sides of the call are transcribed on this phone."
-                 : "Download a speech model below to turn this on.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var modelsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Models").font(.headline)
-            ForEach(models, id: \.id) { model in
+        SectionCard(title: Text("Models")) {
+            ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
                 modelRow(model)
+                if index < models.count - 1 { RowDivider() }
             }
         }
     }
@@ -94,26 +86,34 @@ struct TranscriptionView: View {
         let p = progress[model.id]
         let downloading = p.map { ["queued", "downloading", "verifying"].contains($0.state) } ?? false
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.displayName).font(.body)
+        return VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.s) {
+                VStack(alignment: .leading, spacing: Space.hairline) {
+                    Text(model.displayName)
+                        .ariaFont(.body)
+                        .foregroundStyle(AriaColor.onSurface)
                     Text("\(model.kind == "llm" ? "Summaries" : "Transcription") · \(humanBytes(model.sizeBytes))"
                          + (model.unavailableReason.map { " · \($0)" } ?? ""))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .ariaFont(.bodySmall)
+                        .foregroundStyle(AriaColor.onSurfaceVariant)
                 }
-                Spacer()
+                Spacer(minLength: Space.xs)
                 if model.installed {
                     Button(role: .destructive) {
                         Task { await deleteModel(model.id) }
-                    } label: { Image(systemName: "trash") }
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(AriaColor.error)
+                            .frame(width: ComponentSize.iconButton, height: ComponentSize.iconButton)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(Text("Delete \(model.displayName)"))
                 } else if downloading {
-                    Button("Cancel") {
+                    AriaButton("Cancel", kind: .plain) {
                         SipEngineManager.shared.aiCancelDownload(modelId: model.id)
                     }
                 } else {
-                    Button("Download") {
+                    AriaButton("Download", systemImage: "arrow.down.circle", kind: .standard) {
                         try? SipEngineManager.shared.aiStartDownload(modelId: model.id)
                     }
                     .disabled(!model.available)
@@ -121,58 +121,65 @@ struct TranscriptionView: View {
             }
             if downloading, let p, p.totalBytes > 0 {
                 ProgressView(value: Double(p.downloadedBytes), total: Double(p.totalBytes))
+                    .tint(AriaColor.primary)
             }
             if let err = p?.error {
-                Text(err).font(.caption).foregroundStyle(.red)
+                Text(err)
+                    .ariaFont(.bodySmall)
+                    .foregroundStyle(AriaColor.error)
             }
         }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, Space.s)
     }
 
     private var transcriptsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Transcripts").font(.headline)
-                Spacer()
-                if !insights.isEmpty {
-                    Button("Clear all", role: .destructive) {
-                        _ = SipEngineManager.shared.aiClearInsights()
-                        Task { await refresh() }
-                    }
-                    .font(.footnote)
-                }
-            }
+        SectionCard(title: Text("Transcripts")) {
             if insights.isEmpty {
-                Text("No transcripts yet.").font(.caption).foregroundStyle(.secondary)
+                Text("No transcripts yet.")
+                    .ariaFont(.bodySmall)
+                    .foregroundStyle(AriaColor.onSurfaceVariant)
+                    .frame(maxWidth: .infinity, minHeight: ComponentSize.row, alignment: .leading)
             } else {
                 ForEach(insights, id: \.callId) { row in
-                    HStack {
+                    HStack(spacing: Space.s) {
                         // The list carries no transcript text, so tapping is
                         // what decrypts one.
                         Button {
                             openInsight = SipEngineManager.shared.aiInsight(callId: row.callId)
                         } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(formatTimestamp(row.createdAt)).font(.body)
-                                Text("\(row.durationSecs)s"
+                            VStack(alignment: .leading, spacing: Space.hairline) {
+                                Text(formatTimestamp(row.createdAt))
+                                    .ariaFont(.body)
+                                    .foregroundStyle(AriaColor.onSurface)
+                                Text(CallClock.format(TimeInterval(row.durationSecs))
                                      + (row.status == "complete" ? "" : " · \(row.status)"))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .ariaFont(.bodySmall)
+                                    .foregroundStyle(AriaColor.onSurfaceVariant)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
-                        Spacer()
                         Button(role: .destructive) {
                             _ = SipEngineManager.shared.aiDeleteInsight(callId: row.callId)
                             Task { await refresh() }
-                        } label: { Image(systemName: "trash") }
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundStyle(AriaColor.error)
+                                .frame(width: ComponentSize.iconButton, height: ComponentSize.iconButton)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(Text("Delete transcript"))
                     }
-                    .padding(16)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .frame(minHeight: ComponentSize.row)
+                    RowDivider()
                 }
+                AriaButton("Clear All Transcripts", kind: .plain) {
+                    _ = SipEngineManager.shared.aiClearInsights()
+                    Task { await refresh() }
+                }
+                .foregroundStyle(AriaColor.error)
+                .padding(.vertical, Space.xs)
             }
         }
     }
@@ -243,41 +250,50 @@ struct TranscriptDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Space.sectionGap) {
                     if let headline = insight.summaryHeadline {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(headline).font(.body).bold()
-                            ForEach(insight.summaryPoints, id: \.self) { Text("• \($0)").font(.callout) }
+                        SectionCard(title: Text("Summary")) {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text(headline)
+                                    .ariaFont(.body)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(AriaColor.onSurface)
+                                ForEach(insight.summaryPoints, id: \.self) {
+                                    Text("• \($0)")
+                                        .ariaFont(.bodySmall)
+                                        .foregroundStyle(AriaColor.onSurface)
+                                }
+                            }
+                            .padding(.vertical, Space.s)
                         }
-                        .padding(16)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
                     if insight.segments.isEmpty {
-                        Text("No speech was recognised in this call.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        EmptyState(systemImage: "waveform.slash", title: Text("No Speech"),
+                                   message: Text("No speech was recognised in this call."))
                     }
 
                     ForEach(Array(insight.segments.enumerated()), id: \.offset) { _, seg in
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Space.hairline) {
                             Text(seg.speaker == "local" ? "You" : "Them")
-                                .font(.caption)
-                                .foregroundStyle(Color.accentColor)
-                            Text(seg.text).font(.body)
+                                .ariaFont(.label)
+                                .foregroundStyle(seg.speaker == "local" ? AriaColor.primary : AriaColor.tertiary)
+                            Text(seg.text)
+                                .ariaFont(.body)
+                                .foregroundStyle(AriaColor.onSurface)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, Space.screenMargin)
+                .padding(.vertical, Space.m)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(AriaColor.background)
             .navigationTitle(formatTimestamp(insight.createdAt))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done", systemImage: "checkmark") { dismiss() }
                 }
             }
         }

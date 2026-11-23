@@ -203,7 +203,7 @@ private struct PermissionRow: View {
                 .frame(width: ComponentSize.avatarList, height: ComponentSize.avatarList)
                 .background(AriaColor.primaryContainer.opacity(0.6), in: .circle)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hairline) {
                 Text(title)
                     .ariaFont(.body)
                     .fontWeight(.semibold)

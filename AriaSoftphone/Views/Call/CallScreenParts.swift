@@ -165,7 +165,7 @@ struct OtherCallCard: View {
     var body: some View {
         HStack(spacing: Space.s) {
             Avatar(name: call.displayName, onGlass: true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hairline) {
                 Text(call.displayName)
                     .ariaFont(.body)
                     .foregroundStyle(.white)

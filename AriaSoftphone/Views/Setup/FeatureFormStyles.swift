@@ -87,7 +87,7 @@ struct NavigationRow: View {
         HStack(spacing: Space.s) {
             Image(systemName: systemImage)
                 .foregroundStyle(AriaColor.primary)
-                .frame(width: 28)
+                .frame(width: ComponentSize.rowIcon)
                 .accessibilityHidden(true)
             Text(title)
                 .ariaFont(.body)
@@ -119,7 +119,7 @@ struct ToggleRow: View {
             HStack(spacing: Space.s) {
                 Image(systemName: systemImage)
                     .foregroundStyle(AriaColor.primary)
-                    .frame(width: 28)
+                    .frame(width: ComponentSize.rowIcon)
                     .accessibilityHidden(true)
                 Text(title)
                     .ariaFont(.body)
@@ -134,6 +134,6 @@ struct ToggleRow: View {
 /// A divider inset past a row's icon.
 struct RowDivider: View {
     var body: some View {
-        Divider().overlay(AriaColor.outlineVariant).padding(.leading, 40)
+        Divider().overlay(AriaColor.outlineVariant).padding(.leading, ComponentSize.rowIcon + Space.s)
     }
 }

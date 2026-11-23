@@ -138,7 +138,7 @@ struct SettingsView: View {
             if hasAccount {
                 HStack(spacing: Space.s) {
                     Avatar(name: sipDisplayName.isEmpty ? sipUsername : sipDisplayName)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Space.hairline) {
                         Text(sipDisplayName.isEmpty ? String(localized: "Extension \(sipUsername)") : sipDisplayName)
                             .ariaFont(.title)
                             .foregroundStyle(AriaColor.onSurface)
@@ -249,7 +249,7 @@ struct SettingsView: View {
                     .frame(width: ComponentSize.avatarList, height: ComponentSize.avatarList)
                     .clipShape(.rect(cornerRadius: Radius.chip, style: .continuous))
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hairline) {
                     Text("Aria")
                         .ariaFont(.title)
                         .foregroundStyle(AriaColor.onSurface)
