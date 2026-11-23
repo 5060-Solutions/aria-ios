@@ -29,7 +29,8 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 
 ### 1. Build the Rust core
 
-With `aria-mobile-core` checked out next to this repo:
+With `aria-mobile-core` checked out next to this repo (or point `RUST_DIR` at
+another checkout, e.g. `RUST_DIR=../_wt-core-ios ./build-rust.sh`):
 
 ```bash
 ./build-rust.sh            # release; ./build-rust.sh debug for a debug core
@@ -57,8 +58,9 @@ simulator slice is arm64 only.
 
 The app requires:
 - `aps-environment` -- set from `APS_ENVIRONMENT`: `development` for Debug, `production` for Release
-- VoIP push (`com.apple.developer.pushkit.unrestricted-voip`)
-- Background modes: audio, voip
+- Background modes: audio, voip (VoIP pushes via PushKit need only the Push
+  Notifications capability and the `voip` background mode; every push is
+  reported to CallKit)
 
 ## Architecture
 

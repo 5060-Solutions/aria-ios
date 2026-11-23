@@ -35,6 +35,7 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
+            .onAppear { LocalNotifications.clearMissedCalls() }
             .toolbar {
                 if !history.records.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {

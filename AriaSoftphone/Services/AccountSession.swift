@@ -117,6 +117,9 @@ final class AccountSession: ObservableObject {
                 SipEngineManager.shared.setGatewayToken(gatewayToken)
                 try await SipEngineManager.shared.ensureReadyAsync()
 
+                // Signed in: now there is something to notify about (missed
+                // calls), so this is when to ask.
+                LocalNotifications.requestAuthorizationIfNeeded()
                 isConnecting = false
             } catch {
                 isConnecting = false

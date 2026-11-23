@@ -10,7 +10,9 @@
 set -euo pipefail
 
 MODE="${1:-release}"
-RUST_DIR="../aria-mobile-core"
+# Override to build from another checkout, e.g. a worktree:
+#   RUST_DIR=~/dev/5060/_wt-core-ios ./build-rust.sh
+RUST_DIR="${RUST_DIR:-../aria-mobile-core}"
 OUT_DIR="AriaSoftphone/Bridge"
 FRAMEWORK_DIR="AriaMobileCore.xcframework"
 
