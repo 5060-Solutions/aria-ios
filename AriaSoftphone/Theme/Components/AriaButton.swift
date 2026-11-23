@@ -174,17 +174,19 @@ struct CallControlButton: View {
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .contentTransition(.symbolEffect(.replace))
                     .symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? 0 : taps)
-                    .foregroundStyle(isActive ? AriaColor.callBackdrop : Color.white)
+                    .foregroundStyle(isActive ? AriaColor.callBackdrop : Color.white.opacity(isEnabled ? 1 : 0.4))
                     .frame(width: ComponentSize.callControl, height: ComponentSize.callControl)
                     .glassEffect(glass, in: .circle)
                     .modifier(GlassIDModifier(id: glassID, namespace: namespace))
 
+                // One line, shrinking rather than breaking a word in the
+                // 96 pt cell at the largest text sizes.
                 Text(label)
                     .ariaFont(.label)
                     .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             }
             .frame(width: ComponentSize.callControlCell)
             .opacity(isEnabled ? 1 : 0.45)
