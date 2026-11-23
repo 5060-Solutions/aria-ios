@@ -8,12 +8,7 @@ struct DialerView: View {
     @EnvironmentObject var sipEngine: SipEngineManager
     @State private var dialedNumber = FixtureMode.shows(.dialerNumber) ? "4155550142" : ""
 
-    private let dialPad: [[DialKey]] = [
-        [.init("1", ""), .init("2", "ABC"), .init("3", "DEF")],
-        [.init("4", "GHI"), .init("5", "JKL"), .init("6", "MNO")],
-        [.init("7", "PQRS"), .init("8", "TUV"), .init("9", "WXYZ")],
-        [.init("*", ""), .init("0", "+"), .init("#", "")],
-    ]
+    private let dialPad = DialPadKey.rows
 
     var body: some View {
         NavigationStack {
@@ -116,7 +111,7 @@ struct DialerView: View {
                     ForEach(dialPad, id: \.self) { row in
                         HStack(spacing: 0) {
                             ForEach(row) { key in
-                                DialPadButton(key: key) {
+                                DialKey(key: key) {
                                     dialedNumber.append(key.digit)
                                     playDTMFTone(digit: key.digit)
                                     let impact = UIImpactFeedbackGenerator(style: .light)
@@ -196,73 +191,6 @@ enum DialString {
             }
         }
         return result.filter(\.isNumber).count >= 3 ? result : nil
-    }
-}
-
-// MARK: - Dial Pad Button
-
-struct DialKey: Identifiable, Hashable {
-    let id = UUID()
-    let digit: String
-    let letters: String
-
-    init(_ digit: String, _ letters: String) {
-        self.digit = digit
-        self.letters = letters
-    }
-}
-
-struct DialPadButton: View {
-    let key: DialKey
-    let action: () -> Void
-    var onLongPress: (() -> Void)? = nil
-
-    @State private var isPressed = false
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(key.digit)
-                .font(.system(size: 28, weight: .regular))
-                .foregroundColor(.primary)
-
-            if !key.letters.isEmpty {
-                Text(key.letters)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.accentColor.opacity(0.8))
-                    .tracking(2)
-            }
-        }
-        .frame(width: 76, height: 76)
-        .background(
-            Circle()
-                .fill(Color(.systemGray5).opacity(isPressed ? 0.9 : 0.65))
-        )
-        .overlay(
-            Circle()
-                .stroke(isPressed ? Color.accentColor.opacity(0.5) : Color(.systemGray4).opacity(0.35), lineWidth: isPressed ? 1.5 : 1)
-        )
-        .clipShape(Circle())
-        .scaleEffect(isPressed ? 0.92 : 1.0)
-        .animation(.spring(response: 0.25, dampingFraction: 0.4), value: isPressed)
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    onLongPress?()
-                    isPressed = false
-                }
-        )
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isPressed {
-                        isPressed = true
-                        action()
-                    }
-                }
-                .onEnded { _ in
-                    isPressed = false
-                }
-        )
     }
 }
 

@@ -54,6 +54,14 @@
 	<array>
 		<string>INStartCallIntent</string>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Figtree-Light.ttf</string>
+		<string>Figtree-Regular.ttf</string>
+		<string>Figtree-Medium.ttf</string>
+		<string>Figtree-SemiBold.ttf</string>
+		<string>Figtree-Bold.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>voip</string>

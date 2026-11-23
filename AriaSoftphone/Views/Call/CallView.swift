@@ -514,31 +514,3 @@ struct DTMFKeypad: View {
         .padding(.vertical, 8)
     }
 }
-
-// MARK: - Call Control Button
-
-struct CallControlButton: View {
-    let icon: String
-    let label: String
-    let isActive: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Circle()
-                    .fill(isActive ? Color.white : Color.white.opacity(0.2))
-                    .frame(width: 56, height: 56)
-                    .overlay(
-                        Image(systemName: icon)
-                            .font(.title3)
-                            .foregroundColor(isActive ? .blue : .white)
-                    )
-
-                Text(label)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.8))
-            }
-        }
-    }
-}
