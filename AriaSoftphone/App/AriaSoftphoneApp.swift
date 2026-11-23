@@ -14,6 +14,7 @@ struct AriaSoftphoneApp: App {
                 .environmentObject(callManager)
                 .environmentObject(sipEngine)
                 .modifier(DeepLinkHandling())
+                .modifier(CallNotices())
         }
     }
 }

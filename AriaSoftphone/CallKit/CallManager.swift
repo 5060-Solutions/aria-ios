@@ -17,6 +17,10 @@ class CallManager: NSObject, ObservableObject {
 
     /// Every call this phone has, oldest first.
     @Published private(set) var registry = CallRegistry()
+    /// Set when a connected call was lost with the connection (its gateway
+    /// instance died): the UI shows "Call dropped — connection lost".
+    @Published var droppedCallNotice: DroppedCallNotice?
+
     /// Whether audio is currently going to the built-in speaker. Follows the
     /// actual route, so it is also right after a change from Control Centre
     /// or a Bluetooth device connecting.
@@ -741,6 +745,10 @@ class CallManager: NSObject, ObservableObject {
             if let reason = ending.callKitReason {
                 provider.reportCall(with: call.uuid, endedAt: Date(), reason: reason)
             }
+            if CallEnding.isDropped(call, reason: info.endReason) {
+                droppedCallNotice = DroppedCallNotice(remote: call.displayName)
+                AppLog.shared.log("call", "Dropped: connection lost")
+            }
             finishCall(call, outcome: ending.outcome)
             return
         case .connected, .onHold:
@@ -757,6 +765,7 @@ class CallManager: NSObject, ObservableObject {
             $0.isMuted = info.muted
             $0.inConference = info.inConference
             $0.isRecording = info.recording
+            if let codec = info.codec { $0.codec = codec }
             if $0.isConnected {
                 $0.setHeld(info.onHold || info.state == .onHold)
             }
@@ -1145,6 +1154,9 @@ struct ActiveCall: Identifiable {
     var inConference: Bool = false
     /// Being recorded to a WAV file.
     var isRecording: Bool = false
+    /// The negotiated codec by its SDP name (`PCMU`, `PCMA`, `opus`,
+    /// `G729`), once there is media.
+    var codec: String?
     var connectedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
@@ -1287,6 +1299,13 @@ struct CallEnding: Equatable {
             case .outbound: return CallEnding(callKitReason: .failed, outcome: .failed)
             }
         }
+    }
+
+    /// A connected call the core ended with `Failed`: its gateway instance
+    /// went away and the call could not be kept (after 15 s when another
+    /// instance answers, 60 s otherwise). The core reports it exactly once.
+    static func isDropped(_ call: ActiveCall, reason: EndReason?) -> Bool {
+        reason == .failed && call.connectedAt != nil
     }
 
     private static func unconnectedRemoteEnd(_ call: ActiveCall) -> CallOutcome {
@@ -1601,6 +1620,16 @@ struct CallRegistry {
         let resumes = connected.filter { !$0.isOnHold && callKitHeld.contains($0.uuid) }
         return holds.map { HoldChange(uuid: $0.uuid, onHold: true) }
             + resumes.map { HoldChange(uuid: $0.uuid, onHold: false) }
+    }
+}
+
+/// A call that was dropped because the connection was lost.
+struct DroppedCallNotice: Identifiable, Equatable {
+    let id = UUID()
+    let remote: String
+
+    var message: String {
+        String(localized: "Call dropped — connection lost")
     }
 }
 

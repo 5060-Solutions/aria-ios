@@ -17,12 +17,13 @@ final class ConnectionDetails: ObservableObject {
         var account: String = ""
         var deviceId: String?
         var gatewayUrl: String = ""
-        /// The gateway host the app talks to. The core does not yet report
-        /// which SRV instance (node1/node2) it settled on, so this is the
-        /// configured host.
+        /// The gateway instance holding the registration, as `host:port`
+        /// (`current_gateway()`); it changes on failover and failback. The
+        /// configured host until the device has registered.
         var gatewayNode: String = ""
-        /// `TLS : 5061`
-        var transport: String = ""
+        /// The account's SIP transport and port, e.g. `TLS : 5061`. The
+        /// app-to-gateway hop is always HTTPS; this is the SIP side.
+        var sipTransport: String = ""
         var lastError: String?
         var network: String = ""
         /// The codec negotiated for the current call, when the core reports
@@ -70,7 +71,7 @@ final class ConnectionDetails: ObservableObject {
         next.deviceId = source.deviceId()
         next.gatewayUrl = account.gatewayUrl
         next.gatewayNode = source.gatewayNode() ?? URLComponents(string: account.gatewayUrl)?.host ?? ""
-        next.transport = account.isProvisioned
+        next.sipTransport = account.isProvisioned
             ? "\(account.effectiveTransport.uppercased()) : \(account.effectivePort)" : ""
         next.lastError = source.lastError()
         next.network = Self.describe(source.network())
@@ -115,7 +116,7 @@ final class ConnectionDetails: ObservableObject {
             "Account: \(s.account)",
             "Device: \(s.deviceId ?? "-")",
             "Gateway: \(s.gatewayUrl) (node \(s.gatewayNode))",
-            "SIP transport: \(s.transport)",
+            "SIP transport: \(s.sipTransport)",
             "Network: \(s.network)",
             "Codecs: \(s.codec ?? "not reported") (preferred \(s.preferredCodecs.joined(separator: ", ")))",
         ]
@@ -161,6 +162,11 @@ extension ConnectionDetails.Source {
         network: { SipEngineManager.shared.currentNetworkPath },
         activeCallId: { CallManager.shared.activeCall?.callId },
         isEncrypted: { SipEngineManager.shared.callIsEncrypted(callId: $0) },
-        mediaStats: { SipEngineManager.shared.getMediaStats(callId: $0) }
+        mediaStats: { SipEngineManager.shared.getMediaStats(callId: $0) },
+        gatewayNode: { SipEngineManager.shared.currentGateway() },
+        codec: { callId in
+            CallManager.shared.registry.call(engineCallId: callId)?.codec
+                .map(CodecPreferences.displayName(sdpName:))
+        }
     )
 }

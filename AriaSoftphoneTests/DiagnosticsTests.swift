@@ -51,7 +51,7 @@ final class ConnectionDetailsTests: XCTestCase {
         XCTAssertEqual(s.state, .error("gateway: timeout"))
         XCTAssertEqual(s.account, "1001@acme.example.com")
         XCTAssertEqual(s.gatewayNode, "push.example.com")
-        XCTAssertEqual(s.transport, "TLS : 5061")
+        XCTAssertEqual(s.sipTransport, "TLS : 5061")
         XCTAssertEqual(s.network, "Wi-Fi, Cellular")
         XCTAssertEqual(s.srtp, true)
         XCTAssertEqual(s.stats?.packetsReceived, 9)
