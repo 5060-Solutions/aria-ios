@@ -227,8 +227,10 @@ struct CallView: View {
             }
             if callManager.isInConference {
                 Button("Split Calls", systemImage: "arrow.triangle.branch") { callManager.splitConference() }
+                    .accessibilityIdentifier("call.split")
             } else if callManager.canMergeCalls {
                 Button("Merge Calls", systemImage: "arrow.triangle.merge") { callManager.mergeCalls() }
+                    .accessibilityIdentifier("call.merge")
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -239,6 +241,7 @@ struct CallView: View {
                 .glassEffect(Self.topBarGlass.interactive(), in: .circle)
         }
         .accessibilityLabel(Text("More call actions"))
+        .accessibilityIdentifier("call.more")
     }
 
     // MARK: Caller

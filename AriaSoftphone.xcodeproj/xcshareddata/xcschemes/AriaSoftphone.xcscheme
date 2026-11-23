@@ -50,6 +50,17 @@
                ReferencedContainer = "container:AriaSoftphone.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9D2BC916D69ED1716929542A"
+               BuildableName = "AriaSoftphoneUITests.xctest"
+               BlueprintName = "AriaSoftphoneUITests"
+               ReferencedContainer = "container:AriaSoftphone.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

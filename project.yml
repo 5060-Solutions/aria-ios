@@ -50,6 +50,7 @@ targets:
     scheme:
       testTargets:
         - AriaSoftphoneTests
+        - AriaSoftphoneUITests
     dependencies:
       # A static library: linked into the app binary, never embedded. An
       # embedded copy would ship a stray .a inside the bundle.
@@ -117,3 +118,18 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria.tests
+
+  # Drives the app in fixture mode (-UITestMode); DEBUG builds only.
+  AriaSoftphoneUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: AriaSoftphoneUITests
+    dependencies:
+      - target: AriaSoftphone
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria.uitests
+        TEST_TARGET_NAME: AriaSoftphone

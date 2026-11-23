@@ -8,6 +8,9 @@ struct DeepLinkHandling: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            #if DEBUG
+            .overlay(alignment: .topLeading) { FixtureEventsMarker() }
+            #endif
             .onOpenURL { coordinator.handle($0) }
             .onContinueUserActivity("INStartCallIntent") { coordinator.handle($0) }
             .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
