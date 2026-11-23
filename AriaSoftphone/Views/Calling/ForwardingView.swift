@@ -87,16 +87,22 @@ private struct ForwardSection: View {
                     }
                     Spacer()
                     if existing != nil {
-                        AriaButton("Remove", kind: .plain) {
+                        Button(role: .destructive) {
                             Task {
                                 saving = true
                                 await service.removeForward(type)
                                 saving = false
                                 destination = ""
                             }
+                        } label: {
+                            Text("Remove")
+                                .ariaFont(.label)
+                                .foregroundStyle(AriaColor.error)
+                                .frame(minHeight: ComponentSize.iconButton)
                         }
-                        .foregroundStyle(AriaColor.error)
+                        .buttonStyle(.borderless)
                         .disabled(saving)
+                        .accessibilityIdentifier("forwarding.\(type.rawValue).remove")
                     }
                 }
                 .padding(.vertical, Space.xs)
