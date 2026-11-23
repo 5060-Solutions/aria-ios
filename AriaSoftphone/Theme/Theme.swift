@@ -112,6 +112,8 @@ enum ComponentSize {
     static let avatarFavorite: CGFloat = 64
     /// The glass disc behind an empty state's symbol.
     static let emptyStateIcon: CGFloat = 88
+    /// The QR scanner's viewfinder square.
+    static let scanReticle: CGFloat = 260
     /// The leading symbol column of a settings row.
     static let rowIcon: CGFloat = 28
 }

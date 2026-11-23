@@ -145,80 +145,80 @@ struct QRScannerView: View {
         case unknown, granted, denied
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scanBanner: BannerMessage?
+
     var body: some View {
         NavigationStack {
             ZStack {
                 switch cameraPermission {
                 case .unknown:
-                    ProgressView("Requesting camera access...")
+                    ProgressView()
+                        .tint(.white)
                         .onAppear { checkCameraPermission() }
 
                 case .denied:
-                    VStack(spacing: 16) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 48))
-                            .foregroundColor(.secondary)
-                        Text("Camera Access Required")
-                            .font(.headline)
-                        Text("Open Settings and enable Camera access for Aria to scan QR codes.")
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal)
-                        Button("Open Settings") {
-                            if let url = URL(string: UIApplication.openSettingsURLString) {
-                                UIApplication.shared.open(url)
-                            }
+                    EmptyState(systemImage: "camera.fill",
+                               title: Text("Camera Is Off"),
+                               message: Text("Allow camera access in Settings to scan your setup code."),
+                               actionTitle: "Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
 
                 case .granted:
                     CameraPreviewView(onCodeScanned: handleScannedCode)
                         .ignoresSafeArea()
-
-                    // Targeting reticle overlay
-                    VStack {
-                        Spacer()
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.8), lineWidth: 3)
-                                .frame(width: 250, height: 250)
-
-                            // Corner accents
-                            ReticleCorners()
-                                .stroke(Color.accentColor, lineWidth: 4)
-                                .frame(width: 250, height: 250)
-                        }
-                        Spacer()
-                        Text("Point camera at provisioning QR code")
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                            .padding(.bottom, 40)
-                    }
-                }
-
-                if let error = errorMessage {
-                    VStack {
-                        Spacer()
-                        Text(error)
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
-                            .padding()
-                    }
+                        .accessibilityHidden(true)
+                    scanOverlay
                 }
             }
-            .background(Color.black)
-            .navigationTitle("Scan QR Code")
+            .background(Color.black.ignoresSafeArea())
+            .banner($scanBanner)
+            .navigationTitle("Scan Setup Code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel", systemImage: "xmark") { dismiss() }
                 }
             }
         }
+        // The camera is dark in either appearance; so are the bar and text.
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// The viewfinder: the camera dimmed outside a rounded square, primary
+    /// corner marks, and the instruction on glass.
+    private var scanOverlay: some View {
+        let side = ComponentSize.scanReticle
+        return ZStack {
+            Color.black.opacity(0.45)
+                .reverseMask {
+                    RoundedRectangle(cornerRadius: Radius.sheet, style: .continuous)
+                        .frame(width: side, height: side)
+                }
+                .ignoresSafeArea()
+            ReticleCorners()
+                .stroke(errorMessage == nil ? AriaColor.primary : AriaColor.error,
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                .frame(width: side, height: side)
+                .scaleEffect(scannedCode != nil && errorMessage == nil && !reduceMotion ? 0.94 : 1)
+                .animation(Motion.snappy(reduceMotion: reduceMotion), value: scannedCode)
+            VStack {
+                Spacer()
+                Label("Point the camera at the setup QR code from your phone system.", systemImage: "qrcode")
+                    .ariaFont(.bodySmall)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, Space.m)
+                    .padding(.vertical, Space.s)
+                    .glassEffect(.regular, in: .rect(cornerRadius: Radius.card, style: .continuous))
+                    .padding(.horizontal, Space.screenMargin)
+                    .padding(.bottom, Space.xxl)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private func checkCameraPermission() {
@@ -269,6 +269,7 @@ struct QRScannerView: View {
     /// Show an error, buzz, and allow re-scanning after a brief delay.
     private func rejectScan(_ message: String) {
         errorMessage = message
+        scanBanner = BannerMessage(kind: .error, text: message, duration: 2.5)
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.error)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -278,11 +279,24 @@ struct QRScannerView: View {
     }
 }
 
+// MARK: - Reverse mask
+
+private extension View {
+    /// Cut `mask` out of this view.
+    func reverseMask<Mask: View>(@ViewBuilder _ mask: () -> Mask) -> some View {
+        self.mask {
+            Rectangle()
+                .overlay { mask().blendMode(.destinationOut) }
+                .compositingGroup()
+        }
+    }
+}
+
 // MARK: - Reticle Corner Shape
 
 struct ReticleCorners: Shape {
     func path(in rect: CGRect) -> Path {
-        let cornerLength: CGFloat = 30
+        let cornerLength = rect.width * 0.16
         var path = Path()
 
         // Top-left

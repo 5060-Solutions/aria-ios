@@ -7,6 +7,8 @@ import Foundation
 ///     -ScreenshotMode              the same; the name screenshot scripts use
 ///     -FixtureScene <scene>        open on one screen of DESIGN.md §8,
 ///                                  e.g. `-FixtureScene in-call`
+///     -FixtureScanner              onboarding opens straight into the QR
+///                                  scanner (review shots of its overlay)
 ///     -FixtureReconnecting         the core is recovering after a network
 ///                                  change (the amber "Reconnecting…" chip)
 ///
@@ -19,6 +21,15 @@ enum FixtureMode {
     static let activatingArguments: Set<String> = ["-UITestMode", "-ScreenshotMode"]
     static let sceneArgument = "-FixtureScene"
     static let reconnectingArgument = "-FixtureReconnecting"
+
+    /// Whether onboarding opens the QR scanner at once (DEBUG only).
+    static var opensScanner: Bool {
+        #if DEBUG
+        return isActive && ProcessInfo.processInfo.arguments.contains("-FixtureScanner")
+        #else
+        return false
+        #endif
+    }
 
     /// Whether the fixture shows the core recovering (DEBUG only).
     static var isReconnecting: Bool {
