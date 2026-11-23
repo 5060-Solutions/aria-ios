@@ -4,13 +4,17 @@ struct ContentView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
     @AppStorage("sipUsername") private var sipUsername = ""
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system
 
     var body: some View {
-        if sipUsername.isEmpty {
-            SetupView()
-        } else {
-            MainTabView()
+        Group {
+            if sipUsername.isEmpty {
+                SetupView()
+            } else {
+                MainTabView()
+            }
         }
+        .preferredColorScheme(appearance.colorScheme)
     }
 }
 

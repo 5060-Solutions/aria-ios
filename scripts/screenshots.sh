@@ -16,6 +16,7 @@
 #               accessibility-extra-extra-extra-large; restored afterwards
 #   SETTLE      seconds to wait after launch (default 3)
 #   APP         the .app to install (default: the build/dd Debug product)
+#   EXTRA_ARGS  more launch arguments, e.g. -FixtureReconnecting
 
 set -euo pipefail
 
@@ -68,7 +69,7 @@ for appearance in $APPEARANCES; do
     for scene in "${SCENES[@]}"; do
         file="$OUT/$appearance/$(number "$scene")-$scene.png"
         xcrun simctl terminate "$SIM" "$BUNDLE" 2>/dev/null || true
-        xcrun simctl launch "$SIM" "$BUNDLE" -ScreenshotMode -FixtureScene "$scene" >/dev/null
+        xcrun simctl launch "$SIM" "$BUNDLE" -ScreenshotMode -FixtureScene "$scene" ${EXTRA_ARGS:-} >/dev/null
         sleep "$SETTLE"
         xcrun simctl io "$SIM" screenshot --type=png "$file" >/dev/null 2>&1
         echo "$file"

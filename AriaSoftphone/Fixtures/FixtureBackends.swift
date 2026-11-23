@@ -15,6 +15,7 @@ enum FixtureBootstrap {
             SipEngineManager.shared.isRegistered = true
             SipEngineManager.shared.registrationError = nil
             SipEngineManager.shared.deviceId = FixtureData.account.pbxDeviceId
+            SipEngineManager.shared.isRecovering = FixtureMode.isReconnecting
         }
         AccountSession.shared.applyFixture(signedIn: scene.isSignedIn)
         CallManager.shared.loadFixture(calls: FixtureData.calls(for: scene))

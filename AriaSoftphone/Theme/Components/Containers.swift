@@ -161,30 +161,44 @@ struct SectionCard<Content: View>: View {
 }
 
 /// A row inside a `SectionCard`: label, optional value or control, 52 pt.
+/// At accessibility text sizes the value moves under the label, so neither
+/// breaks mid-word.
 struct SectionRow<Accessory: View>: View {
     let title: Text
     var systemImage: String? = nil
     var showsDivider = true
     @ViewBuilder var accessory: () -> Accessory
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
+        let stacked = dynamicTypeSize.isAccessibilitySize
         VStack(spacing: 0) {
-            HStack(spacing: Space.s) {
+            HStack(alignment: stacked ? .top : .center, spacing: Space.s) {
                 if let systemImage {
                     Image(systemName: systemImage)
                         .font(.body)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundStyle(AriaColor.primary)
                         .frame(width: ComponentSize.rowIcon)
+                        .padding(.top, stacked ? Space.xs : 0)
                         .accessibilityHidden(true)
                 }
-                title
-                    .ariaFont(.body)
-                    .foregroundStyle(AriaColor.onSurface)
-                Spacer(minLength: Space.xs)
-                accessory()
-                    .ariaFont(.body)
-                    .foregroundStyle(AriaColor.onSurfaceVariant)
+                let layout = stacked
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.xxs))
+                    : AnyLayout(HStackLayout(spacing: Space.xs))
+                layout {
+                    title
+                        .ariaFont(.body)
+                        .foregroundStyle(AriaColor.onSurface)
+                    if !stacked { Spacer(minLength: Space.xs) }
+                    accessory()
+                        .ariaFont(.body)
+                        .foregroundStyle(AriaColor.onSurfaceVariant)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .padding(.vertical, stacked ? Space.s : 0)
             .frame(minHeight: ComponentSize.row)
             if showsDivider {
                 Divider().overlay(AriaColor.outlineVariant.opacity(0.6))
