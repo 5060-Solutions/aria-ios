@@ -6,9 +6,12 @@ import Foundation
 /// direct-to-gateway auth flow.
 class PbxApiClient {
     let baseUrl: String
+    /// `.shared` in the app; a session with a stub `URLProtocol` in tests.
+    let session: URLSession
 
-    init(baseUrl: String) {
+    init(baseUrl: String, session: URLSession = .shared) {
         self.baseUrl = baseUrl.hasSuffix("/") ? String(baseUrl.dropLast()) : baseUrl
+        self.session = session
     }
 
     // MARK: - Response Types
@@ -276,7 +279,7 @@ class PbxApiClient {
         )
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
-        let (tempURL, response) = try await URLSession.shared.download(for: request)
+        let (tempURL, response) = try await session.download(for: request)
         guard let http = response as? HTTPURLResponse else { throw ApiError.emptyResponse }
         guard (200..<300).contains(http.statusCode) else {
             throw ApiError.httpError(statusCode: http.statusCode, message: "Audio unavailable")
@@ -296,6 +299,164 @@ class PbxApiClient {
         case "audio/mp4", "audio/x-m4a", "audio/aac": return "m4a"
         default: return "wav"
         }
+    }
+
+    // MARK: - Self-service: features, forwards, call records
+    //
+    // The extension-login JWT may read and change these for its own
+    // extension only. `extensionId` is the extension's UUID (`/me`'s
+    // `acting_extension`, or `extension_id` from the login).
+
+    struct ExtensionFeatures: Decodable, Equatable {
+        let doNotDisturb: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case doNotDisturb = "do_not_disturb"
+        }
+    }
+
+    /// GET /api/v1/extensions/{ext_id}/features. The PBX creates the row
+    /// with its defaults on first read.
+    func features(jwt: String, extensionId: String) async throws -> ExtensionFeatures {
+        let data = try await send("GET", path: "/api/v1/extensions/\(try pathSegment(extensionId))/features", token: jwt)
+        return try decode(ExtensionFeatures.self, from: data)
+    }
+
+    /// PUT /api/v1/extensions/{ext_id}/features `{do_not_disturb}` → 204.
+    /// Only DND: the call limit and hot-desking are the administrator's.
+    func setDoNotDisturb(jwt: String, extensionId: String, enabled: Bool) async throws {
+        _ = try await send(
+            "PUT",
+            path: "/api/v1/extensions/\(try pathSegment(extensionId))/features",
+            body: ["do_not_disturb": enabled],
+            token: jwt
+        )
+    }
+
+    struct CallForward: Decodable, Identifiable, Equatable {
+        let id: String
+        let forwardType: ForwardType
+        let destination: String
+        let ringTimeoutSecs: Int
+        let enabled: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case forwardType = "forward_type"
+            case destination
+            case ringTimeoutSecs = "ring_timeout_secs"
+            case enabled
+        }
+    }
+
+    /// The kinds of forward the PBX acts on; one of each per extension.
+    enum ForwardType: String, Codable, CaseIterable, Identifiable {
+        case unconditional
+        case busy
+        case noAnswer = "no_answer"
+
+        var id: String { rawValue }
+    }
+
+    /// GET /api/v1/extensions/{ext_id}/forwards
+    func forwards(jwt: String, extensionId: String) async throws -> [CallForward] {
+        let data = try await send("GET", path: "/api/v1/extensions/\(try pathSegment(extensionId))/forwards", token: jwt)
+        return try decode([CallForward].self, from: data)
+    }
+
+    /// POST /api/v1/extensions/{ext_id}/forwards → 201 with the forward. A
+    /// second forward of the same type is a 409; the PBX refuses feature
+    /// codes, emergency numbers and destinations the calling profile cannot
+    /// reach with a 422 whose message says why.
+    func createForward(
+        jwt: String,
+        extensionId: String,
+        type: ForwardType,
+        destination: String,
+        ringTimeoutSecs: Int,
+        enabled: Bool
+    ) async throws -> CallForward {
+        let data = try await send(
+            "POST",
+            path: "/api/v1/extensions/\(try pathSegment(extensionId))/forwards",
+            body: [
+                "forward_type": type.rawValue,
+                "destination": destination,
+                "ring_timeout_secs": ringTimeoutSecs,
+                "enabled": enabled,
+            ],
+            token: jwt
+        )
+        return try decode(CallForward.self, from: data)
+    }
+
+    /// PUT /api/v1/forwards/{id}: a partial update; returns the forward.
+    func updateForward(
+        jwt: String,
+        id: String,
+        destination: String? = nil,
+        ringTimeoutSecs: Int? = nil,
+        enabled: Bool? = nil
+    ) async throws -> CallForward {
+        var body: [String: Any] = [:]
+        if let destination = destination { body["destination"] = destination }
+        if let ringTimeoutSecs = ringTimeoutSecs { body["ring_timeout_secs"] = ringTimeoutSecs }
+        if let enabled = enabled { body["enabled"] = enabled }
+        let data = try await send("PUT", path: "/api/v1/forwards/\(try pathSegment(id))", body: body, token: jwt)
+        return try decode(CallForward.self, from: data)
+    }
+
+    /// DELETE /api/v1/forwards/{id} → 204.
+    func deleteForward(jwt: String, id: String) async throws {
+        _ = try await send("DELETE", path: "/api/v1/forwards/\(try pathSegment(id))", token: jwt)
+    }
+
+    /// One call from the PBX's records (`OwnCall`).
+    struct ServerCall: Decodable, Identifiable, Equatable {
+        let id: String
+        /// `inbound`, `outbound` or `internal`.
+        let direction: String
+        let fromUri: String
+        let toUri: String
+        let fromNumber: String?
+        let fromName: String?
+        let toNumber: String?
+        let toName: String?
+        /// `answered`, `no_answer`, `busy`, `failed`, `refused`, ...
+        let disposition: String
+        let startedAt: Date
+        let answeredAt: Date?
+        let endedAt: Date?
+        let durationSecs: Int
+
+        enum CodingKeys: String, CodingKey {
+            case id, direction, disposition
+            case fromUri = "from_uri"
+            case toUri = "to_uri"
+            case fromNumber = "from_number"
+            case fromName = "from_name"
+            case toNumber = "to_number"
+            case toName = "to_name"
+            case startedAt = "started_at"
+            case answeredAt = "answered_at"
+            case endedAt = "ended_at"
+            case durationSecs = "duration_secs"
+        }
+    }
+
+    /// GET /api/v1/extensions/{ext_id}/cdrs: the extension's calls, newest
+    /// first. At most 200 per page.
+    func callRecords(jwt: String, extensionId: String, limit: Int = 100, offset: Int = 0) async throws -> [ServerCall] {
+        let data = try await send(
+            "GET",
+            path: "/api/v1/extensions/\(try pathSegment(extensionId))/cdrs",
+            query: [
+                URLQueryItem(name: "limit", value: String(min(max(limit, 1), 200))),
+                URLQueryItem(name: "offset", value: String(max(offset, 0))),
+            ],
+            token: jwt
+        )
+        return try decode([ServerCall].self, from: data)
     }
 
     // MARK: - Helpers
@@ -371,7 +532,7 @@ class PbxApiClient {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw ApiError.emptyResponse
         }
@@ -404,7 +565,7 @@ class PbxApiClient {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ApiError.emptyResponse
