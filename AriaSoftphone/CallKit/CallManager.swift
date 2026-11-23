@@ -59,9 +59,9 @@ class CallManager: NSObject, ObservableObject {
     private override init() {
         let config = CXProviderConfiguration()
         config.supportsVideo = false
-        // Two calls in separate groups: one talking, one held. Calls are
-        // never merged, so each group holds a single call.
-        config.maximumCallsPerCallGroup = 1
+        // Two calls: in separate groups (one talking, one held), or merged
+        // into one group as a local three-way conference.
+        config.maximumCallsPerCallGroup = CallRegistry.maximumCalls
         config.maximumCallGroups = CallRegistry.maximumCalls
         config.supportedHandleTypes = [.phoneNumber, .generic]
         config.iconTemplateImageData = UIImage(named: "CallKitIcon")?.pngData()
@@ -104,14 +104,15 @@ class CallManager: NSObject, ObservableObject {
     /// What every call can do, for both directions. Holding has to be
     /// declared: CallKit fails a hold (and so a transaction that holds one
     /// call to start or answer another) on a call that does not support it.
-    /// Calls are never merged, so no grouping.
+    /// Grouping is a merge into the core's local conference, ungrouping a
+    /// split; CallKit offers them only while there is a second call.
     static func callUpdate(remoteUri: String, remoteName: String?) -> CXCallUpdate {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: remoteUri)
         update.localizedCallerName = remoteName ?? remoteUri
         update.hasVideo = false
-        update.supportsGrouping = false
-        update.supportsUngrouping = false
+        update.supportsGrouping = true
+        update.supportsUngrouping = true
         update.supportsHolding = true
         update.supportsDTMF = true
         return update
@@ -266,11 +267,33 @@ class CallManager: NSObject, ObservableObject {
     /// still ringing or connecting.
     var canAddCall: Bool { registry.canAddCall }
 
+    /// What `startOutgoingCall` did.
+    enum OutgoingCallStart: Equatable {
+        /// Handed to CallKit to be placed over VoIP.
+        case placed
+        /// An emergency number: handed to the phone's own dialer (`tel:`),
+        /// never placed over VoIP.
+        case emergencyHandoff
+        /// Not placed: no room for another call, or nothing to dial.
+        case refused
+    }
+
     /// Place a call. While another call is up it becomes the second call:
     /// the call in progress is put on hold first, through CallKit, so the
     /// system call UI shows it held.
-    func startOutgoingCall(uri: String) {
-        guard registry.canAddCall else { return }
+    ///
+    /// Every way of dialing comes through here (dial pad, history, contacts,
+    /// links, CallKit Recents), so this is where emergency numbers are
+    /// diverted to the native dialer.
+    @discardableResult
+    func startOutgoingCall(uri: String) -> OutgoingCallStart {
+        let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uri.isEmpty else { return .refused }
+        if EmergencyDialer.isEmergency(uri) {
+            EmergencyDialer.handOff(uri)
+            return .emergencyHandoff
+        }
+        guard registry.canAddCall else { return .refused }
 
         let uuid = UUID()
         // Set before the request so the start action finds it. The engine's
@@ -306,6 +329,7 @@ class CallManager: NSObject, ObservableObject {
                 self.registry.remove(uuid: uuid)
             }
         }
+        return .placed
     }
 
     // MARK: - Call Actions
@@ -475,6 +499,84 @@ class CallManager: NSObject, ObservableObject {
         callController.request(transaction) { _ in }
     }
 
+    // MARK: - Conference
+
+    /// Whether `mergeCalls` would do anything: see `CallRegistry.mergePair`.
+    var canMergeCalls: Bool { registry.mergePair != nil }
+
+    /// Whether a conference is up that `splitConference` would end.
+    var isInConference: Bool { registry.conference.count == 2 }
+
+    /// Merge the two connected calls into a local three-way conference.
+    ///
+    /// Goes through CallKit (`CXSetGroupCallAction`) so the system call UI
+    /// shows one grouped call; `perform` then asks the core to mix them. The
+    /// core takes both off hold and reports each `Connected` with
+    /// `inConference` true. Nothing happens unless there are exactly two
+    /// connected calls, neither already conferenced.
+    func mergeCalls() {
+        guard let pair = registry.mergePair else { return }
+        let action = CXSetGroupCallAction(call: pair.newer.uuid, callUUIDToGroupWith: pair.older.uuid)
+        callController.request(CXTransaction(action: action)) { error in
+            if let error = error {
+                print("Failed to merge calls: \(error)")
+            }
+        }
+    }
+
+    /// End the conference, keeping both calls: the newer call stays
+    /// connected and the older one goes on hold, as the core reports.
+    func splitConference() {
+        guard let newer = registry.conference.last else { return }
+        let action = CXSetGroupCallAction(call: newer.uuid, callUUIDToGroupWith: nil)
+        callController.request(CXTransaction(action: action)) { error in
+            if let error = error {
+                print("Failed to split the conference: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Recording
+
+    /// Start recording the connected call `uuid` to a new WAV file under
+    /// Application Support/Recordings.
+    ///
+    /// Throws `RecordingError.disclosureRequired` until the user has accepted
+    /// the recording disclosure (`RecordingsStore.acceptDisclosure()`): the
+    /// UI shows it, then calls this again. The call's `isRecording` follows
+    /// the core's events; recording stops by itself when the call ends.
+    func startRecording(uuid: UUID) throws {
+        guard RecordingsStore.shared.disclosureAccepted else {
+            throw RecordingError.disclosureRequired
+        }
+        guard let call = registry[uuid], call.isConnected, let callId = call.callId else {
+            throw RecordingError.notConnected
+        }
+        guard !call.isRecording else { return }
+        let recording = try RecordingsStore.shared.begin(
+            callId: callId, remoteUri: call.remoteUri, remoteName: call.remoteName
+        )
+        do {
+            try SipEngineManager.shared.startRecording(callId: callId, path: recording.url.path)
+        } catch {
+            RecordingsStore.shared.discard(recording)
+            throw RecordingError.failed(error.localizedDescription)
+        }
+        registry.modify(uuid: uuid) { $0.isRecording = true }
+    }
+
+    /// Stop recording the call `uuid` and keep the file.
+    func stopRecording(uuid: UUID) {
+        guard let call = registry[uuid], let callId = call.callId else { return }
+        do {
+            let path = try SipEngineManager.shared.stopRecording(callId: callId)
+            RecordingsStore.shared.finish(callId: callId, path: path)
+        } catch {
+            print("Failed to stop recording: \(error)")
+        }
+        registry.modify(uuid: uuid) { $0.isRecording = false }
+    }
+
     // MARK: - Hold sync
 
     /// Tell CallKit about hold changes the core made by itself: holding the
@@ -534,6 +636,10 @@ class CallManager: NSObject, ObservableObject {
     /// Any other call is left as it was; a held call stays held.
     private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
         CallHistoryStore.shared.add(CallRecord(call: call, outcome: outcome))
+        // The core stops a recording when its call ends; close its entry.
+        if let callId = call.callId {
+            RecordingsStore.shared.finish(callId: callId, path: nil)
+        }
         if outcome == .missed {
             LocalNotifications.postMissedCall(remoteUri: call.remoteUri, remoteName: call.remoteName)
         }
@@ -603,6 +709,8 @@ class CallManager: NSObject, ObservableObject {
 
         registry.modify(uuid: call.uuid) {
             $0.isMuted = info.muted
+            $0.inConference = info.inConference
+            $0.isRecording = info.recording
             if $0.isConnected {
                 $0.setHeld(info.onHold || info.state == .onHold)
             }
@@ -624,6 +732,14 @@ extension CallManager: CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        // Never over VoIP, however the start arrived (Siri, a CallKit
+        // Recents entry, a path that skipped startOutgoingCall).
+        if EmergencyDialer.isEmergency(action.handle.value) {
+            action.fail()
+            registry.remove(uuid: action.callUUID)
+            EmergencyDialer.handOff(action.handle.value)
+            return
+        }
         guard let call = registry[action.callUUID] else {
             action.fail()
             return
@@ -866,6 +982,44 @@ extension CallManager: CXProviderDelegate {
         scheduleHoldSync()
     }
 
+    /// Merge (grouped with another call) or split (ungrouped), whether
+    /// CallKit's own Merge button asked or the app did.
+    func provider(_ provider: CXProvider, perform action: CXSetGroupCallAction) {
+        let request = CallRegistry.groupRequest(
+            for: action.callUUID, groupWith: action.callUUIDToGroupWith, in: registry
+        )
+        do {
+            switch request {
+            case .refuse:
+                action.fail()
+                return
+            case .none:
+                break
+            case .merge(let callA, let callB):
+                try SipEngineManager.shared.conferenceMerge(callA: callA, callB: callB)
+                for id in [callA, callB] {
+                    guard let call = registry.call(engineCallId: id) else { continue }
+                    registry.modify(uuid: call.uuid) {
+                        $0.inConference = true
+                        $0.setHeld(false)
+                    }
+                    // Mixed calls are off hold; CallKit treats the group as
+                    // one active call.
+                    callKitHeld.remove(call.uuid)
+                }
+            case .split:
+                // The core's events say which call went on hold.
+                try SipEngineManager.shared.conferenceSplit()
+            }
+        } catch {
+            print("Failed to change the conference: \(error)")
+            action.fail()
+            return
+        }
+        action.fulfill()
+        scheduleHoldSync()
+    }
+
     func provider(_ provider: CXProvider, perform action: CXPlayDTMFCallAction) {
         if let callId = registry[action.callUUID]?.callId {
             try? SipEngineManager.shared.sendDtmf(callId: callId, digit: action.digits)
@@ -941,6 +1095,10 @@ struct ActiveCall: Identifiable {
     var state: ActiveCallState
     var isMuted: Bool = false
     var isOnHold: Bool = false
+    /// Mixed with the other call in a local three-way conference.
+    var inConference: Bool = false
+    /// Being recorded to a WAV file.
+    var isRecording: Bool = false
     var connectedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
@@ -1281,6 +1439,8 @@ struct CallRegistry {
     /// the talking call and the second a different connected call on hold.
     /// With both held there is nothing to swap; the screen offers Resume.
     func canSwap(active: UUID, held: UUID) -> Bool {
+        // The core refuses a swap while the calls are mixed.
+        guard !calls.contains(where: { $0.inConference }) else { return false }
         guard let talking = talking, talking.uuid == active,
               let other = self[held], other.uuid != active else { return false }
         return other.isConnected && other.isOnHold
@@ -1308,6 +1468,50 @@ struct CallRegistry {
         return (older, newer)
     }
 
+    // MARK: Conference
+
+    /// The calls in the conference, oldest first: empty, or both calls.
+    var conference: [ActiveCall] {
+        calls.filter { $0.inConference }
+    }
+
+    /// The two calls a merge would mix: exactly two connected calls with
+    /// engine ids, held or not, neither already conferenced. The core
+    /// refuses anything else.
+    var mergePair: (older: ActiveCall, newer: ActiveCall)? {
+        guard calls.count == 2 else { return nil }
+        let connected = calls.filter { $0.isConnected && $0.callId != nil && !$0.inConference }
+        guard connected.count == 2 else { return nil }
+        return (connected[0], connected[1])
+    }
+
+    /// What the engine must do for a `CXSetGroupCallAction`.
+    enum GroupRequest: Equatable {
+        /// Already so: grouping two conferenced calls, or ungrouping a call
+        /// that is not in one.
+        case none
+        /// Unknown calls, or calls the core cannot mix.
+        case refuse
+        /// `conference_merge(callA, callB)`, the older call first.
+        case merge(callA: String, callB: String)
+        case split
+    }
+
+    static func groupRequest(for uuid: UUID, groupWith other: UUID?, in registry: CallRegistry) -> GroupRequest {
+        guard let call = registry[uuid] else { return .refuse }
+        guard let other = other else {
+            return call.inConference ? .split : .none
+        }
+        guard let partner = registry[other], partner.uuid != call.uuid else { return .refuse }
+        if call.inConference && partner.inConference { return .none }
+        guard let pair = registry.mergePair,
+              Set([pair.older.uuid, pair.newer.uuid]) == Set([call.uuid, partner.uuid]),
+              let callA = pair.older.callId, let callB = pair.newer.callId else {
+            return .refuse
+        }
+        return .merge(callA: callA, callB: callB)
+    }
+
     /// What the engine must do for a `CXSetHeldCallAction`.
     enum HoldRequest: Equatable {
         /// Nothing: the call is already in that state (the action reports a
@@ -1329,7 +1533,9 @@ struct CallRegistry {
         }
         guard call.isOnHold != onHold else { return .none }
         if onHold { return .hold(callId: callId) }
-        if let talking = registry.talking, talking.uuid != uuid, let talkingId = talking.callId {
+        // Resuming one conferenced call resumes both: not a swap.
+        if let talking = registry.talking, talking.uuid != uuid, let talkingId = talking.callId,
+           !(talking.inConference && call.inConference) {
             return .swap(activeCallId: talkingId, heldCallId: callId)
         }
         return .resume(callId: callId)
@@ -1349,6 +1555,26 @@ struct CallRegistry {
         let resumes = connected.filter { !$0.isOnHold && callKitHeld.contains($0.uuid) }
         return holds.map { HoldChange(uuid: $0.uuid, onHold: true) }
             + resumes.map { HoldChange(uuid: $0.uuid, onHold: false) }
+    }
+}
+
+/// Why a recording did not start.
+enum RecordingError: LocalizedError, Equatable {
+    /// The user has not accepted the recording disclosure yet.
+    case disclosureRequired
+    /// Only a connected call can be recorded.
+    case notConnected
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .disclosureRequired:
+            return "Before recording, confirm that you will tell the other party the call is being recorded."
+        case .notConnected:
+            return "Only a connected call can be recorded."
+        case .failed(let message):
+            return "Recording could not start: \(message)"
+        }
     }
 }
 

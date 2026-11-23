@@ -705,6 +705,25 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func checkRemoteHangup()  -> String?
     
     /**
+     * Merge two connected calls (held or not) into a local three-way
+     * conference: both come off hold, each far end hears the microphone
+     * plus the other far end, and the speaker plays both. Both are
+     * reported `Connected` with `in_conference` true, `call_a` first.
+     * Throws `InvalidState` unless they are distinct connected calls and
+     * neither is in a conference. See "Conference" in the README for hold,
+     * mute, hangup and transfer while conferenced.
+     */
+    func conferenceMerge(callA: String, callB: String) throws 
+    
+    /**
+     * End the conference, keeping both calls: the most recently created
+     * one stays `Connected`, the other goes `OnHold`; both are reported with
+     * `in_conference` false, the held one first. Throws `InvalidState` when
+     * there is no conference.
+     */
+    func conferenceSplit() throws 
+    
+    /**
      * The connected call that is off hold, if any; otherwise the most
      * recently created live call (held, or outgoing and ringing).
      */
@@ -753,6 +772,11 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * did not confirm (after one retry) through `on_error`.
      */
     func hangup(callId: String) throws 
+    
+    /**
+     * Whether a call is being recorded.
+     */
+    func isRecording(callId: String)  -> Bool
     
     /**
      * `make_call_with_id` with an id the core picks. The app learns the id
@@ -841,18 +865,43 @@ public protocol AriaMobileEngineProtocol : AnyObject {
      * call is ever off hold; each call whose hold state changed is reported
      * through `on_call_state_changed`. A call that connects (answered, or an
      * outgoing call that is answered) likewise holds the others first.
+     * On a conferenced call it holds or resumes the whole conference (both
+     * calls, the named one reported first), which stays a conference.
      */
     func setHold(callId: String, onHold: Bool) throws 
     
     /**
-     * Set mute state.
+     * Set mute state. On a conferenced call the microphone is shared, so
+     * both calls are muted and reported, the named one first.
      */
     func setMute(callId: String, muted: Bool) throws 
     
     /**
+     * Start recording a connected call to a new WAV file at `path`
+     * (replaced if it exists): 16-bit PCM mono at the call's codec rate
+     * (8000 Hz, or 48000 Hz for Opus), the far end and this end mixed, plus
+     * the other far end while the call is in a conference. Held time is
+     * recorded as silence. Reports the call with `recording` true. Throws
+     * `InvalidState` for an unknown, ringing or already recorded call, and
+     * `MediaError` when the file cannot be created. Recording stops by
+     * itself when the call ends; the file is complete by the time `Ended`
+     * is delivered. Consent and disclosure are the app's responsibility.
+     */
+    func startRecording(callId: String, path: String) throws 
+    
+    /**
+     * Stop recording a call and finish the WAV file. Returns its path.
+     * Reports the call with `recording` false. Throws `InvalidState` when
+     * the call is not being recorded, and `MediaError` when the file could
+     * not be finished (it may be truncated).
+     */
+    func stopRecording(callId: String) throws  -> String
+    
+    /**
      * Put `active_call_id` on hold and resume `held_call_id` in one step.
      * Each call whose hold state changed is reported, the one going on hold
-     * first. Throws `InvalidState` unless both are distinct connected calls.
+     * first. Throws `InvalidState` unless both are distinct connected calls,
+     * and while a conference is up (`conference_split` first).
      */
     func swapCalls(activeCallId: String, heldCallId: String) throws 
     
@@ -1196,6 +1245,35 @@ open func checkRemoteHangup() -> String? {
 }
     
     /**
+     * Merge two connected calls (held or not) into a local three-way
+     * conference: both come off hold, each far end hears the microphone
+     * plus the other far end, and the speaker plays both. Both are
+     * reported `Connected` with `in_conference` true, `call_a` first.
+     * Throws `InvalidState` unless they are distinct connected calls and
+     * neither is in a conference. See "Conference" in the README for hold,
+     * mute, hangup and transfer while conferenced.
+     */
+open func conferenceMerge(callA: String, callB: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_conference_merge(self.uniffiClonePointer(),
+        FfiConverterString.lower(callA),
+        FfiConverterString.lower(callB),$0
+    )
+}
+}
+    
+    /**
+     * End the conference, keeping both calls: the most recently created
+     * one stays `Connected`, the other goes `OnHold`; both are reported with
+     * `in_conference` false, the held one first. Throws `InvalidState` when
+     * there is no conference.
+     */
+open func conferenceSplit()throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_conference_split(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
      * The connected call that is off hold, if any; otherwise the most
      * recently created live call (held, or outgoing and ringing).
      */
@@ -1282,6 +1360,17 @@ open func hangup(callId: String)throws  {try rustCallWithError(FfiConverterTypeM
         FfiConverterString.lower(callId),$0
     )
 }
+}
+    
+    /**
+     * Whether a call is being recorded.
+     */
+open func isRecording(callId: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_is_recording(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+})
 }
     
     /**
@@ -1429,6 +1518,8 @@ open func setGatewayToken(token: String) {try! rustCall() {
      * call is ever off hold; each call whose hold state changed is reported
      * through `on_call_state_changed`. A call that connects (answered, or an
      * outgoing call that is answered) likewise holds the others first.
+     * On a conferenced call it holds or resumes the whole conference (both
+     * calls, the named one reported first), which stays a conference.
      */
 open func setHold(callId: String, onHold: Bool)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_hold(self.uniffiClonePointer(),
@@ -1439,7 +1530,8 @@ open func setHold(callId: String, onHold: Bool)throws  {try rustCallWithError(Ff
 }
     
     /**
-     * Set mute state.
+     * Set mute state. On a conferenced call the microphone is shared, so
+     * both calls are muted and reported, the named one first.
      */
 open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_mute(self.uniffiClonePointer(),
@@ -1450,9 +1542,43 @@ open func setMute(callId: String, muted: Bool)throws  {try rustCallWithError(Ffi
 }
     
     /**
+     * Start recording a connected call to a new WAV file at `path`
+     * (replaced if it exists): 16-bit PCM mono at the call's codec rate
+     * (8000 Hz, or 48000 Hz for Opus), the far end and this end mixed, plus
+     * the other far end while the call is in a conference. Held time is
+     * recorded as silence. Reports the call with `recording` true. Throws
+     * `InvalidState` for an unknown, ringing or already recorded call, and
+     * `MediaError` when the file cannot be created. Recording stops by
+     * itself when the call ends; the file is complete by the time `Ended`
+     * is delivered. Consent and disclosure are the app's responsibility.
+     */
+open func startRecording(callId: String, path: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_start_recording(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),
+        FfiConverterString.lower(path),$0
+    )
+}
+}
+    
+    /**
+     * Stop recording a call and finish the WAV file. Returns its path.
+     * Reports the call with `recording` false. Throws `InvalidState` when
+     * the call is not being recorded, and `MediaError` when the file could
+     * not be finished (it may be truncated).
+     */
+open func stopRecording(callId: String)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_stop_recording(self.uniffiClonePointer(),
+        FfiConverterString.lower(callId),$0
+    )
+})
+}
+    
+    /**
      * Put `active_call_id` on hold and resume `held_call_id` in one step.
      * Each call whose hold state changed is reported, the one going on hold
-     * first. Throws `InvalidState` unless both are distinct connected calls.
+     * first. Throws `InvalidState` unless both are distinct connected calls,
+     * and while a conference is up (`conference_split` first).
      */
 open func swapCalls(activeCallId: String, heldCallId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_swap_calls(self.uniffiClonePointer(),
@@ -2157,13 +2283,31 @@ public struct CallInfo {
      * Why the call ended; set only when `state` is `Ended`.
      */
     public var endReason: EndReason?
+    /**
+     * Mixed into a local three-way conference with the other live call
+     * (`conference_merge`). See "Conference" in the README.
+     */
+    public var inConference: Bool
+    /**
+     * This call is being recorded to a WAV file (`start_recording`).
+     * False on the `Ended` event: recording stops when the call ends.
+     */
+    public var recording: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(callId: String, remoteUri: String, remoteName: String?, state: CallState, direction: CallDirection, muted: Bool, onHold: Bool, durationSecs: UInt64, 
         /**
          * Why the call ended; set only when `state` is `Ended`.
-         */endReason: EndReason?) {
+         */endReason: EndReason?, 
+        /**
+         * Mixed into a local three-way conference with the other live call
+         * (`conference_merge`). See "Conference" in the README.
+         */inConference: Bool = false, 
+        /**
+         * This call is being recorded to a WAV file (`start_recording`).
+         * False on the `Ended` event: recording stops when the call ends.
+         */recording: Bool = false) {
         self.callId = callId
         self.remoteUri = remoteUri
         self.remoteName = remoteName
@@ -2173,6 +2317,8 @@ public struct CallInfo {
         self.onHold = onHold
         self.durationSecs = durationSecs
         self.endReason = endReason
+        self.inConference = inConference
+        self.recording = recording
     }
 }
 
@@ -2207,6 +2353,12 @@ extension CallInfo: Equatable, Hashable {
         if lhs.endReason != rhs.endReason {
             return false
         }
+        if lhs.inConference != rhs.inConference {
+            return false
+        }
+        if lhs.recording != rhs.recording {
+            return false
+        }
         return true
     }
 
@@ -2220,6 +2372,8 @@ extension CallInfo: Equatable, Hashable {
         hasher.combine(onHold)
         hasher.combine(durationSecs)
         hasher.combine(endReason)
+        hasher.combine(inConference)
+        hasher.combine(recording)
     }
 }
 
@@ -2239,7 +2393,9 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
                 muted: FfiConverterBool.read(from: &buf), 
                 onHold: FfiConverterBool.read(from: &buf), 
                 durationSecs: FfiConverterUInt64.read(from: &buf), 
-                endReason: FfiConverterOptionTypeEndReason.read(from: &buf)
+                endReason: FfiConverterOptionTypeEndReason.read(from: &buf), 
+                inConference: FfiConverterBool.read(from: &buf), 
+                recording: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -2253,6 +2409,8 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
         FfiConverterBool.write(value.onHold, into: &buf)
         FfiConverterUInt64.write(value.durationSecs, into: &buf)
         FfiConverterOptionTypeEndReason.write(value.endReason, into: &buf)
+        FfiConverterBool.write(value.inConference, into: &buf)
+        FfiConverterBool.write(value.recording, into: &buf)
     }
 }
 
@@ -2698,6 +2856,311 @@ public func FfiConverterTypeMediaStats_lift(_ buf: RustBuffer) throws -> MediaSt
 #endif
 public func FfiConverterTypeMediaStats_lower(_ value: MediaStats) -> RustBuffer {
     return FfiConverterTypeMediaStats.lower(value)
+}
+
+
+/**
+ * What a setup link would add, for the confirmation screen. Nothing secret.
+ */
+public struct ProvisionPreview {
+    public var tenantName: String
+    public var `extension`: String
+    public var displayName: String
+    public var domain: String
+    public var expiresAt: String?
+    /**
+     * `host[:port]` of the setup server: who is setting the line up.
+     */
+    public var serverHost: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(tenantName: String, `extension`: String, displayName: String, domain: String, expiresAt: String?, 
+        /**
+         * `host[:port]` of the setup server: who is setting the line up.
+         */serverHost: String) {
+        self.tenantName = tenantName
+        self.`extension` = `extension`
+        self.displayName = displayName
+        self.domain = domain
+        self.expiresAt = expiresAt
+        self.serverHost = serverHost
+    }
+}
+
+
+
+extension ProvisionPreview: Equatable, Hashable {
+    public static func ==(lhs: ProvisionPreview, rhs: ProvisionPreview) -> Bool {
+        if lhs.tenantName != rhs.tenantName {
+            return false
+        }
+        if lhs.`extension` != rhs.`extension` {
+            return false
+        }
+        if lhs.displayName != rhs.displayName {
+            return false
+        }
+        if lhs.domain != rhs.domain {
+            return false
+        }
+        if lhs.expiresAt != rhs.expiresAt {
+            return false
+        }
+        if lhs.serverHost != rhs.serverHost {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(tenantName)
+        hasher.combine(`extension`)
+        hasher.combine(displayName)
+        hasher.combine(domain)
+        hasher.combine(expiresAt)
+        hasher.combine(serverHost)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProvisionPreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProvisionPreview {
+        return
+            try ProvisionPreview(
+                tenantName: FfiConverterString.read(from: &buf), 
+                extension: FfiConverterString.read(from: &buf), 
+                displayName: FfiConverterString.read(from: &buf), 
+                domain: FfiConverterString.read(from: &buf), 
+                expiresAt: FfiConverterOptionString.read(from: &buf), 
+                serverHost: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ProvisionPreview, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.tenantName, into: &buf)
+        FfiConverterString.write(value.`extension`, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterString.write(value.domain, into: &buf)
+        FfiConverterOptionString.write(value.expiresAt, into: &buf)
+        FfiConverterString.write(value.serverHost, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProvisionPreview_lift(_ buf: RustBuffer) throws -> ProvisionPreview {
+    return try FfiConverterTypeProvisionPreview.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProvisionPreview_lower(_ value: ProvisionPreview) -> RustBuffer {
+    return FfiConverterTypeProvisionPreview.lower(value)
+}
+
+
+/**
+ * The credentials a redeemed setup link returned. Store `password` in the
+ * Keychain / Keystore; never log it.
+ */
+public struct ProvisionedAccount {
+    public var username: String
+    public var authUsername: String?
+    public var password: String
+    /**
+     * Lower-cased.
+     */
+    public var domain: String
+    /**
+     * "udp", "tcp", "tls" or "auto"; "tls" when the server sent none.
+     */
+    public var transport: String
+    /**
+     * 0 when the server sent none (resolve through DNS SRV).
+     */
+    public var port: UInt16
+    /**
+     * `host` or `host:port`, lower-cased, without a `sip:` prefix.
+     */
+    public var outboundProxy: String?
+    /**
+     * Digits and `*#+` only.
+     */
+    public var voicemail: String?
+    /**
+     * "sdes" or "disabled"; absent otherwise.
+     */
+    public var srtp: String?
+    public var tenantName: String
+    /**
+     * The username when the server sent no display name.
+     */
+    public var displayName: String
+    /**
+     * `host[:port]` of the setup server.
+     */
+    public var serverHost: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(username: String, authUsername: String?, password: String, 
+        /**
+         * Lower-cased.
+         */domain: String, 
+        /**
+         * "udp", "tcp", "tls" or "auto"; "tls" when the server sent none.
+         */transport: String, 
+        /**
+         * 0 when the server sent none (resolve through DNS SRV).
+         */port: UInt16, 
+        /**
+         * `host` or `host:port`, lower-cased, without a `sip:` prefix.
+         */outboundProxy: String?, 
+        /**
+         * Digits and `*#+` only.
+         */voicemail: String?, 
+        /**
+         * "sdes" or "disabled"; absent otherwise.
+         */srtp: String?, tenantName: String, 
+        /**
+         * The username when the server sent no display name.
+         */displayName: String, 
+        /**
+         * `host[:port]` of the setup server.
+         */serverHost: String) {
+        self.username = username
+        self.authUsername = authUsername
+        self.password = password
+        self.domain = domain
+        self.transport = transport
+        self.port = port
+        self.outboundProxy = outboundProxy
+        self.voicemail = voicemail
+        self.srtp = srtp
+        self.tenantName = tenantName
+        self.displayName = displayName
+        self.serverHost = serverHost
+    }
+}
+
+
+
+extension ProvisionedAccount: Equatable, Hashable {
+    public static func ==(lhs: ProvisionedAccount, rhs: ProvisionedAccount) -> Bool {
+        if lhs.username != rhs.username {
+            return false
+        }
+        if lhs.authUsername != rhs.authUsername {
+            return false
+        }
+        if lhs.password != rhs.password {
+            return false
+        }
+        if lhs.domain != rhs.domain {
+            return false
+        }
+        if lhs.transport != rhs.transport {
+            return false
+        }
+        if lhs.port != rhs.port {
+            return false
+        }
+        if lhs.outboundProxy != rhs.outboundProxy {
+            return false
+        }
+        if lhs.voicemail != rhs.voicemail {
+            return false
+        }
+        if lhs.srtp != rhs.srtp {
+            return false
+        }
+        if lhs.tenantName != rhs.tenantName {
+            return false
+        }
+        if lhs.displayName != rhs.displayName {
+            return false
+        }
+        if lhs.serverHost != rhs.serverHost {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(username)
+        hasher.combine(authUsername)
+        hasher.combine(password)
+        hasher.combine(domain)
+        hasher.combine(transport)
+        hasher.combine(port)
+        hasher.combine(outboundProxy)
+        hasher.combine(voicemail)
+        hasher.combine(srtp)
+        hasher.combine(tenantName)
+        hasher.combine(displayName)
+        hasher.combine(serverHost)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProvisionedAccount: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProvisionedAccount {
+        return
+            try ProvisionedAccount(
+                username: FfiConverterString.read(from: &buf), 
+                authUsername: FfiConverterOptionString.read(from: &buf), 
+                password: FfiConverterString.read(from: &buf), 
+                domain: FfiConverterString.read(from: &buf), 
+                transport: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                outboundProxy: FfiConverterOptionString.read(from: &buf), 
+                voicemail: FfiConverterOptionString.read(from: &buf), 
+                srtp: FfiConverterOptionString.read(from: &buf), 
+                tenantName: FfiConverterString.read(from: &buf), 
+                displayName: FfiConverterString.read(from: &buf), 
+                serverHost: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ProvisionedAccount, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.username, into: &buf)
+        FfiConverterOptionString.write(value.authUsername, into: &buf)
+        FfiConverterString.write(value.password, into: &buf)
+        FfiConverterString.write(value.domain, into: &buf)
+        FfiConverterString.write(value.transport, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterOptionString.write(value.outboundProxy, into: &buf)
+        FfiConverterOptionString.write(value.voicemail, into: &buf)
+        FfiConverterOptionString.write(value.srtp, into: &buf)
+        FfiConverterString.write(value.tenantName, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterString.write(value.serverHost, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProvisionedAccount_lift(_ buf: RustBuffer) throws -> ProvisionedAccount {
+    return try FfiConverterTypeProvisionedAccount.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProvisionedAccount_lower(_ value: ProvisionedAccount) -> RustBuffer {
+    return FfiConverterTypeProvisionedAccount.lower(value)
 }
 
 
@@ -3442,6 +3905,114 @@ public struct FfiConverterTypeMobileError: FfiConverterRustBuffer {
 extension MobileError: Equatable, Hashable {}
 
 extension MobileError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+
+/**
+ * Why a setup link could not be used. The message is written for the user
+ * and never contains the link or its token.
+ */
+public enum ProvisionError {
+
+    
+    
+    /**
+     * Not a version-1 `aria://provision` link, or its URL breaks the rules:
+     * not https, has userinfo, not `/provision/softphone/<token>`.
+     */
+    case InvalidLink(message: String)
+    
+    /**
+     * The server answered 404: unknown, already used, or expired.
+     */
+    case Expired(message: String)
+    
+    /**
+     * The server could not be reached or did not answer within 10 s.
+     */
+    case Network(message: String)
+    
+    /**
+     * The redeem returned a different line than the preview showed.
+     */
+    case Mismatch(message: String)
+    
+    /**
+     * Any other reply: a non-200 status (redirects are not followed), more
+     * than 16 KB, not JSON, `v` other than 1, or an unusable field.
+     */
+    case Server(message: String)
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProvisionError: FfiConverterRustBuffer {
+    typealias SwiftType = ProvisionError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProvisionError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .InvalidLink(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .Expired(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .Network(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .Mismatch(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .Server(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ProvisionError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        case .InvalidLink(_ /* message is ignored*/):
+            writeInt(&buf, Int32(1))
+        case .Expired(_ /* message is ignored*/):
+            writeInt(&buf, Int32(2))
+        case .Network(_ /* message is ignored*/):
+            writeInt(&buf, Int32(3))
+        case .Mismatch(_ /* message is ignored*/):
+            writeInt(&buf, Int32(4))
+        case .Server(_ /* message is ignored*/):
+            writeInt(&buf, Int32(5))
+
+        
+        }
+    }
+}
+
+
+extension ProvisionError: Equatable, Hashable {}
+
+extension ProvisionError: Foundation.LocalizedError {
     public var errorDescription: String? {
         String(reflecting: self)
     }
@@ -4248,11 +4819,55 @@ public func initRuntime() {try! rustCall() {
 }
 }
 /**
+ * Whether `dial` is an emergency number (911, 112, 999, 000; the
+ * desktop list) after trimming, stripping a `sip:`/`sips:`/`tel:` prefix
+ * and any `@host` or `;params`, and removing spaces and dashes. Apps
+ * must NEVER place these through VoIP: hand them to the native dialer
+ * (`tel:`).
+ */
+public func isEmergencyNumber(dial: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_aria_mobile_core_fn_func_is_emergency_number(
+        FfiConverterString.lower(dial),$0
+    )
+})
+}
+/**
  * A fresh `outgoing-<uuid>` call_id for `make_call_with_id`.
  */
 public func newOutgoingCallId() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_aria_mobile_core_fn_func_new_outgoing_call_id($0
+    )
+})
+}
+/**
+ * Fetch the preview of a one-click setup link
+ * (`aria://provision?v=1&url=<https://HOST/provision/softphone/TOKEN>`)
+ * with `GET`. Does not use the link up. Show it and ask the user to
+ * confirm before `provision_redeem`. Blocks for up to about 10 s; call it
+ * off the UI thread. A legacy QR link (no `v=1`) throws `InvalidLink`:
+ * parse those as before.
+ */
+public func provisionPreview(link: String)throws  -> ProvisionPreview {
+    return try  FfiConverterTypeProvisionPreview.lift(try rustCallWithError(FfiConverterTypeProvisionError.lift) {
+    uniffi_aria_mobile_core_fn_func_provision_preview(
+        FfiConverterString.lower(link),$0
+    )
+})
+}
+/**
+ * Redeem a setup link with `POST`, using it up, after the user confirmed
+ * its preview. Throws `Mismatch` when the server returns a different
+ * extension or domain than the preview showed (if the link was not
+ * previewed in this process, a preview is fetched first). Then log in
+ * with `extension-login` using `username`, `password` and `domain`.
+ * Blocks for up to about 20 s; call it off the UI thread.
+ */
+public func provisionRedeem(link: String)throws  -> ProvisionedAccount {
+    return try  FfiConverterTypeProvisionedAccount.lift(try rustCallWithError(FfiConverterTypeProvisionError.lift) {
+    uniffi_aria_mobile_core_fn_func_provision_redeem(
+        FfiConverterString.lower(link),$0
     )
 })
 }
@@ -4283,7 +4898,16 @@ private var initializationResult: InitializationResult = {
     if (uniffi_aria_mobile_core_checksum_func_init_runtime() != 32843) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_aria_mobile_core_checksum_func_is_emergency_number() != 33955) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_aria_mobile_core_checksum_func_new_outgoing_call_id() != 37587) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_func_provision_preview() != 43833) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_func_provision_redeem() != 51727) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_func_shutdown_runtime() != 2017) {
@@ -4343,6 +4967,12 @@ private var initializationResult: InitializationResult = {
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_check_remote_hangup() != 44253) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_conference_merge() != 25690) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_conference_split() != 4102) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_get_active_call() != 15775) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4362,6 +4992,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_hangup() != 12235) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_is_recording() != 22113) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_make_call() != 192) {
@@ -4398,6 +5031,12 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_mute() != 20691) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_start_recording() != 4927) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_stop_recording() != 37421) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_swap_calls() != 26608) {

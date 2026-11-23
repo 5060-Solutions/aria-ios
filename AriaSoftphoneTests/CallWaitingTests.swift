@@ -159,12 +159,13 @@ final class CallWaitingTests: XCTestCase {
         XCTAssertEqual(CallRegistry.holdChanges(calls: [ringing], callKitHeld: [ringing.uuid]), [])
     }
 
-    func testEveryCallDeclaresHoldAndDTMFButNotGrouping() {
+    func testEveryCallDeclaresHoldDTMFAndGrouping() {
         let update = CallManager.callUpdate(remoteUri: "1002", remoteName: nil)
         XCTAssertTrue(update.supportsHolding)
         XCTAssertTrue(update.supportsDTMF)
-        XCTAssertFalse(update.supportsGrouping)
-        XCTAssertFalse(update.supportsUngrouping)
+        // Grouping is merge into a conference, ungrouping is split.
+        XCTAssertTrue(update.supportsGrouping)
+        XCTAssertTrue(update.supportsUngrouping)
         XCTAssertFalse(update.hasVideo)
         XCTAssertEqual(update.remoteHandle?.value, "1002")
         XCTAssertEqual(update.localizedCallerName, "1002")
