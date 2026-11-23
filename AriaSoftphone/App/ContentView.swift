@@ -111,10 +111,21 @@ struct MainTabView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
     @ObservedObject private var voicemail = VoicemailService.shared
-    @State private var selectedTab: Tab = .dialer
+    @State private var selectedTab: Tab = Tab(fixtureScene: FixtureMode.scene)
 
     enum Tab {
         case dialer, contacts, history, voicemail, settings
+
+        /// The tab a fixture scene opens on; the Dialer otherwise.
+        init(fixtureScene: FixtureScene?) {
+            switch fixtureScene {
+            case .history: self = .history
+            case .contacts: self = .contacts
+            case .voicemail, .voicemailPlaying: self = .voicemail
+            case .settings, .forwarding: self = .settings
+            default: self = .dialer
+            }
+        }
     }
 
     var body: some View {

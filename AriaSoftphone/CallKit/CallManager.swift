@@ -82,6 +82,9 @@ class CallManager: NSObject, ObservableObject {
 
     /// Send call audio to the speaker, or back to the default route.
     func setSpeaker(_ on: Bool) {
+        #if DEBUG
+        if FixtureMode.isActive { isSpeakerOn = on; return }
+        #endif
         do {
             try AVAudioSession.sharedInstance().overrideOutputAudioPort(on ? .speaker : .none)
         } catch {
@@ -293,6 +296,9 @@ class CallManager: NSObject, ObservableObject {
             EmergencyDialer.handOff(uri)
             return .emergencyHandoff
         }
+        #if DEBUG
+        if FixtureMode.isActive { return fixtureStartCall(uri: uri) }
+        #endif
         guard registry.canAddCall else { return .refused }
 
         let uuid = UUID()
@@ -351,6 +357,9 @@ class CallManager: NSObject, ObservableObject {
     /// call is on screen by the time it runs: a second call can take the
     /// screen between the two.
     func answerCall(uuid: UUID, _ mode: AnswerMode = .holdOthers) {
+        #if DEBUG
+        if FixtureMode.isActive { fixtureAnswer(uuid: uuid, mode); return }
+        #endif
         guard let call = registry[uuid], call.state == .incoming else { return }
         var actions: [CXAction] = []
         for other in registry.calls where other.uuid != call.uuid {
@@ -374,6 +383,9 @@ class CallManager: NSObject, ObservableObject {
     /// End the call `uuid`. Another call stays as it was: a held call stays
     /// held until the user resumes it.
     func endCall(uuid: UUID) {
+        #if DEBUG
+        if FixtureMode.isActive { registry.remove(uuid: uuid); return }
+        #endif
         let endAction = CXEndCallAction(call: uuid)
         let transaction = CXTransaction(action: endAction)
         callController.request(transaction) { error in
@@ -456,6 +468,9 @@ class CallManager: NSObject, ObservableObject {
     /// then passed on to CallKit (see `syncHoldWithCallKit`). Nothing happens
     /// unless the two are still talking and held.
     func swapCalls(active: UUID, held: UUID) {
+        #if DEBUG
+        if FixtureMode.isActive { fixtureSwap(active: active, held: held); return }
+        #endif
         guard registry.canSwap(active: active, held: held),
               let talking = registry[active], let activeId = talking.callId,
               let held = registry[held], let heldId = held.callId else { return }
@@ -470,6 +485,9 @@ class CallManager: NSObject, ObservableObject {
     }
 
     func setMuted(uuid: UUID, _ muted: Bool) {
+        #if DEBUG
+        if FixtureMode.isActive { registry.modify(uuid: uuid) { $0.isMuted = muted }; return }
+        #endif
         guard registry[uuid] != nil else { return }
         let muteAction = CXSetMutedCallAction(call: uuid, muted: muted)
         let transaction = CXTransaction(action: muteAction)
@@ -478,6 +496,9 @@ class CallManager: NSObject, ObservableObject {
 
     /// Hold or resume the call `uuid`. Resuming it holds the other call.
     func setHeld(uuid: UUID, _ held: Bool) {
+        #if DEBUG
+        if FixtureMode.isActive { fixtureHold(uuid: uuid, held); return }
+        #endif
         guard registry[uuid] != nil else { return }
         let holdAction = CXSetHeldCallAction(call: uuid, onHold: held)
         let transaction = CXTransaction(action: holdAction)
@@ -489,6 +510,9 @@ class CallManager: NSObject, ObservableObject {
     }
 
     func sendDTMF(uuid: UUID, _ digits: String) {
+        #if DEBUG
+        if FixtureMode.isActive { _ = digits; return }
+        #endif
         guard registry[uuid] != nil else { return }
         let dtmfAction = CXPlayDTMFCallAction(
             call: uuid,
@@ -515,6 +539,9 @@ class CallManager: NSObject, ObservableObject {
     /// `inConference` true. Nothing happens unless there are exactly two
     /// connected calls, neither already conferenced.
     func mergeCalls() {
+        #if DEBUG
+        if FixtureMode.isActive { fixtureMerge(); return }
+        #endif
         guard let pair = registry.mergePair else { return }
         let action = CXSetGroupCallAction(call: pair.newer.uuid, callUUIDToGroupWith: pair.older.uuid)
         callController.request(CXTransaction(action: action)) { error in
@@ -527,6 +554,9 @@ class CallManager: NSObject, ObservableObject {
     /// End the conference, keeping both calls: the newer call stays
     /// connected and the older one goes on hold, as the core reports.
     func splitConference() {
+        #if DEBUG
+        if FixtureMode.isActive { fixtureSplit(); return }
+        #endif
         guard let newer = registry.conference.last else { return }
         let action = CXSetGroupCallAction(call: newer.uuid, callUUIDToGroupWith: nil)
         callController.request(CXTransaction(action: action)) { error in
@@ -553,6 +583,9 @@ class CallManager: NSObject, ObservableObject {
             throw RecordingError.notConnected
         }
         guard !call.isRecording else { return }
+        #if DEBUG
+        if FixtureMode.isActive { registry.modify(uuid: uuid) { $0.isRecording = true }; return }
+        #endif
         let recording = try RecordingsStore.shared.begin(
             callId: callId, remoteUri: call.remoteUri, remoteName: call.remoteName
         )
@@ -567,6 +600,9 @@ class CallManager: NSObject, ObservableObject {
 
     /// Stop recording the call `uuid` and keep the file.
     func stopRecording(uuid: UUID) {
+        #if DEBUG
+        if FixtureMode.isActive { registry.modify(uuid: uuid) { $0.isRecording = false }; return }
+        #endif
         guard let call = registry[uuid], let callId = call.callId else { return }
         do {
             let path = try SipEngineManager.shared.stopRecording(callId: callId)
@@ -1591,3 +1627,74 @@ enum CallManagerError: LocalizedError {
         }
     }
 }
+
+// MARK: - Fixture mode
+
+#if DEBUG
+/// In fixture mode the call actions change the registry directly instead of
+/// going through CallKit and the engine, so the call screen responds to taps
+/// in UI tests and screenshot runs.
+extension CallManager {
+    /// Replace every call with `calls` (oldest first).
+    func loadFixture(calls: [ActiveCall]) {
+        registry = CallRegistry()
+        calls.forEach { registry.add($0) }
+    }
+
+    fileprivate func fixtureStartCall(uri: String) -> OutgoingCallStart {
+        guard registry.canAddCall else { return .refused }
+        if let talking = registry.talking {
+            registry.modify(uuid: talking.uuid) { $0.setHeld(true) }
+        }
+        var call = ActiveCall(uuid: UUID(), callToken: nil, remoteUri: uri, remoteName: nil,
+                              direction: .outbound, state: .connected)
+        call.callId = "fx-\(call.uuid.uuidString.prefix(8))"
+        call.connectedAt = Date()
+        registry.add(call)
+        return .placed
+    }
+
+    fileprivate func fixtureAnswer(uuid: UUID, _ mode: AnswerMode) {
+        guard registry[uuid]?.state == .incoming else { return }
+        for other in registry.calls where other.uuid != uuid {
+            switch mode {
+            case .holdOthers: registry.modify(uuid: other.uuid) { $0.setHeld(true) }
+            case .endOthers: registry.remove(uuid: other.uuid)
+            }
+        }
+        registry.modify(uuid: uuid) { call in
+            call.callId = "fx-\(uuid.uuidString.prefix(8))"
+            call.connectedAt = Date()
+            call.state = .connected
+        }
+    }
+
+    fileprivate func fixtureSwap(active: UUID, held: UUID) {
+        guard registry.canSwap(active: active, held: held) else { return }
+        registry.modify(uuid: active) { $0.setHeld(true) }
+        registry.modify(uuid: held) { $0.setHeld(false) }
+    }
+
+    fileprivate func fixtureMerge() {
+        guard let pair = registry.mergePair else { return }
+        for uuid in [pair.older.uuid, pair.newer.uuid] {
+            registry.modify(uuid: uuid) { $0.inConference = true; $0.setHeld(false) }
+        }
+    }
+
+    /// As the core does: the newer call stays connected, the older is held.
+    fileprivate func fixtureSplit() {
+        let members = registry.conference
+        guard members.count == 2 else { return }
+        registry.modify(uuid: members[0].uuid) { $0.inConference = false; $0.setHeld(true) }
+        registry.modify(uuid: members[1].uuid) { $0.inConference = false; $0.setHeld(false) }
+    }
+
+    fileprivate func fixtureHold(uuid: UUID, _ held: Bool) {
+        if !held, let talking = registry.talking, talking.uuid != uuid {
+            registry.modify(uuid: talking.uuid) { $0.setHeld(true) }
+        }
+        registry.modify(uuid: uuid) { $0.setHeld(held) }
+    }
+}
+#endif

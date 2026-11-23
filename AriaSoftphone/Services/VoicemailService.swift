@@ -2,11 +2,11 @@ import Foundation
 
 /// The signed-in extension's voicemail, from the Aria PBX REST API.
 ///
-/// Authenticates with the extension-login JWT `AccountSession` stores, through
-/// `PbxSession`, which logs in again and retries once when it has expired.
+/// Talks to the mailbox through a `VoicemailBackend`: the PBX in the app,
+/// canned messages in fixture mode.
 @MainActor
 final class VoicemailService: ObservableObject {
-    static let shared = VoicemailService()
+    static let shared = VoicemailService(backend: VoicemailBackends.current)
 
     typealias Message = PbxApiClient.VoicemailMessage
 
@@ -16,7 +16,11 @@ final class VoicemailService: ObservableObject {
     /// False when the extension has no mailbox.
     @Published private(set) var hasMailbox = true
 
-    private var boxId: String?
+    private let backend: VoicemailBackend
+
+    init(backend: VoicemailBackend) {
+        self.backend = backend
+    }
 
     var unreadCount: Int {
         messages.filter { !$0.read }.count
@@ -30,12 +34,7 @@ final class VoicemailService: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let loaded = try await authorized { client, jwt -> [Message]? in
-                guard let boxId = try await self.resolveBox(client: client, jwt: jwt) else {
-                    return nil
-                }
-                return try await client.voicemailMessages(jwt: jwt, boxId: boxId)
-            }
+            let loaded = try await backend.messages()
             hasMailbox = loaded != nil
             messages = (loaded ?? []).sorted { $0.createdAt > $1.createdAt }
             errorMessage = nil
@@ -47,9 +46,7 @@ final class VoicemailService: ObservableObject {
     func markRead(_ message: Message) async {
         guard !message.read else { return }
         do {
-            try await authorized { client, jwt in
-                try await client.markVoicemailRead(jwt: jwt, messageId: message.id)
-            }
+            try await backend.markRead(messageId: message.id)
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index].read = true
             }
@@ -60,9 +57,7 @@ final class VoicemailService: ObservableObject {
 
     func delete(_ message: Message) async {
         do {
-            try await authorized { client, jwt in
-                try await client.deleteVoicemail(jwt: jwt, messageId: message.id)
-            }
+            try await backend.delete(messageId: message.id)
             messages.removeAll { $0.id == message.id }
         } catch {
             errorMessage = error.localizedDescription
@@ -71,17 +66,78 @@ final class VoicemailService: ObservableObject {
 
     /// Download a message's audio to a temporary file for playback.
     func audioFile(for message: Message) async throws -> URL {
-        try await authorized { client, jwt in
-            try await client.downloadVoicemailAudio(jwt: jwt, messageId: message.id)
-        }
+        try await backend.audioFile(messageId: message.id)
     }
 
     /// Forget the mailbox, e.g. on sign-out.
     func reset() {
         messages = []
-        boxId = nil
+        backend.reset()
         hasMailbox = true
         errorMessage = nil
+    }
+}
+
+// MARK: - Backend
+
+/// Where voicemail comes from. `VoicemailService` owns the state; a backend
+/// only fetches and changes messages.
+protocol VoicemailBackend: AnyObject {
+    /// The mailbox's messages, or nil when the extension has no mailbox.
+    func messages() async throws -> [VoicemailService.Message]?
+    func markRead(messageId: String) async throws
+    func delete(messageId: String) async throws
+    /// A local file with the message's audio, for playback.
+    func audioFile(messageId: String) async throws -> URL
+    /// Forget anything cached for the signed-in account.
+    func reset()
+}
+
+enum VoicemailBackends {
+    /// Fixtures in fixture mode, else the PBX.
+    static var current: VoicemailBackend {
+        #if DEBUG
+        if FixtureMode.isActive { return FixtureVoicemailBackend() }
+        #endif
+        return PbxVoicemailBackend()
+    }
+}
+
+/// The Aria PBX REST API. Authenticates with the extension-login JWT
+/// `AccountSession` stores, through `PbxSession`, which logs in again and
+/// retries once when it has expired.
+final class PbxVoicemailBackend: VoicemailBackend {
+    private var boxId: String?
+
+    func messages() async throws -> [VoicemailService.Message]? {
+        try await authorized { client, jwt -> [VoicemailService.Message]? in
+            guard let boxId = try await self.resolveBox(client: client, jwt: jwt) else {
+                return nil
+            }
+            return try await client.voicemailMessages(jwt: jwt, boxId: boxId)
+        }
+    }
+
+    func markRead(messageId: String) async throws {
+        try await authorized { client, jwt in
+            try await client.markVoicemailRead(jwt: jwt, messageId: messageId)
+        }
+    }
+
+    func delete(messageId: String) async throws {
+        try await authorized { client, jwt in
+            try await client.deleteVoicemail(jwt: jwt, messageId: messageId)
+        }
+    }
+
+    func audioFile(messageId: String) async throws -> URL {
+        try await authorized { client, jwt in
+            try await client.downloadVoicemailAudio(jwt: jwt, messageId: messageId)
+        }
+    }
+
+    func reset() {
+        boxId = nil
     }
 
     // MARK: - Auth

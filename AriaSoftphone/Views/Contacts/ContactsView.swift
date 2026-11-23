@@ -1,5 +1,4 @@
 import SwiftUI
-import Contacts
 
 /// Contacts view with system contacts integration.
 struct ContactsView: View {
@@ -60,37 +59,12 @@ struct ContactsView: View {
     }
 
     private func loadContacts() async {
-        let store = CNContactStore()
-
+        let source = ContactsSources.current
         do {
-            let granted = try await store.requestAccess(for: .contacts)
+            let granted = try await source.requestAccess()
             hasPermission = granted
             guard granted else { return }
-
-            let keys: [CNKeyDescriptor] = [
-                CNContactGivenNameKey as CNKeyDescriptor,
-                CNContactFamilyNameKey as CNKeyDescriptor,
-                CNContactPhoneNumbersKey as CNKeyDescriptor,
-                CNContactImageDataAvailableKey as CNKeyDescriptor,
-                CNContactThumbnailImageDataKey as CNKeyDescriptor,
-            ]
-
-            let request = CNContactFetchRequest(keysToFetch: keys)
-            request.sortOrder = .givenName
-
-            var fetched: [ContactEntry] = []
-            try store.enumerateContacts(with: request) { contact, _ in
-                let numbers = contact.phoneNumbers.map { $0.value.stringValue }
-                guard !numbers.isEmpty else { return }
-
-                fetched.append(ContactEntry(
-                    name: "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces),
-                    phoneNumbers: numbers,
-                    hasImage: contact.imageDataAvailable,
-                    thumbnailData: contact.thumbnailImageData
-                ))
-            }
-
+            let fetched = try source.fetchContacts()
             await MainActor.run {
                 contacts = fetched
             }
@@ -98,16 +72,6 @@ struct ContactsView: View {
             print("Failed to load contacts: \(error)")
         }
     }
-}
-
-// MARK: - Contact Model
-
-struct ContactEntry: Identifiable {
-    let id = UUID()
-    let name: String
-    let phoneNumbers: [String]
-    let hasImage: Bool
-    let thumbnailData: Data?
 }
 
 // MARK: - Contact Row
