@@ -294,7 +294,7 @@ class SipEngineManager: ObservableObject {
                 print("Session restore deferred: Keychain locked")
                 self.setConnecting(false)
             } catch {
-                print("Session restore failed: \(error)")
+                AppLog.shared.log("session", "Restore failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.isConnecting = false
                     self.registrationError = error.localizedDescription
@@ -319,6 +319,11 @@ class SipEngineManager: ObservableObject {
         networkMonitor.start()
     }
 
+    /// The last network path seen; nil before monitoring starts.
+    var currentNetworkPath: NetworkPath? {
+        networkMonitor.current
+    }
+
     /// The network changed: an interface switch, a new address, or the
     /// network coming or going.
     ///
@@ -328,6 +333,7 @@ class SipEngineManager: ObservableObject {
     /// offline. Incoming calls do not depend on any of this: they arrive by
     /// PushKit whatever the state here.
     func networkChanged(_ change: NetworkChange) {
+        AppLog.shared.log("network", "\(change)")
         let available = change != .becameUnreachable
         DispatchQueue.main.async { self.isNetworkAvailable = available }
         guard available else { return }
@@ -455,6 +461,7 @@ class SipEngineManager: ObservableObject {
         )
 
         let response = try engine.registerDevice(registration: registration)
+        AppLog.shared.log("gateway", "Registered device \(response.deviceId)")
         stateLock.lock()
         if _engine === engine {
             _registeredDeviceId = response.deviceId
@@ -744,6 +751,7 @@ class SwiftEventHandler: MobileEventHandler {
     weak var manager: SipEngineManager?
 
     func onRegistrationChanged(deviceId: String, status: String, error: String?) {
+        AppLog.shared.log("gateway", "Registration \(status)\(error.map { ": \($0)" } ?? "")")
         DispatchQueue.main.async {
             self.manager?.isRegistered = (status == "registered")
             self.manager?.registrationError = error
@@ -774,7 +782,7 @@ class SwiftEventHandler: MobileEventHandler {
     }
 
     func onError(context: String, message: String) {
-        print("Aria error [\(context)]: \(message)")
+        AppLog.shared.log("core", "\(context): \(message)")
         // A hangup the gateway did not confirm: the call is over here, but
         // the other party may still be connected. Nothing the user can act
         // on, and not a registration problem, so it is only logged.

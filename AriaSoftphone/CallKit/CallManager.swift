@@ -677,6 +677,7 @@ class CallManager: NSObject, ObservableObject {
     static let callEndedNotification = Notification.Name("AriaCallEnded")
 
     private func finishCall(_ call: ActiveCall, outcome: CallOutcome) {
+        AppLog.shared.log("call", "\(call.direction == .inbound ? "In" : "Out") \(call.remoteUri) ended: \(outcome.rawValue)")
         var named = call
         named.remoteName = CallerNames.shared.resolve(uri: call.remoteUri, current: call.remoteName)
         CallHistoryStore.shared.add(CallRecord(call: named, outcome: outcome))

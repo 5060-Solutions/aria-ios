@@ -47,6 +47,24 @@ struct CallingSettingsCard: View {
 
                 Divider().padding(.leading, 16)
 
+                NavigationLink {
+                    RecordingsView()
+                } label: {
+                    row("Recordings", systemImage: "record.circle", detail: nil)
+                }
+                .accessibilityIdentifier("settings.recordings")
+
+                Divider().padding(.leading, 16)
+
+                NavigationLink {
+                    DiagnosticsView()
+                } label: {
+                    row("Diagnostics", systemImage: "stethoscope", detail: nil)
+                }
+                .accessibilityIdentifier("settings.diagnostics")
+
+                Divider().padding(.leading, 16)
+
                 Toggle(isOn: Binding(
                     get: { badgeEnabled },
                     set: { on in
