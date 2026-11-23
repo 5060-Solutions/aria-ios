@@ -61,9 +61,11 @@ struct ManualSetupView: View {
                                 .ariaFont(.body)
                                 .foregroundStyle(AriaColor.onSurface)
                                 .frame(minHeight: ComponentSize.row)
+                                // On the label only: on the group it would
+                                // replace the fields' own identifiers.
+                                .accessibilityIdentifier("manualSetup.advanced")
                         }
                         .tint(AriaColor.primary)
-                        .accessibilityIdentifier("manualSetup.advanced")
                     }
                 }
                 .padding(.horizontal, Space.screenMargin)

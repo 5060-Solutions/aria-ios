@@ -68,6 +68,10 @@ struct MainTabView: View {
             // Full-screen call overlay
             if callManager.activeCall != nil {
                 CallView()
+                    // A container element, so the controls keep their own
+                    // identifiers.
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("call.screen")
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom))
             }
         }

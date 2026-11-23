@@ -26,6 +26,13 @@ enum FixtureBootstrap {
     private static func resetDefaults() {
         guard let domain = Bundle.main.bundleIdentifier else { return }
         UserDefaults.standard.removePersistentDomain(forName: domain)
+        // A preferences domain left on the simulator outside the app's
+        // container (by another tool) still answers reads after the app's
+        // own domain is removed. Empty values in the app's domain take
+        // precedence over it, so a fixture starts signed out for sure.
+        for key in [AccountSettings.Key.username, AccountSettings.Key.displayName, AccountSettings.Key.domain] {
+            UserDefaults.standard.set("", forKey: key)
+        }
     }
 
     private static func writeAccount(_ account: FixtureData.Account) {

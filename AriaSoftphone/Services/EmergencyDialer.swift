@@ -12,6 +12,14 @@ import UIKit
 enum EmergencyDialer {
     /// Opens the `tel:` URL. Replaced in tests, which must never dial.
     static var open: (URL) -> Void = { url in
+        #if DEBUG
+        // Fixture mode never leaves the app: the hand-off is recorded for
+        // UI tests to check instead.
+        if FixtureMode.isActive {
+            DispatchQueue.main.async { FixtureEvents.shared.emergencyHandoff = url.absoluteString }
+            return
+        }
+        #endif
         DispatchQueue.main.async {
             UIApplication.shared.open(url)
         }

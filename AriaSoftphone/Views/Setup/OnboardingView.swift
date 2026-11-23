@@ -70,6 +70,7 @@ struct OnboardingView: View {
             AriaButton("Get Started", kind: .prominent, size: .primary, fullWidth: true) {
                 page = .method
             }
+            .accessibilityIdentifier("onboarding.getStarted")
             .padding(.bottom, Space.xxxl + Space.xl)
         }
         .padding(.horizontal, Space.xxl)
@@ -86,10 +87,13 @@ struct OnboardingView: View {
             VStack(spacing: Space.s) {
                 AriaButton("Scan QR Code", systemImage: "qrcode.viewfinder", kind: .prominent,
                            size: .primary, fullWidth: true) { choose(.qr) }
+                    .accessibilityIdentifier("onboarding.scanQR")
                 AriaButton("Open Setup Link", systemImage: "link", kind: .standard,
                            size: .primary, fullWidth: true) { choose(.link) }
+                    .accessibilityIdentifier("onboarding.link")
                 AriaButton("Enter Manually", systemImage: "keyboard", kind: .standard,
                            size: .primary, fullWidth: true) { choose(.manual) }
+                    .accessibilityIdentifier("onboarding.manual")
             }
             .padding(.bottom, Space.xxxl + Space.xl)
         }
@@ -121,7 +125,9 @@ struct OnboardingView: View {
                            isLoading: isRequesting) {
                     Task { await requestThenSetUp() }
                 }
+                .accessibilityIdentifier("onboarding.permissions.continue")
                 AriaButton("Not Now", kind: .plain) { openSetup() }
+                    .accessibilityIdentifier("onboarding.permissions.notNow")
             }
             .padding(.bottom, Space.xxxl)
         }

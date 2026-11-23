@@ -116,6 +116,7 @@ struct DialerView: View {
                         }
                         .accessibilityLabel(Text("Number"))
                         .accessibilityValue(Text(dialedNumber.map(String.init).joined(separator: " ")))
+                        .accessibilityIdentifier("dialer.number")
                 }
             }
             .frame(minHeight: AriaTextStyle.display.lineHeight)
@@ -142,6 +143,7 @@ struct DialerView: View {
                     ForEach(row) { key in
                         DialKey(key: key, action: { press(key.digit) },
                                 onLongPress: key.digit == "0" ? { press("+") } : nil)
+                            .accessibilityIdentifier("dialKey.\(key.digit)")
                     }
                 }
             }
@@ -156,6 +158,7 @@ struct DialerView: View {
                     .accessibilityHidden(true)
 
                 CallActionButton(role: .call, accessibilityLabel: String(localized: "Call"), action: call)
+                    .accessibilityIdentifier("dialer.call")
                     .accessibilityHint(dialedNumber.isEmpty ? Text("Shows the last number you called") : Text(""))
                     .frame(width: ComponentSize.dialKey)
 
