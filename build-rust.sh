@@ -27,7 +27,6 @@ if [ "$MODE" = "release" ]; then
     TARGET_DIR="release"
 fi
 
-export CMAKE_POLICY_VERSION_MINIMUM=3.5
 
 # ── On-device transcription ─────────────────────────────────────────────────
 #
