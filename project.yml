@@ -100,6 +100,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: "Aria uses the camera only to scan the setup QR code from your phone system."
         NSMicrophoneUsageDescription: "Aria uses the microphone so the other person can hear you during calls."
+        NSBluetoothAlwaysUsageDescription: "Aria uses Bluetooth only if you turn it on in Settings, so your devices can notice each other and hand a call over. It works only while the app is open."
         NSContactsUsageDescription: "Aria shows your contacts so you can search and call them. Your contacts stay on this device."
         # Figtree (OFL, Resources/Fonts/Figtree-OFL.txt): static weights
         # instanced from the desktop's variable font.

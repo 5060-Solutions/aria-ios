@@ -26,6 +26,11 @@ struct IncomingPush: Equatable {
     let callerUri: String
     let callerName: String?
     let gatewayUrl: String
+    /// `X-Aria-Move` of the PBX's INVITE, when the call is a move of one of
+    /// the user's calls to a device. The gateway passes it as `moveId`.
+    var moveId: String? = nil
+    /// The device the call is moving from, when the gateway says (`moveFrom`).
+    var moveFrom: String? = nil
 
     enum Rejection: Error, Equatable {
         /// No call token: there is no call to fetch.
@@ -74,7 +79,9 @@ struct IncomingPush: Equatable {
             callToken: callToken,
             callerUri: string("callerUri", "caller_uri") ?? "Unknown",
             callerName: string("callerName", "caller_name"),
-            gatewayUrl: gatewayUrl
+            gatewayUrl: gatewayUrl,
+            moveId: string("moveId", "move_id"),
+            moveFrom: string("moveFrom", "move_from")
         ))
     }
 }
@@ -172,7 +179,9 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             uuid: uuid,
             callToken: callToken,
             callerUri: callerUri,
-            callerName: callerName
+            callerName: callerName,
+            moveId: parsed.moveId,
+            moveFrom: parsed.moveFrom
         ) { error in
             guard error == nil else {
                 completion()

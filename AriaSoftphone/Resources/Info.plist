@@ -51,6 +51,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Aria uses Bluetooth only if you turn it on in Settings, so your devices can notice each other and hand a call over. It works only while the app is open.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Aria uses the camera only to scan the setup QR code from your phone system.</string>
 	<key>NSContactsUsageDescription</key>

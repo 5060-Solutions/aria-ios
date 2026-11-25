@@ -676,7 +676,7 @@ class PbxApiClient {
 
     /// Ids come from the server, but they still go into a path: refuse
     /// anything that is not a plain token rather than let it change the route.
-    private func pathSegment(_ value: String) throws -> String {
+    func pathSegment(_ value: String) throws -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         guard !value.isEmpty, value.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
             throw ApiError.invalidURL
@@ -693,7 +693,7 @@ class PbxApiClient {
         return url
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try Self.jsonDecoder.decode(type, from: data)
         } catch {
@@ -726,7 +726,7 @@ class PbxApiClient {
     private var lastErrorBody: [String: Any]?
 
     /// Send a request and return the body of a 2xx response.
-    private func send(
+    func send(
         _ method: String,
         path: String,
         query: [URLQueryItem] = [],
@@ -805,5 +805,50 @@ class PbxApiClient {
         }
 
         return json
+    }
+}
+
+// MARK: - Calls on the user's devices (call move)
+
+extension PbxApiClient {
+    /// GET /api/v1/me/calls/active
+    func activeCalls(jwt: String) async throws -> [UserCall] {
+        let data = try await send("GET", path: "/api/v1/me/calls/active", token: jwt)
+        return try decode([UserCall].self, from: data)
+    }
+
+    /// GET /api/v1/me/devices
+    func userDevices(jwt: String) async throws -> [UserDevice] {
+        let data = try await send("GET", path: "/api/v1/me/devices", token: jwt)
+        return try decode([UserDevice].self, from: data)
+    }
+
+    /// GET /api/v1/me/devices/current?sip_instance=<urn>: this phone's own
+    /// registration.
+    func currentDevice(jwt: String, sipInstance: String) async throws -> UserDevice {
+        let data = try await send(
+            "GET",
+            path: "/api/v1/me/devices/current",
+            query: [URLQueryItem(name: "sip_instance", value: sipInstance)],
+            token: jwt
+        )
+        return try decode(UserDevice.self, from: data)
+    }
+
+    /// POST /api/v1/me/calls/{id}/move → 202 `{move_id}`. 404: not the
+    /// user's call; 409: not answered or in a transfer; 422: device unknown
+    /// or offline.
+    func moveCall(jwt: String, callId: String, toRegistrationId: String) async throws -> String {
+        let data = try await send(
+            "POST",
+            path: "/api/v1/me/calls/\(try pathSegment(callId))/move",
+            body: ["to_registration_id": toRegistrationId],
+            token: jwt
+        )
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let moveId = json["move_id"] as? String, !moveId.isEmpty else {
+            throw ApiError.decodingError("Missing move_id")
+        }
+        return moveId
     }
 }
