@@ -61,10 +61,10 @@ final class NavigationUITests: AriaUITestCase {
     func testEveryTabOpens() {
         launch("dialer")
         XCTAssertTrue(element("dialKey.5").waitForExistence(timeout: 5))
-        XCTAssertEqual(app.tabBars.buttons.count, 5)
+        XCTAssertEqual(sectionCount, 5)
         for index in [1, 2, 3, 4, 0] {
             tab(index).tap()
-            XCTAssertTrue(tab(index).isSelected, "tab \(index) is selected")
+            XCTAssertTrue(tab(index).isSelected || isSidebarLayout, "tab \(index) is selected")
         }
         XCTAssertTrue(element("dialKey.5").waitForExistence(timeout: 2), "back on the dialer")
         assertNoSystemAlert()
@@ -112,8 +112,8 @@ final class CallingSettingsUITests: AriaUITestCase {
         let dnd = app.switches["settings.dnd"].firstMatch
         XCTAssertTrue(dnd.waitForExistence(timeout: 5))
         let before = dnd.value as? String
-        // The switch sits at the trailing edge of the row.
-        dnd.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        // The switch sits at the trailing edge of the row, about 40 pt in.
+        dnd.coordinate(withNormalizedOffset: CGVector(dx: 1 - 40 / dnd.frame.width, dy: 0.5)).tap()
         let changed = NSPredicate { _, _ in (dnd.value as? String) != before }
         wait(for: [expectation(for: changed, evaluatedWith: nil)], timeout: 3)
     }

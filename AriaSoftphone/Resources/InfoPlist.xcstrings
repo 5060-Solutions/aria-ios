@@ -76,19 +76,19 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aria muestra tus contactos para que puedas buscarlos y llamarlos. Tus contactos se quedan en este iPhone."
+            "value" : "Aria muestra tus contactos para que puedas buscarlos y llamarlos. Tus contactos se quedan en este dispositivo."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aria zeigt deine Kontakte, damit du sie suchen und anrufen kannst. Deine Kontakte bleiben auf diesem iPhone."
+            "value" : "Aria zeigt deine Kontakte, damit du sie suchen und anrufen kannst. Deine Kontakte bleiben auf diesem Gerät."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aria affiche vos contacts pour que vous puissiez les rechercher et les appeler. Vos contacts restent sur cet iPhone."
+            "value" : "Aria affiche vos contacts pour que vous puissiez les rechercher et les appeler. Vos contacts restent sur cet appareil."
           }
         }
       }

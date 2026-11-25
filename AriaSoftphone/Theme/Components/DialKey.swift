@@ -32,7 +32,8 @@ struct DialPadKey: Identifiable, Hashable {
     }
 }
 
-/// A 76 pt glass dial key (DESIGN.md §3). At accessibility text sizes the
+/// A glass dial key, 76 pt at the design's base size (DESIGN.md §3) and
+/// larger when the pad has room (`DialPadMetrics`). At accessibility text sizes the
 /// letters are dropped and the grid stays.
 struct DialKey: View {
     let key: DialPadKey
@@ -42,6 +43,7 @@ struct DialKey: View {
     var onLongPress: (() -> Void)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dialPadMetrics) private var metrics
     @State private var longPressFired = false
 
     var body: some View {
@@ -58,21 +60,21 @@ struct DialKey: View {
                     // Figtree's asterisk sits small and high; the symbol
                     // matches the digits' weight and centre.
                     Image(systemName: "asterisk")
-                        .font(.title2.weight(.light))
+                        .font(.system(size: metrics.digitSize * 0.8, weight: .light))
                 } else {
                     Text(key.digit)
-                        .ariaFont(.dialDigit)
+                        .font(AriaFont.fixed(size: metrics.digitSize, weight: .light))
                         .monospacedDigit()
                 }
                 if !key.letters.isEmpty, !dynamicTypeSize.isAccessibilitySize {
                     Text(key.letters)
-                        .ariaFont(.dialLetters)
+                        .font(AriaFont.fixed(size: metrics.letterSize, weight: .semibold))
+                        .tracking(AriaTextStyle.dialLetters.trackingEm * metrics.letterSize)
                         .foregroundStyle(onDark ? Color.white.opacity(0.75) : AriaColor.onSurfaceVariant)
                 }
             }
-            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .foregroundStyle(onDark ? Color.white : AriaColor.onSurface)
-            .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+            .frame(width: metrics.key, height: metrics.key)
             .contentShape(.circle)
         }
         .buttonStyle(DialKeyButtonStyle())

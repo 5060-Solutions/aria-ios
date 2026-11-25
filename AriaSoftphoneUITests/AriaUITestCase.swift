@@ -25,8 +25,19 @@ class AriaUITestCase: XCTestCase {
 
     /// The tab bar's buttons in order: Dialer, History, Contacts, Voicemail,
     /// Settings.
+    /// On an iPad at regular width the sections are the sidebar's rows
+    /// instead (`sidebar.<section>`).
     func tab(_ index: Int) -> XCUIElement {
-        app.tabBars.buttons.element(boundBy: index)
+        if isSidebarLayout { return element("sidebar.\(Self.sections[index])") }
+        return app.tabBars.buttons.element(boundBy: index)
+    }
+
+    static let sections = ["dialer", "history", "contacts", "voicemail", "settings"]
+
+    var isSidebarLayout: Bool { app.tabBars.count == 0 }
+
+    var sectionCount: Int {
+        isSidebarLayout ? Self.sections.count : app.tabBars.buttons.count
     }
 
     /// Fails if SpringBoard is showing a permission alert: fixture mode must

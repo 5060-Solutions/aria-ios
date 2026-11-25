@@ -20,35 +20,32 @@ struct DialerView: View {
     @State private var pasteboardHasText = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// The height of what sits above the keys (status chip, number, match
+    /// line), measured, so the keys can take the rest.
+    @State private var chipHeight: CGFloat = 0
+    @State private var numberHeight: CGFloat = 0
+
+    /// Space the pad's own layout uses besides the keys: above the keypad,
+    /// above the Call row, below the pad.
+    private static let padPadding = Space.m + Space.xl + Space.xs + Space.xl
+
+    private func padMetrics(in size: CGSize) -> DialPadMetrics {
+        .fitting(
+            width: size.width - 2 * Space.screenMargin,
+            height: size.height - chipHeight - numberHeight - Self.padPadding,
+            typeScale: DialPadMetrics.typeScale(for: dynamicTypeSize),
+            maxKey: horizontalSizeClass == .regular ? DialPadMetrics.maxKeyRegular : DialPadMetrics.maxKeyCompact
+        )
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                StatusChip(
-                    accountName: displayName.isEmpty ? username : displayName,
-                    state: sipEngine.connectionState,
-                    isDoNotDisturb: selfService.doNotDisturb == true,
-                    isForwarding: selfService.isForwardingAll
-                ) {
-                    showConnection = true
-                }
-                .padding(.top, Space.xs)
-
-                // The pad sits low, as in Phone: free space goes above the
-                // number, not between it and the keys.
-                Spacer(minLength: Space.m)
-
-                numberDisplay
-
-                keypad
-                    .padding(.top, Space.xl)
-
-                bottomRow
-                    .padding(.top, ComponentSize.dialKeyGapV + Space.xs)
-                    .padding(.bottom, Space.xl)
+            GeometryReader { proxy in
+                pad(padMetrics(in: proxy.size))
             }
-            .padding(.horizontal, Space.screenMargin)
-            .frame(maxWidth: .infinity)
             .background(AriaColor.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .dynamicTypeSize(...DynamicTypeSize.accessibility3)
@@ -68,6 +65,42 @@ struct DialerView: View {
                 await selfService.refresh()
             }
         }
+    }
+
+    private func pad(_ metrics: DialPadMetrics) -> some View {
+        VStack(spacing: 0) {
+            StatusChip(
+                accountName: displayName.isEmpty ? username : displayName,
+                state: sipEngine.connectionState,
+                isDoNotDisturb: selfService.doNotDisturb == true,
+                isForwarding: selfService.isForwardingAll
+            ) {
+                showConnection = true
+            }
+            .padding(.top, Space.xs)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height + Space.xs } action: { chipHeight = $0 }
+
+            // The pad sits low, as in Phone: free space goes above the
+            // number, not between it and the keys.
+            Spacer(minLength: Space.m)
+
+            numberDisplay
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { numberHeight = $0 }
+
+            keypad(metrics)
+                .padding(.top, Space.xl)
+
+            bottomRow(metrics)
+                .padding(.top, metrics.gapV + Space.xs)
+                .padding(.bottom, Space.xl)
+
+            // On a wide screen the pad floats in the middle rather than
+            // hanging off the bottom.
+            if horizontalSizeClass == .regular { Spacer(minLength: 0) }
+        }
+        .environment(\.dialPadMetrics, metrics)
+        .padding(.horizontal, Space.screenMargin)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Number
@@ -136,8 +169,8 @@ struct DialerView: View {
 
     // MARK: - Keys
 
-    private var keypad: some View {
-        Grid(horizontalSpacing: ComponentSize.dialKeyGapH, verticalSpacing: ComponentSize.dialKeyGapV) {
+    private func keypad(_ metrics: DialPadMetrics) -> some View {
+        Grid(horizontalSpacing: metrics.gapH, verticalSpacing: metrics.gapV) {
             ForEach(DialPadKey.rows, id: \.self) { row in
                 GridRow {
                     ForEach(row) { key in
@@ -150,30 +183,31 @@ struct DialerView: View {
         }
     }
 
-    private var bottomRow: some View {
-        Grid(horizontalSpacing: ComponentSize.dialKeyGapH) {
+    private func bottomRow(_ metrics: DialPadMetrics) -> some View {
+        Grid(horizontalSpacing: metrics.gapH) {
             GridRow {
                 Color.clear
-                    .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+                    .frame(width: metrics.key, height: metrics.key)
                     .accessibilityHidden(true)
 
-                CallActionButton(role: .call, accessibilityLabel: String(localized: "Call"), action: call)
+                CallActionButton(role: .call, accessibilityLabel: String(localized: "Call"),
+                                 diameter: metrics.callButton, action: call)
                     .accessibilityIdentifier("dialer.call")
                     .accessibilityHint(dialedNumber.isEmpty ? Text("Shows the last number you called") : Text(""))
-                    .frame(width: ComponentSize.dialKey)
+                    .frame(width: metrics.key)
 
                 ZStack {
                     if !dialedNumber.isEmpty {
-                        backspace
+                        backspace(metrics)
                             .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
                 }
-                .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+                .frame(width: metrics.key, height: metrics.key)
             }
         }
     }
 
-    private var backspace: some View {
+    private func backspace(_ metrics: DialPadMetrics) -> some View {
         Button {
             dialedNumber.removeLast()
             keyTaps += 1
@@ -181,7 +215,7 @@ struct DialerView: View {
             Image(systemName: "delete.backward.fill")
                 .font(.title2)
                 .foregroundStyle(AriaColor.onSurfaceVariant)
-                .frame(width: ComponentSize.dialKey, height: ComponentSize.dialKey)
+                .frame(width: metrics.key, height: metrics.key)
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
