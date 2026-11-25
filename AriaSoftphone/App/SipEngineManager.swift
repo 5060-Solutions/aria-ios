@@ -88,6 +88,7 @@ class SipEngineManager: ObservableObject {
             apiKey: apiKey
         )
         let newEngine = AriaMobileEngine(gatewayConfig: config)
+        newEngine.setDnsServers(servers: SystemDNS.servers())
         newEngine.setEventHandler(handler: eventHandler)
         newEngine.setAudioBridge(bridge: audioBridge)
         newEngine.setCodecPreferences(codecs: CodecPreferences.load().ordered)
@@ -369,7 +370,10 @@ class SipEngineManager: ObservableObject {
     /// interface switch reports several) becomes one call 500 ms after the
     /// last of them.
     private lazy var networkNotifier = Debouncer(delay: 0.5) { [weak self] in
-        self?.engine?.notifyNetworkChange()
+        guard let engine = self?.engine else { return }
+        // SRV lookups go to the DNS servers of the network now in use.
+        engine.setDnsServers(servers: SystemDNS.servers())
+        engine.notifyNetworkChange()
     }
 
     /// The gateway instance holding the registration (`host:port`), for

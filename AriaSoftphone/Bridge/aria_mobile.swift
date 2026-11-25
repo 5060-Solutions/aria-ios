@@ -860,6 +860,15 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func setCodecPreferences(codecs: [AudioCodec]) 
     
     /**
+     * The DNS servers of the active network (Android: `LinkProperties
+     * .dnsServers`, as IP address strings). The core resolves SRV through
+     * exactly these, never a built-in public resolver; call it before
+     * `notify_network_change` whenever the network changes. An empty list
+     * falls back to the system configuration.
+     */
+    func setDnsServers(servers: [String]) 
+    
+    /**
      * Set the event handler for receiving callbacks.
      */
     func setEventHandler(handler: MobileEventHandler) 
@@ -1524,6 +1533,20 @@ open func setAudioBridge(bridge: PlatformAudioBridge) {try! rustCall() {
 open func setCodecPreferences(codecs: [AudioCodec]) {try! rustCall() {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_set_codec_preferences(self.uniffiClonePointer(),
         FfiConverterSequenceTypeAudioCodec.lower(codecs),$0
+    )
+}
+}
+    
+    /**
+     * The DNS servers of the active network (Android: `LinkProperties
+     * .dnsServers`, as IP address strings). The core resolves SRV through
+     * exactly these, never a built-in public resolver; call it before
+     * `notify_network_change` whenever the network changes. An empty list
+     * falls back to the system configuration.
+     */
+open func setDnsServers(servers: [String]) {try! rustCall() {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_set_dns_servers(self.uniffiClonePointer(),
+        FfiConverterSequenceString.lower(servers),$0
     )
 }
 }
@@ -5117,6 +5140,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_codec_preferences() != 17660) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_dns_servers() != 24936) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_set_event_handler() != 11057) {
