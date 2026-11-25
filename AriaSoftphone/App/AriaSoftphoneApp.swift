@@ -77,12 +77,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         SipEngineManager.shared.reconnect()
         // Voicemail (and the badge), server history, DND and forwarding:
         // now, then every minute while active.
-        MainActor.assumeIsolated { ActivityRefresher.shared.becameActive() }
+        MainActor.assumeIsolated {
+            ActivityRefresher.shared.becameActive()
+            MessagingService.shared.becameActive()
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
         guard !FixtureMode.isActive else { return }
-        MainActor.assumeIsolated { ActivityRefresher.shared.resignedActive() }
+        MainActor.assumeIsolated {
+            ActivityRefresher.shared.resignedActive()
+            MessagingService.shared.resignedActive()
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -98,5 +104,19 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .list, .sound])
+    }
+
+    /// A tap on a text-message notification opens its thread.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let tenantId = UserDefaults.standard.string(forKey: AccountSettings.Key.tenantId) ?? ""
+        if let target = SmsNotificationTarget.parse(userInfo, tenantId: tenantId) {
+            Task { @MainActor in await MessagingService.shared.openFromNotification(target) }
+        }
+        completionHandler()
     }
 }

@@ -18,9 +18,9 @@ struct ContentView: View {
     }
 }
 
-/// The five tabs, in DESIGN.md order.
+/// The tabs, in DESIGN.md order.
 enum AppTab: Hashable {
-    case dialer, history, contacts, voicemail, settings
+    case dialer, history, contacts, voicemail, messages, settings
 
     /// The tab a fixture scene opens on; the Dialer otherwise.
     init(fixtureScene: FixtureScene?) {
@@ -39,6 +39,7 @@ struct MainTabView: View {
     @EnvironmentObject var callManager: CallManager
     @EnvironmentObject var sipEngine: SipEngineManager
     @ObservedObject private var voicemail = VoicemailService.shared
+    @ObservedObject private var messaging = MessagingService.shared
     @State private var selectedTab = AppTab(fixtureScene: FixtureMode.scene)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -58,12 +59,25 @@ struct MainTabView: View {
                     VoicemailView()
                 }
                 .badge(voicemail.unreadCount)
+                // Only a seat with a number to text from has the tab.
+                if messaging.hasInbox {
+                    Tab("Messages", systemImage: "message", value: AppTab.messages) {
+                        MessagesView()
+                    }
+                    .badge(messaging.unreadCount)
+                }
                 Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
                     SettingsView()
                 }
             }
             .tabBarMinimizeBehavior(.onScrollDown)
             .tint(AriaColor.primary)
+            // A text notification was tapped: open its thread.
+            .onChange(of: messaging.pendingThread, initial: true) { _, pending in
+                guard pending != nil else { return }
+                // No inbox, no Messages tab: nothing to open.
+                if messaging.hasInbox { selectedTab = .messages } else { messaging.pendingThread = nil }
+            }
 
             // Full-screen call overlay
             if callManager.activeCall != nil {

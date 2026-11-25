@@ -459,6 +459,219 @@ class PbxApiClient {
         return try decode([ServerCall].self, from: data)
     }
 
+    // MARK: - Messaging (SMS/MMS)
+    //
+    // The same extension-login JWT as everything above: the messaging routes
+    // take any role in the tenant, and the server limits a seat to the
+    // inboxes assigned to it, directly or through a ring group.
+
+    struct MessagingInbox: Decodable, Identifiable, Equatable {
+        let didId: String
+        let number: String
+        let lastInboundAt: Date?
+        let enabled: Bool
+        var id: String { didId }
+
+        enum CodingKeys: String, CodingKey {
+            case didId = "did_id"
+            case number
+            case lastInboundAt = "last_inbound_at"
+            case enabled
+        }
+    }
+
+    struct MessagingConversation: Decodable, Identifiable, Equatable {
+        let remoteNumber: String
+        let messageCount: Int
+        let lastBody: String
+        let lastDirection: String
+        let lastStatus: String
+        let lastAt: Date
+        let lastHasMedia: Bool
+        let optedOut: Bool
+        var id: String { remoteNumber }
+
+        enum CodingKeys: String, CodingKey {
+            case remoteNumber = "remote_number"
+            case messageCount = "message_count"
+            case lastBody = "last_body"
+            case lastDirection = "last_direction"
+            case lastStatus = "last_status"
+            case lastAt = "last_at"
+            case lastHasMedia = "last_has_media"
+            case optedOut = "opted_out"
+        }
+    }
+
+    struct MessagingAttachment: Decodable, Identifiable, Equatable {
+        let id: String
+        let contentType: String
+        let sizeBytes: Int
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case contentType = "content_type"
+            case sizeBytes = "size_bytes"
+        }
+
+        var isImage: Bool { contentType.lowercased().hasPrefix("image/") }
+    }
+
+    struct MessagingMessage: Decodable, Identifiable, Equatable {
+        let id: String
+        let direction: String
+        let body: String
+        /// `pending`, `sent`, `delivered`, `failed` or `received`.
+        let status: String
+        let errorMessage: String?
+        let createdAt: Date
+        let remoteNumber: String
+        let attachments: [MessagingAttachment]
+
+        var isOutbound: Bool { direction == "outbound" }
+
+        enum CodingKeys: String, CodingKey {
+            case id, direction, body, status, attachments
+            case errorMessage = "error_message"
+            case createdAt = "created_at"
+            case remoteNumber = "remote_number"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            direction = try c.decode(String.self, forKey: .direction)
+            body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+            status = try c.decode(String.self, forKey: .status)
+            errorMessage = try c.decodeIfPresent(String.self, forKey: .errorMessage)
+            createdAt = try c.decode(Date.self, forKey: .createdAt)
+            remoteNumber = try c.decodeIfPresent(String.self, forKey: .remoteNumber) ?? ""
+            attachments = try c.decodeIfPresent([MessagingAttachment].self, forKey: .attachments) ?? []
+        }
+
+        init(id: String, direction: String, body: String, status: String, errorMessage: String? = nil,
+             createdAt: Date, remoteNumber: String, attachments: [MessagingAttachment] = []) {
+            self.id = id
+            self.direction = direction
+            self.body = body
+            self.status = status
+            self.errorMessage = errorMessage
+            self.createdAt = createdAt
+            self.remoteNumber = remoteNumber
+            self.attachments = attachments
+        }
+    }
+
+    struct MessagingThread: Decodable, Equatable {
+        let remoteNumber: String
+        let optedOut: Bool
+        /// Newest first, as the server sends them.
+        let messages: [MessagingMessage]
+
+        enum CodingKeys: String, CodingKey {
+            case remoteNumber = "remote_number"
+            case optedOut = "opted_out"
+            case messages
+        }
+    }
+
+    /// GET .../messaging/inboxes
+    func messagingInboxes(jwt: String, tenantId: String) async throws -> [MessagingInbox] {
+        let data = try await send("GET", path: "/api/v1/tenants/\(try pathSegment(tenantId))/messaging/inboxes", token: jwt)
+        return try decode([MessagingInbox].self, from: data)
+    }
+
+    /// GET .../messaging/inboxes/{did}/conversations
+    func messagingConversations(jwt: String, tenantId: String, didId: String,
+                                limit: Int = 200) async throws -> [MessagingConversation] {
+        let data = try await send(
+            "GET",
+            path: "/api/v1/tenants/\(try pathSegment(tenantId))/messaging/inboxes/\(try pathSegment(didId))/conversations",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            token: jwt
+        )
+        return try decode([MessagingConversation].self, from: data)
+    }
+
+    /// GET .../messaging/inboxes/{did}/conversations/{number}
+    func messagingThread(jwt: String, tenantId: String, didId: String, number: String,
+                         limit: Int = 200) async throws -> MessagingThread {
+        // `+` is legal in a path but a number may also hold spaces or
+        // parentheses; encode it as one segment.
+        guard let segment = number.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentAllowed),
+              !segment.isEmpty else { throw ApiError.invalidURL }
+        let data = try await send(
+            "GET",
+            path: "/api/v1/tenants/\(try pathSegment(tenantId))/messaging/inboxes/\(try pathSegment(didId))/conversations/\(segment)",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            token: jwt
+        )
+        return try decode(MessagingThread.self, from: data)
+    }
+
+    /// POST .../messaging/inboxes/{did}/messages. A retry that reuses
+    /// `idempotencyKey` returns the first message instead of sending again.
+    func sendMessage(jwt: String, tenantId: String, didId: String, to: String, body: String,
+                     attachmentIds: [String], idempotencyKey: String) async throws -> MessagingMessage {
+        var payload: [String: Any] = ["to": to, "body": body]
+        if !attachmentIds.isEmpty { payload["attachment_ids"] = attachmentIds }
+        let data = try await send(
+            "POST",
+            path: "/api/v1/tenants/\(try pathSegment(tenantId))/messaging/inboxes/\(try pathSegment(didId))/messages",
+            body: payload,
+            headers: ["Idempotency-Key": idempotencyKey],
+            token: jwt
+        )
+        return try decode(MessagingMessage.self, from: data)
+    }
+
+    /// POST .../messaging/attachments (multipart `file`).
+    func uploadMessagingAttachment(jwt: String, tenantId: String, data fileData: Data, filename: String,
+                                   contentType: String) async throws -> MessagingAttachment {
+        let boundary = "aria-\(UUID().uuidString)"
+        var body = Data()
+        func append(_ string: String) { body.append(Data(string.utf8)) }
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        append("Content-Type: \(contentType)\r\n\r\n")
+        body.append(fileData)
+        append("\r\n--\(boundary)--\r\n")
+        let response = try await send(
+            "POST",
+            path: "/api/v1/tenants/\(try pathSegment(tenantId))/messaging/attachments",
+            rawBody: (body, "multipart/form-data; boundary=\(boundary)"),
+            token: jwt
+        )
+        return try decode(MessagingAttachment.self, from: response)
+    }
+
+    /// GET .../messaging/attachments/{id}: the file's bytes.
+    func messagingAttachmentData(jwt: String, tenantId: String, attachmentId: String) async throws -> Data {
+        try await send(
+            "GET",
+            path: "/api/v1/tenants/\(try pathSegment(tenantId))/messaging/attachments/\(try pathSegment(attachmentId))",
+            headers: ["Accept": "*/*"],
+            token: jwt
+        )
+    }
+
+    /// The event stream's URL: the API's, over wss. The session JWT goes in
+    /// the `Authorization` header of the upgrade, never in the URL.
+    func eventStreamURL() throws -> URL {
+        guard var components = URLComponents(string: baseUrl + "/api/v1/ws") else { throw ApiError.invalidURL }
+        switch components.scheme?.lowercased() {
+        case "https": components.scheme = "wss"
+        case "http": components.scheme = "ws"
+        default: throw ApiError.invalidURL
+        }
+        guard let url = components.url else { throw ApiError.invalidURL }
+        return url
+    }
+
+    private static let pathSegmentAllowed: CharacterSet = {
+        CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
+    }()
+
     // MARK: - Helpers
 
     /// Ids come from the server, but they still go into a path: refuse
@@ -518,6 +731,8 @@ class PbxApiClient {
         path: String,
         query: [URLQueryItem] = [],
         body: [String: Any]? = nil,
+        headers: [String: String] = [:],
+        rawBody: (data: Data, contentType: String)? = nil,
         token: String?
     ) async throws -> Data {
         var request = URLRequest(url: try buildURL(path: path, query: query))
@@ -527,6 +742,11 @@ class PbxApiClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
+        if let rawBody {
+            request.setValue(rawBody.contentType, forHTTPHeaderField: "Content-Type")
+            request.httpBody = rawBody.data
+        }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         request.timeoutInterval = 15
         if let token = token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
