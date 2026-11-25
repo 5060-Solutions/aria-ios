@@ -87,6 +87,7 @@ struct SettingsView: View {
                     }
 
                     appearanceSection
+                    languageSection
 
                     if sipEngine.aiAvailable() {
                         transcriptionSection
@@ -223,6 +224,25 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
             .padding(.vertical, Space.s)
+        }
+    }
+
+    // MARK: - Language
+
+    /// The language is chosen in iOS Settings > Aria > Language; the app
+    /// shows the current one and opens that page.
+    private var languageSection: some View {
+        SectionCard(title: Text("Language"),
+                    footer: Text("Choose the language Aria uses in iOS Settings.")) {
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
+                NavigationRow(title: "Language", systemImage: "globe",
+                              detail: AppLanguage.currentName())
+            }
+            .buttonStyle(.plain)
         }
     }
 

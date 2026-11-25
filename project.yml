@@ -67,6 +67,15 @@ targets:
       path: AriaSoftphone/Resources/Info.plist
       properties:
         CFBundleDisplayName: Aria
+        # Every language the app ships (the languages in Localizable.xcstrings
+        # and InfoPlist.xcstrings): iOS lists these under Settings > Aria >
+        # Language. LocalizationTests keeps this list and the bundle in step.
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations:
+          - en
+          - es
+          - fr
+          - de
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
