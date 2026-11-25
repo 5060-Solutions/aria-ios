@@ -12,8 +12,11 @@ struct SidebarShell: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     /// The sections in the sidebar; Messages only for a seat that can text.
-    private var sections: [AppTab] {
-        [.dialer, .history, .contacts, .voicemail] + (messaging.hasInbox ? [.messages] : []) + [.settings]
+    private var sections: [AppTab] { Self.sections(hasInbox: messaging.hasInbox) }
+
+    /// The same sections, in the same order, as the tab bar.
+    static func sections(hasInbox: Bool) -> [AppTab] {
+        [.dialer, .history, .contacts, .voicemail] + (hasInbox ? [.messages] : []) + [.settings]
     }
 
     var body: some View {

@@ -84,5 +84,8 @@ final class IPadLayoutTests: XCTestCase {
     func testSidebarHasEverySection() {
         let all: [AppTab] = [.dialer, .history, .contacts, .voicemail, .messages, .settings]
         XCTAssertEqual(Set(all.map(\.systemImage)).count, all.count)
+        // With an inbox the sidebar lists Messages, as the tab bar does.
+        XCTAssertEqual(SidebarShell.sections(hasInbox: true), all)
+        XCTAssertEqual(SidebarShell.sections(hasInbox: false), all.filter { $0 != .messages })
     }
 }
