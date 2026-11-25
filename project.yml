@@ -15,6 +15,7 @@ targets:
       - path: AriaSoftphone
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: AriaSoftphone/Bridge/AriaSoftphone-Bridging-Header.h
         PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria
         INFOPLIST_FILE: AriaSoftphone/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: AriaSoftphone/Resources/AriaSoftphone.entitlements
@@ -44,7 +45,7 @@ targets:
         #   Accelerate  ggml-blas calls vDSP for its BLAS kernels
         # Both are harmless in a build without the AI feature: nothing
         # references them and the linker drops them.
-        OTHER_LDFLAGS: -lc++ -framework Accelerate
+        OTHER_LDFLAGS: -lc++ -lresolv -framework Accelerate
       # Expanded into aps-environment in the entitlements file: APNs rejects a
       # development-environment token sent to the production service and vice
       # versa, so a Release build must ask for production.
