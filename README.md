@@ -10,6 +10,7 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 - **Mid-call controls** -- mute, hold, speaker, DTMF keypad, blind transfer, encrypted-media indicator
 - **Contacts integration** -- search and call from iOS contacts (CNContactStore)
 - **Call history** -- incoming, outgoing and missed calls, stored on device; tap to call back
+- **Messages** -- business texting (SMS/MMS) on the numbers a seat is assigned: conversations per inbox with unread state, threads with delivery status, photos, a segment counter, live refresh (WebSocket plus a 15 s poll), and notification taps that open the thread. Uses the extension-login JWT against `/api/v1/tenants/{id}/messaging/...`
 - **Voicemail** -- list, play, mark read and delete messages via the Aria PBX API
 - **QR provisioning** -- scan, review the server it points to, then sign in
 - **Outgoing calls** -- routed through the push gateway B2BUA
@@ -68,7 +69,7 @@ The app requires:
 AriaSoftphone/
   App/
     AriaSoftphoneApp.swift    -- App entry, PushKit registration, session restore
-    ContentView.swift          -- Setup flow and tabs (Dialer, Contacts, History, Voicemail, Settings)
+    ContentView.swift          -- Setup flow and tabs (Dialer, Contacts, History, Voicemail, Messages, Settings)
     SipEngineManager.swift     -- Owns the Rust engine; restore, registration, event handler
   CallKit/
     CallManager.swift          -- CXProviderDelegate, call lifecycle, audio route
@@ -82,10 +83,11 @@ AriaSoftphone/
     AudioBridge.swift          -- AVAudioEngine <-> core PCM, started by CallKit
     CallHistoryStore.swift     -- On-device call history
     VoicemailService.swift     -- Voicemail via the Aria PBX API
+    MessagingService.swift     -- SMS/MMS inboxes, threads, live refresh (REST + WebSocket)
     PbxApiClient.swift         -- Aria PBX REST client
     KeychainStore.swift        -- Secrets
   Views/
-    Dialer/ Call/ Contacts/ Voicemail/ Settings/
+    Dialer/ Call/ Contacts/ Voicemail/ Messages/ Settings/
 AriaSoftphoneTests/            -- Unit tests
 ```
 

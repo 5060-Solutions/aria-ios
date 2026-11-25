@@ -166,6 +166,7 @@ final class AccountSession: ObservableObject {
         RecordingsStore.shared.clear()
         SelfService.shared.reset()
         VoicemailService.shared.reset()
+        MessagingService.shared.reset()
         hasSession = false
         errorMessage = nil
     }
