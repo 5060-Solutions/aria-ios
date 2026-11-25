@@ -61,6 +61,7 @@ final class RegistrationUpdateTests: XCTestCase {
 /// object (`noPointer`); only the overridden methods may be called.
 private final class FakeEngine: AriaMobileEngine {
     var pushTokenDeviceIds: [String] = []
+    var alertTokens: [(deviceId: String, token: String?)] = []
     var unregistered: [String] = []
     var networkChanges = 0
     var gateway: String? = "gw2.ariaroute.com:443"
@@ -79,6 +80,10 @@ private final class FakeEngine: AriaMobileEngine {
         pushTokenDeviceIds.append(deviceId)
     }
 
+    override func updateAlertToken(deviceId: String, alertToken: String?) throws {
+        alertTokens.append((deviceId, alertToken))
+    }
+
     override func unregisterDevice(deviceId: String) throws {
         unregistered.append(deviceId)
         unregisteredExpectation?.fulfill()
@@ -87,6 +92,20 @@ private final class FakeEngine: AriaMobileEngine {
     override func notifyNetworkChange() { networkChanges += 1 }
     override func currentGateway() -> String? { gateway }
     override func getActiveCall() -> CallInfo? { nil }
+}
+
+final class AlertTokenTests: XCTestCase {
+    func testAlertTokenReregistersTheLiveEngine() throws {
+        let engine = FakeEngine()
+        let manager = SipEngineManager.shared
+        defer { manager.installEngineForTesting(nil, registeredDeviceId: nil) }
+        manager.installEngineForTesting(nil, registeredDeviceId: nil)
+        XCTAssertFalse(try manager.reregisterAlertToken("ab12"), "no engine, nothing to do")
+        manager.installEngineForTesting(engine, registeredDeviceId: "gw-a")
+        XCTAssertTrue(try manager.reregisterAlertToken("ab12"))
+        XCTAssertEqual(engine.alertTokens.map(\.deviceId), ["gw-a"])
+        XCTAssertEqual(engine.alertTokens.map(\.token), ["ab12"])
+    }
 }
 
 final class GatewayDeviceIdTests: XCTestCase {

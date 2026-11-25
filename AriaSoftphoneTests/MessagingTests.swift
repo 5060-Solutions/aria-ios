@@ -65,6 +65,21 @@ final class MessagingSupportTests: XCTestCase {
         XCTAssertNil(SmsNotificationTarget.parse(wrong, tenantId: "abc"))
     }
 
+    /// A real APNs alert: the custom keys are top-level beside `aps`.
+    func testNotificationTargetFromApnsAlertShape() {
+        let info: [AnyHashable: Any] = [
+            "aps": ["alert": ["title": "+13035550100", "body": "hi"], "sound": "default", "thread-id": "d1"],
+            "type": "sms", "tenant_id": "ABC", "did_id": "d1",
+            "remote_number": "+13035550100", "message_id": "m",
+        ]
+        XCTAssertEqual(SmsNotificationTarget.parse(info, tenantId: "abc"),
+                       SmsNotificationTarget(didId: "d1", remoteNumber: "+13035550100"))
+    }
+
+    func testApnsTokenHex() {
+        XCTAssertEqual(ApnsToken.hex(Data([0x00, 0xab, 0x0f, 0xff])), "00ab0fff")
+    }
+
     func testReadMarks() {
         let defaults = UserDefaults(suiteName: "MessagingTests-\(UUID().uuidString)")!
         let marks = MessageReadMarks(defaults: defaults)

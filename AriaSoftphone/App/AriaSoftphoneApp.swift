@@ -65,7 +65,26 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // too. Permission is asked for after sign-in, not here.
         UNUserNotificationCenter.current().delegate = self
 
+        // The regular APNs token, for text-message alerts (PushKit above stays
+        // the call path). Needs no permission: whether an alert shows is the
+        // notification authorization, asked for after sign-in.
+        application.registerForRemoteNotifications()
+
         return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        SipEngineManager.shared.updateAlertToken(ApnsToken.hex(deviceToken))
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        print("APNs alert registration failed: \(error)")
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
