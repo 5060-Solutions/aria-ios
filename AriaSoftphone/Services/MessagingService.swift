@@ -113,6 +113,8 @@ final class MessagingService: ObservableObject {
     private var socketTask: Task<Void, Never>?
     private var isActive = false
     private var attachmentCache: [String: Data] = [:]
+    private var refreshQueued = false
+    private var pendingSends: [ThreadKey: PendingSend] = [:]
 
     init(backend: MessagingBackend, readMarks: MessageReadMarks = MessageReadMarks()) {
         self.backend = backend
@@ -133,26 +135,52 @@ final class MessagingService: ObservableObject {
     // MARK: - Loading
 
     func refresh() async {
-        guard !isLoading else { return }
+        // An event or poll that lands mid-refresh asks for one more pass
+        // once this one ends, rather than being dropped.
+        guard !isLoading else {
+            refreshQueued = true
+            return
+        }
         isLoading = true
-        defer { isLoading = false }
+        repeat {
+            refreshQueued = false
+            await refreshOnce()
+        } while refreshQueued
+        isLoading = false
+    }
+
+    private func refreshOnce() async {
+        let loaded: [Inbox]
         do {
-            let loaded = try await backend.inboxes()
-            inboxes = loaded
-            var all: [String: [Conversation]] = [:]
-            for inbox in loaded {
-                all[inbox.didId] = try await backend.conversations(didId: inbox.didId)
-            }
-            conversations = all
-            if let open = openThread {
-                threads[open] = try await backend.thread(didId: open.didId, number: open.remoteNumber)
-                markOpenThreadRead()
-            }
-            recount()
-            errorMessage = nil
+            loaded = try await backend.inboxes()
         } catch {
             errorMessage = error.localizedDescription
+            return
         }
+        inboxes = loaded
+        // One inbox failing (a 404 for a number just unassigned) must not
+        // hide the others: keep what it had and report the first failure.
+        var failure: Error?
+        var all: [String: [Conversation]] = [:]
+        for inbox in loaded {
+            do {
+                all[inbox.didId] = try await backend.conversations(didId: inbox.didId)
+            } catch {
+                all[inbox.didId] = conversations[inbox.didId] ?? []
+                failure = failure ?? error
+            }
+        }
+        conversations = all
+        if let open = openThread {
+            do {
+                threads[open] = try await backend.thread(didId: open.didId, number: open.remoteNumber)
+                markOpenThreadRead()
+            } catch {
+                failure = failure ?? error
+            }
+        }
+        recount()
+        errorMessage = failure?.localizedDescription
     }
 
     func loadThread(_ key: ThreadKey) async {
@@ -193,17 +221,53 @@ final class MessagingService: ObservableObject {
 
     // MARK: - Sending
 
-    /// Send a text, with an attachment if given. A retry that reuses `key`
-    /// does not send twice; the caller makes a new key after any answer from
-    /// the server and keeps it only across a request that got none.
+    /// A send that has not been answered: kept per thread with its
+    /// idempotency key, so leaving and returning mid-retry cannot send twice.
+    struct PendingSend: Equatable {
+        let key: String
+        let body: String
+        let attachment: PbxApiClient.MessagingAttachment?
+    }
+
+    func pendingSend(for key: ThreadKey) -> PendingSend? { pendingSends[key] }
+
+    /// Send a text, with an attachment if given. The same body and
+    /// attachment as an unanswered earlier attempt reuses its key, so it
+    /// is not sent twice; any answer from the server, even a refusal, ends
+    /// the attempt and the next send is a new message.
     /// A message the carrier refused stays in the thread as `failed` with the
     /// server's reason, so the thread is reloaded either way.
     @discardableResult
-    func send(didId: String, to: String, body: String, attachment: PbxApiClient.MessagingAttachment?,
-              key: String) async throws -> Message {
-        defer { Task { await self.refreshAfterSend(ThreadKey(didId: didId, remoteNumber: to)) } }
-        return try await backend.send(didId: didId, to: to, body: body,
-                                      attachmentIds: attachment.map { [$0.id] } ?? [], idempotencyKey: key)
+    func send(didId: String, to: String, body: String,
+              attachment: PbxApiClient.MessagingAttachment?) async throws -> Message {
+        let thread = ThreadKey(didId: didId, remoteNumber: to)
+        let attempt: PendingSend
+        if let earlier = pendingSends[thread], earlier.body == body, earlier.attachment == attachment {
+            attempt = earlier
+        } else {
+            attempt = PendingSend(key: UUID().uuidString, body: body, attachment: attachment)
+        }
+        pendingSends[thread] = attempt
+        defer { Task { await self.refreshAfterSend(thread) } }
+        do {
+            let sent = try await backend.send(didId: didId, to: to, body: body,
+                                              attachmentIds: attachment.map { [$0.id] } ?? [],
+                                              idempotencyKey: attempt.key)
+            pendingSends[thread] = nil
+            return sent
+        } catch {
+            if case PbxApiClient.ApiError.httpError = error { pendingSends[thread] = nil }
+            throw error
+        }
+    }
+
+    /// Open the thread a notification names, if it is one of this seat's
+    /// inboxes. Loads the inboxes first when the app was just launched.
+    func openFromNotification(_ target: SmsNotificationTarget) async {
+        if inbox(target.didId) == nil { await refresh() }
+        guard hasInbox, inbox(target.didId) != nil,
+              let number = MessageNumber.e164(target.remoteNumber) else { return }
+        pendingThread = ThreadKey(didId: target.didId, remoteNumber: number)
     }
 
     private func refreshAfterSend(_ key: ThreadKey) async {
@@ -300,6 +364,7 @@ final class MessagingService: ObservableObject {
         pendingThread = nil
         openThread = nil
         attachmentCache = [:]
+        pendingSends = [:]
         unreadCount = 0
         errorMessage = nil
         readMarks.reset()

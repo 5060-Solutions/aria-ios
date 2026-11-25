@@ -14,7 +14,6 @@ struct ThreadView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var isUploading = false
     @State private var isSending = false
-    @State private var sendKey = UUID().uuidString
     @State private var banner: BannerMessage?
 
     private var thread: MessagingService.Thread? { service.threads[key] }
@@ -23,7 +22,7 @@ struct ThreadView: View {
     private var inbox: MessagingService.Inbox? { service.inbox(key.didId) }
     private var canSend: Bool {
         inbox?.enabled == true && thread?.optedOut != true && !isSending && !isUploading
-            && !segments.isTooLong && text.count <= SmsSegments.maxBodyLength
+            && !segments.isTooLong && text.unicodeScalars.count <= SmsSegments.maxBodyLength
             && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachment != nil)
     }
 
@@ -57,18 +56,25 @@ struct ThreadView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    if callManager.startOutgoingCall(uri: key.remoteNumber) == .refused {
+                    guard let number = MessageNumber.e164(key.remoteNumber) else { return }
+                    if callManager.startOutgoingCall(uri: number) == .refused {
                         banner = .error(String(localized: "Can't place another call right now."))
                     }
                 } label: {
                     Label("Call", systemImage: "phone.fill")
                 }
+                .disabled(MessageNumber.e164(key.remoteNumber) == nil)
                 .accessibilityIdentifier("thread.call")
             }
         }
         .banner($banner)
         .task {
             service.opened(key)
+            // Back mid-retry: the unsent text and photo are still there.
+            if let pending = service.pendingSend(for: key), text.isEmpty, attachment == nil {
+                text = pending.body
+                attachment = pending.attachment
+            }
             await service.loadThread(key)
         }
         .onDisappear { service.closed(key) }
@@ -158,17 +164,12 @@ struct ThreadView: View {
             defer { isSending = false }
             do {
                 try await service.send(didId: key.didId, to: key.remoteNumber, body: body,
-                                       attachment: attachment, key: sendKey)
+                                       attachment: attachment)
                 text = ""
                 attachment = nil
                 attachmentPreview = nil
                 pickerItem = nil
-                sendKey = UUID().uuidString
             } catch {
-                // An answer from the server, even a refusal, ends this
-                // attempt: the next send is a new message. No answer at all
-                // (offline) keeps the key, so a retry cannot send twice.
-                if case PbxApiClient.ApiError.httpError = error { sendKey = UUID().uuidString }
                 banner = .error(error.localizedDescription)
             }
         }

@@ -115,9 +115,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         let tenantId = UserDefaults.standard.string(forKey: AccountSettings.Key.tenantId) ?? ""
         if let target = SmsNotificationTarget.parse(userInfo, tenantId: tenantId) {
-            MainActor.assumeIsolated {
-                MessagingService.shared.pendingThread = .init(didId: target.didId, remoteNumber: target.remoteNumber)
-            }
+            Task { @MainActor in await MessagingService.shared.openFromNotification(target) }
         }
         completionHandler()
     }

@@ -45,18 +45,20 @@ struct SmsSegments: Equatable {
         }
     }
 
-    private static let gsmBasic: Set<Character> = Set(
-        "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà"
+    private static let gsmBasic: Set<Unicode.Scalar> = Set(
+        "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà".unicodeScalars
     )
-    private static let gsmExtension: Set<Character> = Set("^{}\\[~]|€\u{0C}")
+    private static let gsmExtension: Set<Unicode.Scalar> = Set("^{}\\[~]|€\u{0C}".unicodeScalars)
 
     /// Septets for a GSM-7 body, nil when any character forces UCS-2.
     private static func gsmLength(_ text: String) -> Int? {
         var total = 0
-        for character in text {
-            if gsmBasic.contains(character) {
+        // Scalars, not graphemes: "\r\n" is one Character but two GSM-7
+        // characters, as the server counts them.
+        for scalar in text.unicodeScalars {
+            if gsmBasic.contains(scalar) {
                 total += 1
-            } else if gsmExtension.contains(character) {
+            } else if gsmExtension.contains(scalar) {
                 total += 2
             } else {
                 return nil

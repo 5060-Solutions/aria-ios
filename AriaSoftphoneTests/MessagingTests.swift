@@ -15,6 +15,14 @@ final class MessagingSupportTests: XCTestCase {
         XCTAssertTrue(SmsSegments(String(repeating: "a", count: 1531)).isTooLong)
     }
 
+    func testCrlfIsTwoGsmCharacters() {
+        let s = SmsSegments("a\r\nb")
+        XCTAssertEqual(s.encoding, .gsm7)
+        XCTAssertEqual(s.units, 4)
+        XCTAssertEqual(SmsSegments(String(repeating: "\r\n", count: 80)).segments, 1) // 160 septets
+        XCTAssertEqual(SmsSegments(String(repeating: "\r\n", count: 81)).segments, 2)
+    }
+
     func testGsmExtensionCharactersCountTwice() {
         let s = SmsSegments("€")
         XCTAssertEqual(s.encoding, .gsm7)
@@ -106,11 +114,24 @@ final class MessagingServiceTests: XCTestCase {
     final class FakeBackend: MessagingBackend {
         var sentKeys: [String] = []
         var sendError: Error?
+        var extraInbox = false
+        var failingConversations: Set<String> = []
+        var inboxDelay: UInt64 = 0
+        var inboxCalls = 0
         var threadCalls = 0
         let inbox = PbxApiClient.MessagingInbox(didId: "d1", number: "+13035550000", lastInboundAt: nil, enabled: true)
 
-        func inboxes() async throws -> [PbxApiClient.MessagingInbox] { [inbox] }
-        func conversations(didId: String) async throws -> [PbxApiClient.MessagingConversation] { [] }
+        func inboxes() async throws -> [PbxApiClient.MessagingInbox] {
+            inboxCalls += 1
+            if inboxDelay > 0 { try await Task.sleep(nanoseconds: inboxDelay) }
+            return extraInbox
+                ? [inbox, PbxApiClient.MessagingInbox(didId: "d2", number: "+13035551111", lastInboundAt: nil, enabled: true)]
+                : [inbox]
+        }
+        func conversations(didId: String) async throws -> [PbxApiClient.MessagingConversation] {
+            if failingConversations.contains(didId) { throw PbxApiClient.ApiError.httpError(statusCode: 404, message: "gone") }
+            return []
+        }
         func thread(didId: String, number: String) async throws -> PbxApiClient.MessagingThread {
             threadCalls += 1
             return try PbxApiClient.jsonDecoder.decode(
@@ -147,8 +168,8 @@ final class MessagingServiceTests: XCTestCase {
     func testSendPassesIdempotencyKeyAndReloadsThread() async throws {
         let backend = FakeBackend()
         let s = service(backend)
-        try await s.send(didId: "d1", to: "+13035550100", body: "hi", attachment: nil, key: "k1")
-        XCTAssertEqual(backend.sentKeys, ["k1"])
+        try await s.send(didId: "d1", to: "+13035550100", body: "hi", attachment: nil)
+        XCTAssertEqual(backend.sentKeys.count, 1)
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertGreaterThanOrEqual(backend.threadCalls, 1)
     }
@@ -158,7 +179,7 @@ final class MessagingServiceTests: XCTestCase {
         backend.sendError = PbxApiClient.ApiError.httpError(statusCode: 422, message: "recipient opted out")
         let s = service(backend)
         do {
-            try await s.send(didId: "d1", to: "+1", body: "x", attachment: nil, key: "k")
+            try await s.send(didId: "d1", to: "+1", body: "x", attachment: nil)
             XCTFail("expected a throw")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("recipient opted out"))
@@ -170,5 +191,54 @@ final class MessagingServiceTests: XCTestCase {
         s.opened(.init(didId: "d1", remoteNumber: "+13035550100"))
         s.reset()
         XCTAssertFalse(s.hasInbox)
+    }
+
+    func testOneFailingInboxDoesNotFailRefresh() async {
+        let backend = FakeBackend()
+        backend.extraInbox = true
+        backend.failingConversations = ["d1"]
+        let s = service(backend)
+        await s.refresh()
+        XCTAssertEqual(s.inboxes.count, 2)
+        XCTAssertNotNil(s.conversations["d2"])
+        XCTAssertNotNil(s.errorMessage)
+    }
+
+    func testRefreshDuringRefreshIsQueued() async throws {
+        let backend = FakeBackend()
+        backend.inboxDelay = 100_000_000
+        let s = service(backend)
+        let first = Task { await s.refresh() }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        await s.refresh() // returns at once, queued
+        await first.value
+        XCTAssertEqual(backend.inboxCalls, 2)
+    }
+
+    func testUnansweredSendKeepsKeyAndAnsweredSendDropsIt() async throws {
+        let backend = FakeBackend()
+        let s = service(backend)
+        let thread = MessagingService.ThreadKey(didId: "d1", remoteNumber: "+13035550100")
+        backend.sendError = URLError(.notConnectedToInternet)
+        _ = try? await s.send(didId: "d1", to: thread.remoteNumber, body: "hi", attachment: nil)
+        XCTAssertNotNil(s.pendingSend(for: thread))
+        backend.sendError = nil
+        try await s.send(didId: "d1", to: thread.remoteNumber, body: "hi", attachment: nil)
+        XCTAssertEqual(backend.sentKeys.count, 2)
+        XCTAssertEqual(backend.sentKeys[0], backend.sentKeys[1], "a retry reuses the key")
+        XCTAssertNil(s.pendingSend(for: thread))
+        backend.sendError = PbxApiClient.ApiError.httpError(statusCode: 422, message: "no")
+        _ = try? await s.send(didId: "d1", to: thread.remoteNumber, body: "hi", attachment: nil)
+        XCTAssertNil(s.pendingSend(for: thread), "a refusal ends the attempt")
+    }
+
+    func testNotificationOpensOnlyKnownInbox() async {
+        let s = service(FakeBackend())
+        await s.openFromNotification(.init(didId: "nope", remoteNumber: "+13035550100"))
+        XCTAssertNil(s.pendingThread)
+        await s.openFromNotification(.init(didId: "d1", remoteNumber: "not a number"))
+        XCTAssertNil(s.pendingThread)
+        await s.openFromNotification(.init(didId: "d1", remoteNumber: "+13035550100"))
+        XCTAssertEqual(s.pendingThread, .init(didId: "d1", remoteNumber: "+13035550100"))
     }
 }

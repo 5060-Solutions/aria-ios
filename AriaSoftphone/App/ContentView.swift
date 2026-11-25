@@ -74,7 +74,9 @@ struct MainTabView: View {
             .tint(AriaColor.primary)
             // A text notification was tapped: open its thread.
             .onChange(of: messaging.pendingThread, initial: true) { _, pending in
-                if pending != nil { selectedTab = .messages }
+                guard pending != nil else { return }
+                // No inbox, no Messages tab: nothing to open.
+                if messaging.hasInbox { selectedTab = .messages } else { messaging.pendingThread = nil }
             }
 
             // Full-screen call overlay
