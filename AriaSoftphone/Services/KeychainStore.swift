@@ -34,9 +34,13 @@ enum KeychainStore {
     /// the gateway before PushKit redelivers it.
     static let pushTokenKey = "voipPushToken"
 
+    /// The regular APNs device token (hex) for text-message alerts: not the
+    /// PushKit token above. Sent to the gateway as `alert_token`.
+    static let alertTokenKey = "apnsAlertToken"
+
     /// Items read while handling a push, possibly before the user unlocks.
     private static let backgroundReadableKeys: Set<String> = [
-        sipPasswordKey, gatewayTokenKey, pushTokenKey,
+        sipPasswordKey, gatewayTokenKey, pushTokenKey, alertTokenKey,
     ]
 
     private static func accessibility(for key: String) -> CFString {

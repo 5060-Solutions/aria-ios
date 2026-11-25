@@ -982,6 +982,12 @@ public protocol AriaMobileEngineProtocol : AnyObject {
     func unregisterDevice(deviceId: String) throws 
     
     /**
+     * Re-register with a new (or no) APNs alert token, e.g. after iOS hands
+     * out a different one.
+     */
+    func updateAlertToken(deviceId: String, alertToken: String?) throws 
+    
+    /**
      * Update the push token (e.g., after token refresh).
      */
     func updatePushToken(deviceId: String, newToken: String) throws 
@@ -1697,6 +1703,18 @@ open func transferCall(callId: String, target: String)throws  {try rustCallWithE
 open func unregisterDevice(deviceId: String)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
     uniffi_aria_mobile_core_fn_method_ariamobileengine_unregister_device(self.uniffiClonePointer(),
         FfiConverterString.lower(deviceId),$0
+    )
+}
+}
+    
+    /**
+     * Re-register with a new (or no) APNs alert token, e.g. after iOS hands
+     * out a different one.
+     */
+open func updateAlertToken(deviceId: String, alertToken: String?)throws  {try rustCallWithError(FfiConverterTypeMobileError.lift) {
+    uniffi_aria_mobile_core_fn_method_ariamobileengine_update_alert_token(self.uniffiClonePointer(),
+        FfiConverterString.lower(deviceId),
+        FfiConverterOptionString.lower(alertToken),$0
     )
 }
 }
@@ -2573,14 +2591,26 @@ public struct DeviceRegistration {
     public var platform: String
     public var pushToken: String
     public var bundleId: String?
+    /**
+     * iOS only: the regular APNs device token (hex), distinct from the PushKit
+     * token in `push_token`. The gateway sends text-message alerts only to
+     * devices that registered one. Android's FCM `push_token` serves both.
+     */
+    public var alertToken: String?
     public var sip: SipCredentials
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(platform: String, pushToken: String, bundleId: String?, sip: SipCredentials) {
+    public init(platform: String, pushToken: String, bundleId: String?, 
+        /**
+         * iOS only: the regular APNs device token (hex), distinct from the PushKit
+         * token in `push_token`. The gateway sends text-message alerts only to
+         * devices that registered one. Android's FCM `push_token` serves both.
+         */alertToken: String? = nil, sip: SipCredentials) {
         self.platform = platform
         self.pushToken = pushToken
         self.bundleId = bundleId
+        self.alertToken = alertToken
         self.sip = sip
     }
 }
@@ -2598,6 +2628,9 @@ extension DeviceRegistration: Equatable, Hashable {
         if lhs.bundleId != rhs.bundleId {
             return false
         }
+        if lhs.alertToken != rhs.alertToken {
+            return false
+        }
         if lhs.sip != rhs.sip {
             return false
         }
@@ -2608,6 +2641,7 @@ extension DeviceRegistration: Equatable, Hashable {
         hasher.combine(platform)
         hasher.combine(pushToken)
         hasher.combine(bundleId)
+        hasher.combine(alertToken)
         hasher.combine(sip)
     }
 }
@@ -2623,6 +2657,7 @@ public struct FfiConverterTypeDeviceRegistration: FfiConverterRustBuffer {
                 platform: FfiConverterString.read(from: &buf), 
                 pushToken: FfiConverterString.read(from: &buf), 
                 bundleId: FfiConverterOptionString.read(from: &buf), 
+                alertToken: FfiConverterOptionString.read(from: &buf), 
                 sip: FfiConverterTypeSipCredentials.read(from: &buf)
         )
     }
@@ -2631,6 +2666,7 @@ public struct FfiConverterTypeDeviceRegistration: FfiConverterRustBuffer {
         FfiConverterString.write(value.platform, into: &buf)
         FfiConverterString.write(value.pushToken, into: &buf)
         FfiConverterOptionString.write(value.bundleId, into: &buf)
+        FfiConverterOptionString.write(value.alertToken, into: &buf)
         FfiConverterTypeSipCredentials.write(value.sip, into: &buf)
     }
 }
@@ -5111,6 +5147,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_unregister_device() != 61754) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_update_alert_token() != 60687) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aria_mobile_core_checksum_method_ariamobileengine_update_push_token() != 2578) {

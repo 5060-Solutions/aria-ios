@@ -79,6 +79,13 @@ struct IncomingPush: Equatable {
     }
 }
 
+/// The APNs device token as the lowercase hex the gateway expects.
+enum ApnsToken {
+    static func hex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 class PushHandler: NSObject, PKPushRegistryDelegate {
     static let shared = PushHandler()
 

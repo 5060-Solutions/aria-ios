@@ -187,6 +187,7 @@ class SipEngineManager: ObservableObject {
             try withAuthRetry {
                 try registerDevice(
                     pushToken: KeychainStore.get(KeychainStore.pushTokenKey) ?? "",
+                    alertToken: KeychainStore.get(KeychainStore.alertTokenKey),
                     bundleId: Bundle.main.bundleIdentifier,
                     sip: account.sipCredentials(password: password)
                 )
@@ -490,6 +491,41 @@ class SipEngineManager: ObservableObject {
         }
     }
 
+    /// Tell the gateway about the APNs alert token (text-message alerts),
+    /// distinct from the PushKit token. Persisted first, like the VoIP token,
+    /// so an engine that registers later sends it; re-registers when it
+    /// changed.
+    func updateAlertToken(_ token: String) {
+        let previous = KeychainStore.get(KeychainStore.alertTokenKey)
+        KeychainStore.set(token, forKey: KeychainStore.alertTokenKey)
+        guard AccountSettings.load().isProvisioned else { return }
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                if previous == token, self.registeredDeviceId != nil {
+                    // iOS redelivers the same token on every launch.
+                    return
+                }
+                if try !self.reregisterAlertToken(token) {
+                    // No engine yet: registers with the token just stored.
+                    try self.ensureReady()
+                }
+            } catch {
+                print("Alert token update failed: \(error)")
+            }
+        }
+    }
+
+    /// Re-register the live engine's device with `token`. False when there
+    /// is no registered engine to do it.
+    @discardableResult
+    func reregisterAlertToken(_ token: String) throws -> Bool {
+        guard let engine = engine, let deviceId = registeredDeviceId else { return false }
+        try withAuthRetry {
+            try engine.updateAlertToken(deviceId: deviceId, alertToken: token)
+        }
+        return true
+    }
+
     /// `PUT /api/v1/devices/{id}/push-token`. A 409 (the token is already
     /// bound to another device record) is logged, not fatal: the gateway
     /// registration above is what delivers pushes.
@@ -515,6 +551,7 @@ class SipEngineManager: ObservableObject {
     func registerDevice(
         platform: String = "ios",
         pushToken: String,
+        alertToken: String? = nil,
         bundleId: String?,
         sip: SipCredentials
     ) throws {
@@ -526,6 +563,7 @@ class SipEngineManager: ObservableObject {
             platform: platform,
             pushToken: pushToken,
             bundleId: bundleId,
+            alertToken: alertToken.flatMap { $0.isEmpty ? nil : $0 },
             sip: sip
         )
 

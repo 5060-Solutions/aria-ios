@@ -58,7 +58,7 @@ simulator slice is arm64 only.
 ### 3. Entitlements
 
 The app requires:
-- `aps-environment` -- set from `APS_ENVIRONMENT`: `development` for Debug, `production` for Release
+- `aps-environment` -- set from `APS_ENVIRONMENT`: `development` for Debug, `production` for Release. It also covers the regular APNs token the app registers for text-message alerts (sent to the gateway as `alert_token`); PushKit stays the call path.
 - Background modes: audio, voip (VoIP pushes via PushKit need only the Push
   Notifications capability and the `voip` background mode; every push is
   reported to CallKit)
