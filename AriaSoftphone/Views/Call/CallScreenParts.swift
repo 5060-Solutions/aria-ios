@@ -220,8 +220,25 @@ struct CallKeypadSheet: View {
     let onDigit: (String) -> Void
     @State private var sent = ""
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        GeometryReader { proxy in
+            // The sheet's own room: the number and Hide keypad take about 190 pt.
+            let metrics = DialPadMetrics.fitting(
+                width: proxy.size.width - 2 * Space.screenMargin,
+                height: proxy.size.height - 190, rows: 4,
+                typeScale: DialPadMetrics.typeScale(for: dynamicTypeSize),
+                maxKey: DialPadMetrics.maxKeyCompact)
+            sheetContent(metrics)
+        }
+        .presentationDetents([.height(560), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(AriaColor.callBackdrop.opacity(0.55))
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func sheetContent(_ metrics: DialPadMetrics) -> some View {
         VStack(spacing: Space.m) {
             Text(sent.isEmpty ? " " : sent)
                 .ariaFont(.display)
@@ -234,7 +251,7 @@ struct CallKeypadSheet: View {
                 .accessibilityValue(Text(sent))
                 .padding(.horizontal, Space.screenMargin)
 
-            Grid(horizontalSpacing: ComponentSize.dialKeyGapH, verticalSpacing: ComponentSize.dialKeyGapV) {
+            Grid(horizontalSpacing: metrics.gapH, verticalSpacing: metrics.gapV) {
                 ForEach(DialPadKey.rows, id: \.self) { row in
                     GridRow {
                         ForEach(row) { key in
@@ -253,9 +270,6 @@ struct CallKeypadSheet: View {
         .padding(.top, Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-        .presentationDetents([.height(560), .large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(AriaColor.callBackdrop.opacity(0.55))
-        .environment(\.colorScheme, .dark)
+        .environment(\.dialPadMetrics, metrics)
     }
 }

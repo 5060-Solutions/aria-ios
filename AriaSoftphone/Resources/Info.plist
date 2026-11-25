@@ -54,7 +54,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Aria uses the camera only to scan the setup QR code from your phone system.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Aria shows your contacts so you can search and call them. Your contacts stay on this iPhone.</string>
+	<string>Aria shows your contacts so you can search and call them. Your contacts stay on this device.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Aria uses the microphone so the other person can hear you during calls.</string>
 	<key>NSUserActivityTypes</key>
@@ -83,11 +83,16 @@
 		<key>UIImageRespectsSafeAreaInsets</key>
 		<true/>
 	</dict>
-	<key>UIRequiresFullScreen</key>
-	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

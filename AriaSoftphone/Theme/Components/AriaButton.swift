@@ -291,6 +291,8 @@ struct CallActionButton: View {
     var namespace: Namespace.ID? = nil
     /// Caption colour; white on the call screen, onSurfaceVariant elsewhere.
     var captionColor: Color = .white
+    /// The circle's diameter; 72 pt unless the dial pad scales it.
+    var diameter: CGFloat = ComponentSize.primaryCall
     let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
@@ -302,7 +304,7 @@ struct CallActionButton: View {
                     .font(.title.weight(.semibold))
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundStyle(.white)
-                    .frame(width: ComponentSize.primaryCall, height: ComponentSize.primaryCall)
+                    .frame(width: diameter, height: diameter)
                     .background(role.color, in: .circle)
                     .glassEffect(.clear.interactive(), in: .circle)
                     .modifier(GlassIDModifier(id: glassID, namespace: namespace))

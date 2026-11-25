@@ -17,6 +17,7 @@
 		0B24667155E538C464FDF2AF /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93F504888B299C9B1D0EE5D /* StatusChip.swift */; };
 		0B2F0B695495784B22B67D4B /* FixtureConnectionDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = A730566A1D7D31C3E18565D0 /* FixtureConnectionDetails.swift */; };
 		0C6B5F50EBA3875E5B10BA3F /* EngineSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */; };
+		0C9BE60A9D316726D03763B0 /* DialPadMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5964705C3AAA855E92E512 /* DialPadMetrics.swift */; };
 		0CA0A4884B34CEA3645CDD66 /* EmergencyDialer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08AADD51FE1DAE857DB3B47E /* EmergencyDialer.swift */; };
 		138578D6A337F430097E6B46 /* AriaUITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCA500FB80B913001B930EA2 /* AriaUITestCase.swift */; };
 		13F7A2BA1EBF70A9A922CA55 /* Figtree-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 47F986B73A3EF9C08711F1FB /* Figtree-OFL.txt */; };
@@ -30,6 +31,7 @@
 		286151679C9D90210BFB06D8 /* FixtureData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F97BB4AF45FE5EAB1592B4E7 /* FixtureData.swift */; };
 		289B3EDDD1262B0884CCAFAD /* Figtree-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4559786832E4AC511A2D5CA0 /* Figtree-SemiBold.ttf */; };
 		28D6781BE0E6B406D6798509 /* LocalNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD136F883471E79C252749B7 /* LocalNotifications.swift */; };
+		2924EFF77A2BC21A0062B547 /* SidebarShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CC52B395D197201DC374821 /* SidebarShell.swift */; };
 		2A5D9796A0DF921D4EE8A47D /* TransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A767DC4DFC564AC998BCDB13 /* TransferTests.swift */; };
 		2F571E85A2EA921540C8DF07 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCF6FFA1C928FD6AA26A4BD3 /* NetworkMonitor.swift */; };
 		3008C61D179FF9E3E70B41BB /* ServerCallHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2113F4B394A54ACB9986933 /* ServerCallHistory.swift */; };
@@ -108,6 +110,7 @@
 		C83FF6A53FEE2BA978A2B9A7 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4869ED93080641E10B496E /* HistoryView.swift */; };
 		CC2A95EA71B47BEB57658186 /* CallTargetForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F35BC41BC19899BB95CFA77 /* CallTargetForm.swift */; };
 		CECAD1A1927DA5D1C243D471 /* FixtureMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFE77B64955D99259D32A57 /* FixtureMode.swift */; };
+		D0B147CD950404B400F0FC27 /* IPadLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74546B33F0820C01FC71E527 /* IPadLayoutTests.swift */; };
 		D15F4BAA0B13A594B979A82A /* ManualSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */; };
 		D27BE0A8ECBE26473F9EEAE6 /* AccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B38590F217DB8452C47ADF6 /* AccountSession.swift */; };
 		D4338A2D06CC2410BA2028F5 /* ManualSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C46419C0A3ACBEDE7447B33D /* ManualSetup.swift */; };
@@ -174,6 +177,7 @@
 		328ED2C538886F86066176F6 /* VoicemailViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailViewTests.swift; sourceTree = "<group>"; };
 		3BBEE7A6559A1073A7F736BD /* Figtree-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Regular.ttf"; sourceTree = "<group>"; };
 		3C4D5B9CA8E2429DAB24FDEE /* RecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsView.swift; sourceTree = "<group>"; };
+		3CC52B395D197201DC374821 /* SidebarShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarShell.swift; sourceTree = "<group>"; };
 		3DF0B42626C54A22D43CE332 /* EngineSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSetupTests.swift; sourceTree = "<group>"; };
 		3FFE77B64955D99259D32A57 /* FixtureMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureMode.swift; sourceTree = "<group>"; };
 		4020AF8C411533A96DA54A99 /* aria_mobileFFI.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = aria_mobileFFI.modulemap; sourceTree = "<group>"; };
@@ -197,7 +201,9 @@
 		6543A3ADEA1BFA74052AC847 /* FeatureFormStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFormStyles.swift; sourceTree = "<group>"; };
 		6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
 		69917C126F3D6E94542ECD66 /* Figtree-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Light.ttf"; sourceTree = "<group>"; };
+		74546B33F0820C01FC71E527 /* IPadLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadLayoutTests.swift; sourceTree = "<group>"; };
 		7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSetupView.swift; sourceTree = "<group>"; };
+		7D5964705C3AAA855E92E512 /* DialPadMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialPadMetrics.swift; sourceTree = "<group>"; };
 		7E64C5BF1246947DB6972B39 /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLink.swift; sourceTree = "<group>"; };
 		7F35BC41BC19899BB95CFA77 /* CallTargetForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTargetForm.swift; sourceTree = "<group>"; };
 		7FCAF29FDDD3647DD5435D32 /* AriaSoftphoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AriaSoftphoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -355,6 +361,7 @@
 		461FF7E47C0CFD69E9DAEC1A /* Theme */ = {
 			isa = PBXGroup;
 			children = (
+				7D5964705C3AAA855E92E512 /* DialPadMetrics.swift */,
 				52D600DB1B22F44048B170F3 /* Theme.swift */,
 				457D816EAA63A2636B9661BD /* Typography.swift */,
 				B80353E59F2A7B20E36D33FE /* Components */,
@@ -381,6 +388,7 @@
 				31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */,
 				93BFE1053CFB3959B1113A72 /* HistoryContactsTests.swift */,
 				DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */,
+				74546B33F0820C01FC71E527 /* IPadLayoutTests.swift */,
 				997DB051E23D4E120FF4CE70 /* KeychainMigrationTests.swift */,
 				DA0DF8B5FAAE3B38625A8814 /* LocalizationTests.swift */,
 				806512C6BFDA03885B045392 /* MessagingTests.swift */,
@@ -460,6 +468,7 @@
 				A9F0FEA2A9CE6E1EF4AE0CF0 /* CallNotices.swift */,
 				DC8D92A5630AD126518BFFE3 /* ContentView.swift */,
 				CACF86647ED1812F92243E9E /* DeepLinkHandling.swift */,
+				3CC52B395D197201DC374821 /* SidebarShell.swift */,
 				EC0FCB1E55FF3ED5CFDA83D6 /* SipEngineManager.swift */,
 			);
 			path = App;
@@ -783,6 +792,7 @@
 				8BC3D666C26DF14A313243A1 /* FixtureModeTests.swift in Sources */,
 				BDDE708BD9056D3C958F3910 /* GatewayAuthTests.swift in Sources */,
 				E5CCE7A8F714E61D4321F8AE /* HistoryContactsTests.swift in Sources */,
+				D0B147CD950404B400F0FC27 /* IPadLayoutTests.swift in Sources */,
 				FADC8E36008E726A1888947E /* IncomingPushTriageTests.swift in Sources */,
 				94947B1A5C8E6F318A53E6D6 /* KeychainMigrationTests.swift in Sources */,
 				A80C0208337A0E657FBFB9B9 /* LocalizationTests.swift in Sources */,
@@ -839,6 +849,7 @@
 				7AE6A6C9AC950F292CBFFE22 /* DiagnosticsView.swift in Sources */,
 				A4095C5EC6063E1A5634F8CD /* DialFormatting.swift in Sources */,
 				8333D2D36C5C000857E8E755 /* DialKey.swift in Sources */,
+				0C9BE60A9D316726D03763B0 /* DialPadMetrics.swift in Sources */,
 				8B934F118D6BDB53A6DE1537 /* DialerView.swift in Sources */,
 				0CA0A4884B34CEA3645CDD66 /* EmergencyDialer.swift in Sources */,
 				81FFEF637871A78E8FC5AFF3 /* FeatureFormStyles.swift in Sources */,
@@ -872,6 +883,7 @@
 				9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */,
 				4DFDC219DB5F921ED2081607 /* SetupLink.swift in Sources */,
 				59C279BD5AD5AE6563245399 /* SetupLinkConfirmView.swift in Sources */,
+				2924EFF77A2BC21A0062B547 /* SidebarShell.swift in Sources */,
 				79829196DAF693A203DDF1BC /* SipEngineManager.swift in Sources */,
 				0B24667155E538C464FDF2AF /* StatusChip.swift in Sources */,
 				45EB1D9F6622F1A053207774 /* Theme.swift in Sources */,
@@ -1071,7 +1083,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -1101,7 +1113,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

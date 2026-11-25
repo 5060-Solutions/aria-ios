@@ -45,7 +45,7 @@ struct CallView: View {
                 GeometryReader { proxy in
                     ScrollView {
                         GlassEffectContainer(spacing: Space.l) {
-                            content(shown, width: proxy.size.width)
+                            content(shown, size: proxy.size)
                                 .frame(minHeight: proxy.size.height)
                         }
                     }
@@ -130,8 +130,20 @@ struct CallView: View {
 
     // MARK: - Layout
 
-    private func content(_ shown: ActiveCall?, width: CGFloat) -> some View {
-            VStack(spacing: 0) {
+    /// A wide, short window (an iPad on its side, or a wide Split View)
+    /// puts the caller beside the controls instead of above them.
+    static func isSideBySide(_ size: CGSize) -> Bool {
+        size.width >= 640 && size.width > size.height * 1.1
+    }
+
+    /// The widest the call's column grows on a big screen: the controls
+    /// keep their size and are not spread across an iPad.
+    private static let columnMaxWidth: CGFloat = 520
+
+    private func content(_ shown: ActiveCall?, size: CGSize) -> some View {
+        let sideBySide = Self.isSideBySide(size)
+        let showsControls = shown.map { phase(of: $0) != .incoming } ?? false
+        return VStack(spacing: 0) {
                 topBar(shown)
                     .padding(.top, Space.xs)
 
@@ -152,21 +164,41 @@ struct CallView: View {
 
                 Spacer(minLength: Space.xl)
 
-                callerHeader(shown)
-
-                Spacer(minLength: Space.xl)
-
-                if let shown, phase(of: shown) != .incoming {
-                    controls(shown, width: width)
-                    if let pair = callManager.attendedTransferPair, !callManager.isInConference {
-                        completeTransferButton(pair)
-                            .padding(.top, Space.m)
+                if sideBySide {
+                    HStack(alignment: .center, spacing: Space.xxxl) {
+                        callerHeader(shown)
+                            .frame(maxWidth: .infinity)
+                        if let shown, showsControls {
+                            VStack(spacing: 0) {
+                                controlsAndTransfer(shown, width: Self.columnMaxWidth + 2 * Space.screenMargin)
+                            }
+                            .frame(maxWidth: Self.columnMaxWidth)
+                        }
                     }
                     Spacer(minLength: Space.m)
+                } else {
+                    callerHeader(shown)
+
+                    Spacer(minLength: Space.xl)
+
+                    if let shown, showsControls {
+                        controlsAndTransfer(shown, width: min(size.width, Self.columnMaxWidth + 2 * Space.screenMargin))
+                        Spacer(minLength: Space.m)
+                    }
                 }
             }
             .padding(.horizontal, Space.screenMargin)
+            .frame(maxWidth: sideBySide ? 1100 : Self.columnMaxWidth + 2 * Space.screenMargin)
             .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func controlsAndTransfer(_ shown: ActiveCall, width: CGFloat) -> some View {
+        controls(shown, width: width)
+        if let pair = callManager.attendedTransferPair, !callManager.isInConference {
+            completeTransferButton(pair)
+                .padding(.top, Space.m)
+        }
     }
 
     // MARK: Top bar
