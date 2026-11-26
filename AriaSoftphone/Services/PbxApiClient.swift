@@ -231,6 +231,14 @@ class PbxApiClient {
         return try decode(Identity.self, from: data)
     }
 
+    /// GET /api/v1/tenants/{tenant_id}/calling/settings, its `country`
+    /// (ISO 3166-1 alpha-2). A tenant-admin route: a seat is refused.
+    func callingCountry(jwt: String, tenantId: String) async throws -> String? {
+        let data = try await send("GET", path: "/api/v1/tenants/\(try pathSegment(tenantId))/calling/settings", token: jwt)
+        struct Settings: Decodable { let country: String? }
+        return try decode(Settings.self, from: data).country
+    }
+
     /// GET /api/v1/extensions/{ext_id}/voicemail — nil when the extension
     /// has no mailbox.
     func voicemailBox(jwt: String, extensionId: String) async throws -> VoicemailBox? {

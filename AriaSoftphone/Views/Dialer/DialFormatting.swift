@@ -1,59 +1,22 @@
 import Foundation
 
-/// How the dialer shows a number as it is typed. Display only: the dialed
-/// string itself is never changed.
+/// How numbers are shown. Display only: the dialed string itself is never
+/// changed. The country is the company's calling country (`DefaultCountry`).
 enum DialFormatter {
-    /// North American numbers are grouped as they are typed:
-    /// "(415) 555-0142", "1 (415) 555-0142", "+1 415 555 0142".
-    /// Short codes and extensions, other countries' numbers and anything with
-    /// `*` or `#` are shown as typed.
-    static func format(_ dialed: String) -> String {
-        guard !dialed.isEmpty, !dialed.contains(where: { $0 == "*" || $0 == "#" }) else { return dialed }
-
-        if dialed.hasPrefix("+") {
-            let digits = String(dialed.dropFirst())
-            guard digits.allSatisfy(\.isASCIIDigit), digits.hasPrefix("1") else { return dialed }
-            let national = String(digits.dropFirst())
-            guard national.count <= 10 else { return dialed }
-            let groups = group(national, sizes: [3, 3, 4])
-            return (["+1"] + groups).joined(separator: " ")
-        }
-
-        guard dialed.allSatisfy(\.isASCIIDigit) else { return dialed }
-        if dialed.count == 11, dialed.hasPrefix("1") {
-            return "1 " + national(String(dialed.dropFirst()))
-        }
-        switch dialed.count {
-        case 0...4:
-            return dialed
-        case 5...7:
-            let head = dialed.prefix(3), tail = dialed.dropFirst(3)
-            return "\(head)-\(tail)"
-        case 8...10:
-            return national(dialed)
-        default:
-            return dialed
-        }
+    /// A number in a list (History, Contacts, Messages): national format for
+    /// the default country, international otherwise; anything that is not a
+    /// number is returned as given.
+    static func format(_ number: String) -> String {
+        format(number, country: DefaultCountry.cached)
     }
 
-    /// "(415) 555-0142" for up to ten digits, partially filled.
-    private static func national(_ digits: String) -> String {
-        let groups = group(digits, sizes: [3, 3, 4])
-        var result = "(\(groups[0]))"
-        if groups.count > 1 { result += " \(groups[1])" }
-        if groups.count > 2 { result += "-\(groups[2])" }
-        return result
+    static func format(_ number: String, country: String) -> String {
+        PhoneFormat(country: country).listed(number)
     }
 
-    private static func group(_ digits: String, sizes: [Int]) -> [String] {
-        var groups: [String] = []
-        var rest = Substring(digits)
-        for size in sizes where !rest.isEmpty {
-            groups.append(String(rest.prefix(size)))
-            rest = rest.dropFirst(size)
-        }
-        if !rest.isEmpty { groups[groups.count - 1] += rest }
-        return groups
+    /// The dialer's number as it is typed.
+    static func typing(_ dialed: String, country: String) -> String {
+        PhoneFormat(country: country).typing(dialed)
     }
 }
 

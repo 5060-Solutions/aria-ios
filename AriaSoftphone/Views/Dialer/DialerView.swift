@@ -9,6 +9,7 @@ struct DialerView: View {
     @ObservedObject private var selfService = SelfService.shared
     @ObservedObject private var history = CallHistoryStore.shared
     @ObservedObject private var directory = ContactDirectory.shared
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
 
     @AppStorage(AccountSettings.Key.displayName) private var displayName = ""
     @AppStorage(AccountSettings.Key.username) private var username = ""
@@ -63,6 +64,7 @@ struct DialerView: View {
                 pasteboardHasText = UIPasteboard.general.hasStrings
                 await directory.loadIfAuthorized()
                 await selfService.refresh()
+                await defaultCountry.refresh()
             }
         }
     }
@@ -135,7 +137,7 @@ struct DialerView: View {
                     .transition(.opacity)
                     }
                 } else {
-                    Text(DialFormatter.format(dialedNumber))
+                    Text(DialFormatter.typing(dialedNumber, country: defaultCountry.country))
                         .ariaFont(.display)
                         .monospacedDigit()
                         .foregroundStyle(AriaColor.onSurface)
@@ -155,17 +157,23 @@ struct DialerView: View {
             .frame(minHeight: AriaTextStyle.display.lineHeight)
 
             // Reserve the line so the keypad does not jump when a match appears.
-            Text(matchedName ?? " ")
+            // A match shows the name; a valid national number shows how it
+            // is dialed internationally, as a hint.
+            Text(matchedName ?? internationalHint ?? " ")
                 .ariaFont(.bodySmall)
-                .foregroundStyle(AriaColor.primary)
+                .foregroundStyle(matchedName == nil ? AriaColor.onSurfaceVariant : AriaColor.primary)
                 .lineLimit(1)
-                .opacity(matchedName == nil ? 0 : 1)
-                .accessibilityHidden(matchedName == nil)
+                .opacity(matchedName == nil && internationalHint == nil ? 0 : 1)
+                .accessibilityHidden(matchedName == nil && internationalHint == nil)
         }
         .animation(Motion.snappy(reduceMotion: reduceMotion), value: dialedNumber)
     }
 
     private var matchedName: String? { matcher.name(for: dialedNumber) }
+
+    private var internationalHint: String? {
+        PhoneFormat(country: defaultCountry.country).hint(dialedNumber)
+    }
 
     // MARK: - Keys
 
@@ -282,15 +290,9 @@ enum DialString {
     /// with spaces, dashes, dots and brackets dropped. nil when fewer than
     /// three digits remain.
     static func pasteable(_ text: String) -> String? {
-        var result = ""
-        for ch in text.trimmingCharacters(in: .whitespacesAndNewlines) {
-            if ch.isASCII && (ch.isNumber || ch == "*" || ch == "#") {
-                result.append(ch)
-            } else if ch == "+" && result.isEmpty {
-                result.append(ch)
-            }
-        }
-        return result.filter(\.isNumber).count >= 3 ? result : nil
+        guard let dialable = PhoneFormat.dialString(text),
+              dialable.filter(\.isNumber).count >= 3 else { return nil }
+        return dialable
     }
 }
 

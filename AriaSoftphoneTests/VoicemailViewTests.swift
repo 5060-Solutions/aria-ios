@@ -2,12 +2,22 @@ import XCTest
 @testable import AriaSoftphone
 
 final class VoicemailViewTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set("US", forKey: DefaultCountry.defaultsKey)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: DefaultCountry.defaultsKey)
+        super.tearDown()
+    }
+
     func testCallerWithNameAndNumber() {
         let caller = VoicemailCaller("Priya Raman <+14155550142>")
         XCTAssertEqual(caller.name, "Priya Raman")
         XCTAssertEqual(caller.number, "+14155550142")
         XCTAssertEqual(caller.title, "Priya Raman")
-        XCTAssertEqual(caller.subtitle, "+1 415 555 0142")
+        XCTAssertEqual(caller.subtitle, "(415) 555-0142")
     }
 
     func testQuotedName() {
@@ -17,7 +27,7 @@ final class VoicemailViewTests: XCTestCase {
     func testBareNumberIsFormattedOrMatched() {
         let bare = VoicemailCaller("+15035550111")
         XCTAssertNil(bare.name)
-        XCTAssertEqual(bare.title, "+1 503 555 0111")
+        XCTAssertEqual(bare.title, "(503) 555-0111")
         XCTAssertNil(bare.subtitle)
 
         let matcher = ContactMatcher(entries: [.init(name: "Dr. Lee's Office", number: "(503) 555-0111")])

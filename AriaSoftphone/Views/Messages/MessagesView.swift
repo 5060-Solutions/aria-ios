@@ -99,6 +99,7 @@ struct MessagesView: View {
 private struct ConversationRow: View {
     let conversation: PbxApiClient.MessagingConversation
     let isUnread: Bool
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
 
     private var preview: String {
         if conversation.lastBody.isEmpty, conversation.lastHasMedia { return String(localized: "Photo") }
@@ -108,7 +109,7 @@ private struct ConversationRow: View {
 
     var body: some View {
         AriaListRow(
-            title: Text(DialFormatter.format(conversation.remoteNumber)).fontWeight(isUnread ? .semibold : .regular),
+            title: Text(DialFormatter.format(conversation.remoteNumber, country: defaultCountry.country)).fontWeight(isUnread ? .semibold : .regular),
             subtitle: Text(preview)
         ) {
             ZStack(alignment: .topLeading) {
