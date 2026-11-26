@@ -757,6 +757,28 @@ final class HoldForMeServiceTests: XCTestCase {
         XCTAssertEqual(hold?.actions.first?.options, [.foreground])
     }
 
+    func testTheNoticeTitleIsOnlyAMissedLineForAMissedWait() {
+        let missed = HoldWaitNotice(event: "missed", remoteNumber: "+18005550100", remoteName: "Acme Bank")
+        XCTAssertEqual(missed.title, "Acme Bank picked up while you were away")
+        for event in ["far_hung_up", "max_wait", "lost"] {
+            XCTAssertEqual(HoldWaitNotice(event: event, remoteNumber: "+18005550100", remoteName: "Acme Bank").title, "Acme Bank")
+            XCTAssertEqual(HoldWaitNotice(event: event, remoteNumber: "+18005550100", remoteName: "").title, "+18005550100")
+        }
+        XCTAssertEqual(HoldWaitNotice(event: "missed", remoteNumber: "+18005550100", remoteName: "").title,
+                       "+18005550100 picked up while you were away")
+    }
+
+    @MainActor
+    func testCallAgainDialsTheNumberAndClosesTheBanner() throws {
+        let model = HoldForMeModel(backend: StubBackend(wait: try sampleWait()))
+        var dialed: [String] = []
+        model.dial = { dialed.append($0) }
+        model.showNotice(HoldWaitNotice(event: "lost", remoteNumber: "+18005550100", remoteName: ""))
+        model.callAgain("+18005550100")
+        XCTAssertEqual(dialed, ["+18005550100"])
+        XCTAssertNil(model.notice)
+    }
+
     @MainActor
     func testTappingTheNotificationShowsTheBannerEvenBeforeAvailable() throws {
         let model = HoldForMeModel(backend: StubBackend(wait: try sampleWait()))

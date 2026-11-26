@@ -146,7 +146,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             let action = response.actionIdentifier
             Task { @MainActor in
                 if action == LocalNotifications.callAgainAction {
-                    CallManager.shared.startOutgoingCall(uri: hold.remoteNumber)
+                    HoldForMeModel.shared.callAgain(hold.remoteNumber)
                 } else if action == UNNotificationDefaultActionIdentifier {
                     HoldForMeModel.shared.showNotice(hold)
                 }

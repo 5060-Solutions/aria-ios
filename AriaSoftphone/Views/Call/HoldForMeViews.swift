@@ -241,14 +241,13 @@ struct HoldWaitNoticeBanner: View {
             Image(systemName: "hourglass")
                 .foregroundStyle(AriaColor.primary)
                 .accessibilityHidden(true)
-            Text("\(notice.displayName) picked up while you were away")
+            Text(notice.title)
                 .ariaFont(.body)
                 .foregroundStyle(AriaColor.onSurface)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             AriaButton("Call again", kind: .prominent) {
-                CallManager.shared.startOutgoingCall(uri: notice.remoteNumber)
-                model.dismissNotice()
+                model.callAgain(notice.remoteNumber)
             }
             .accessibilityIdentifier("holdNotice.callAgain")
             Button("Cancel", systemImage: "xmark") { model.dismissNotice() }

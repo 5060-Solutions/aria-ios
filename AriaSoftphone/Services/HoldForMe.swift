@@ -146,6 +146,12 @@ struct HoldWaitNotice: Equatable {
 
     /// What to call them: the name, else the number.
     var displayName: String { remoteName.isEmpty ? remoteNumber : remoteName }
+
+    /// The banner's line. "picked up while you were away" is only true of a
+    /// `missed` wait; the other events show who it was.
+    var title: String {
+        event == "missed" ? String(localized: "\(displayName) picked up while you were away") : displayName
+    }
 }
 
 // MARK: - Backend
@@ -236,6 +242,8 @@ final class HoldForMeModel: ObservableObject {
     /// Starts the call-move socket when it is not running (it carries
     /// `hold_wait_state`).
     var startSocket: () -> Void = { CallMoveModel.shared.ensureListening() }
+    /// Places a call through the app's one dial path.
+    var dial: (String) -> Void = { CallManager.shared.startOutgoingCall(uri: $0) }
     private var isStarting = false
     private var stillOnHoldInFlight: Set<String> = []
 
@@ -341,7 +349,7 @@ final class HoldForMeModel: ObservableObject {
             settings = try await backend.setGreeting(greeting)
         } catch {
             settings = previous
-            settingsError = String(localized: "The setting could not be saved.")
+            settingsError = String(localized: "Couldn't save. Try again.")
         }
     }
 
@@ -349,6 +357,13 @@ final class HoldForMeModel: ObservableObject {
 
     func showNotice(_ hold: HoldWaitNotice) { notice = hold }
     func dismissNotice() { notice = nil }
+
+    /// Redial a wait's far party: the one path for the CALL_AGAIN action and
+    /// the banner's button. Emergency numbers are handled by the dialer.
+    func callAgain(_ number: String) {
+        dial(number)
+        notice = nil
+    }
 
     // MARK: Actions
 
