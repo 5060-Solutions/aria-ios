@@ -15,6 +15,8 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(appearance.colorScheme)
+        // The cold-start intro; an incoming call (CallKit/PushKit) skips it.
+        .launchIntro(hasCall: callManager.activeCall != nil)
     }
 }
 
