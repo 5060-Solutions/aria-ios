@@ -10,6 +10,8 @@ enum DeepLink: Equatable {
     case legacyProvisioning(ProvisioningCredentials)
     /// A number or SIP address to call, after the user confirms.
     case dial(String)
+    /// `aria://hold-for-me/<id>?action=cancel`: the Live Activity's Cancel.
+    case holdCancel(String)
 
     /// The deep link a URL stands for, or nil for anything the app does not
     /// handle.
@@ -33,6 +35,12 @@ enum DeepLink: Equatable {
                 let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let target = items.first { $0.name == "to" || $0.name == "number" }?.value
                 return dialTarget(target)
+            }
+            if host == "hold-for-me" {
+                let id = url.path.split(separator: "/").first.map(String.init) ?? ""
+                let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                guard !id.isEmpty, items.contains(where: { $0.name == "action" && $0.value == "cancel" }) else { return nil }
+                return .holdCancel(id)
             }
             return nil
         case "sip", "sips", "tel":
@@ -107,6 +115,12 @@ final class DeepLinkCoordinator: ObservableObject {
     }
 
     private func accept(_ link: DeepLink) {
+        // Cancelling a Hold for me wait needs no confirmation sheet of its
+        // own: the waiting card asks Rejoin now or Hang up.
+        if case .holdCancel(let id) = link {
+            Task { await HoldForMeModel.shared.requestCancel(id) }
+            return
+        }
         // A dial link is only useful with an account; an emergency number
         // still goes to the native dialer without one.
         if case .dial(let number) = link, !isSignedIn() {

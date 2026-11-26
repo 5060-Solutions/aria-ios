@@ -93,6 +93,7 @@ struct MainTabView: View {
                 }
             }
             .tint(AriaColor.primary)
+            .safeAreaInset(edge: .top, spacing: 0) { HoldWaitCards() }
             // A text notification was tapped: open its thread.
             .onChange(of: messaging.pendingThread, initial: true) { _, pending in
                 guard pending != nil else { return }

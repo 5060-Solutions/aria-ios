@@ -114,6 +114,8 @@ final class HoldForMeServiceTests: XCTestCase {
         var error: Error?
         var started: [(callId: String, greeting: HoldGreeting?, name: String?)] = []
         let wait: HoldWait
+        /// What the PBX lists as open; the wait by default.
+        lazy var open: [HoldWait] = [wait]
 
         init(wait: HoldWait, error: Error? = nil) { self.wait = wait; self.error = error }
 
@@ -124,7 +126,7 @@ final class HoldForMeServiceTests: XCTestCase {
         }
         func cancel(callId: String, action: String) async throws -> HoldWait { wait }
         func stillOnHold(callId: String) async throws -> HoldWait { wait }
-        func openWaits() async throws -> [HoldWait] { [wait] }
+        func openWaits() async throws -> [HoldWait] { open }
         func settings() async throws -> HoldSettings {
             HoldSettings(greeting: .line, assistantAvailable: true, maxWaitSecs: 10800)
         }
@@ -342,5 +344,150 @@ final class HoldForMeServiceTests: XCTestCase {
         await model.reconcile()
         XCTAssertEqual(Set(model.waits.keys), ["hw-1"])
         XCTAssertNil(model.transcripts["hw-old"])
+    }
+
+    // MARK: Live Activity (Task I3)
+
+    /// Records what the controller asks of ActivityKit.
+    private final class FakeFacade: ActivityFacade {
+        var live: [String: HoldWaitAttributes.ContentState] = [:]
+        var started: [HoldWaitAttributes] = []
+        var updated: [String] = []
+        var ended: [String] = []
+        var staleDates: [String: Date] = [:]
+
+        func existingIds() -> [String] { Array(live.keys) }
+        func start(_ attributes: HoldWaitAttributes, state: HoldWaitAttributes.ContentState, staleDate: Date) {
+            started.append(attributes)
+            live[attributes.holdWaitId] = state
+            staleDates[attributes.holdWaitId] = staleDate
+        }
+        func update(id: String, state: HoldWaitAttributes.ContentState, staleDate: Date) {
+            updated.append(id)
+            live[id] = state
+        }
+        func end(id: String) {
+            ended.append(id)
+            live[id] = nil
+        }
+    }
+
+    private func wait(_ state: String, id: String = "hw-1") throws -> HoldWait {
+        let base = try sampleWait()
+        return HoldWait(holdWaitId: id, callId: base.callId, state: state, greeting: .line,
+                        startedAt: base.startedAt, stateSince: base.stateSince, maxWaitSecs: 10800,
+                        falseAlarms: 0, remote: base.remote, ringReason: nil,
+                        endedReason: state == "ended" ? "hung_up" : nil)
+    }
+
+    func testTheControllerStartsUpdatesAndEndsActivities() throws {
+        let facade = FakeFacade()
+        let controller = HoldActivityController(facade: facade)
+
+        controller.sync([try wait("waiting")])
+        XCTAssertEqual(facade.started.count, 1)
+        let attributes = try XCTUnwrap(facade.started.first)
+        XCTAssertEqual(attributes.holdWaitId, "hw-1")
+        XCTAssertEqual(attributes.callId, "c-1")
+        XCTAssertEqual(attributes.remoteName, "Acme Bank")
+        XCTAssertEqual(facade.staleDates["hw-1"], attributes.startedAt.addingTimeInterval(10800 + 300))
+
+        controller.sync([try wait("waiting")])
+        XCTAssertTrue(facade.updated.isEmpty, "nothing changed")
+        XCTAssertEqual(facade.started.count, 1)
+
+        controller.sync([try wait("ringing")])
+        XCTAssertEqual(facade.updated, ["hw-1"])
+        XCTAssertEqual(facade.live["hw-1"]?.state, "ringing")
+
+        controller.sync([])
+        XCTAssertEqual(facade.ended, ["hw-1"])
+        XCTAssertTrue(facade.live.isEmpty)
+    }
+
+    func testAnEndedWaitEndsItsActivityAndRequestedShowsAsWaiting() throws {
+        let facade = FakeFacade()
+        let controller = HoldActivityController(facade: facade)
+        controller.sync([try wait("requested")])
+        XCTAssertEqual(facade.live["hw-1"]?.state, "waiting")
+        controller.sync([try wait("ended")])
+        XCTAssertEqual(facade.ended, ["hw-1"])
+    }
+
+    func testAnActivityTheModelNeverHeardOfIsEnded() throws {
+        // The app was killed while waiting: ActivityKit still has the card.
+        let facade = FakeFacade()
+        facade.live["hw-orphan"] = .init(state: "waiting", stateSince: Date())
+        HoldActivityController(facade: facade).sync([])
+        XCTAssertEqual(facade.ended, ["hw-orphan"])
+    }
+
+    func testAStaleActivityIsEndedOnForeground() async throws {
+        let facade = FakeFacade()
+        let backend = StubBackend(wait: try wait("waiting"))
+        let model = HoldForMeModel(backend: backend, activities: HoldActivityController(facade: facade))
+        model.setAvailable(true)
+        model.handle(.state(try wait("waiting"), transcript: []))
+        XCTAssertEqual(facade.live.keys.sorted(), ["hw-1"])
+
+        // It ended while the app was away; the PBX lists no open wait.
+        backend.open = []
+        await model.reconcile()
+        XCTAssertTrue(model.waits.isEmpty)
+        XCTAssertEqual(facade.ended, ["hw-1"])
+    }
+
+    func testNoActivityStartsWhileTheFeatureIsOff() throws {
+        let facade = FakeFacade()
+        let model = HoldForMeModel(backend: StubBackend(wait: try wait("waiting")),
+                                   activities: HoldActivityController(facade: facade))
+        model.handle(.state(try wait("waiting"), transcript: []))
+        XCTAssertTrue(facade.started.isEmpty)
+        model.setAvailable(true)
+        XCTAssertEqual(facade.started.count, 1)
+        model.setAvailable(false)
+        XCTAssertEqual(facade.ended, ["hw-1"])
+    }
+
+    func testForegroundRereadsTheFlagAndKeepsItOnAFailedMe() async throws {
+        let backend = StubBackend(wait: try wait("waiting"))
+        let model = model(backend)
+        model.fetchIdentity = { try self.identity(#"{"features":["hold_for_me"]}"#) }
+        await model.becameActive()
+        XCTAssertTrue(model.available)
+        XCTAssertEqual(Set(model.waits.keys), ["hw-1"])
+
+        model.fetchIdentity = { throw URLError(.notConnectedToInternet) }
+        await model.becameActive()
+        XCTAssertTrue(model.available, "a network error does not switch it off")
+
+        model.fetchIdentity = { try self.identity(#"{}"#) }
+        await model.becameActive()
+        XCTAssertFalse(model.available, "the PBX no longer offers it")
+    }
+
+    func testTheCancelLinkIsParsedAndOpensTheChoice() async throws {
+        XCTAssertEqual(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1?action=cancel")!), .holdCancel("hw-1"))
+        XCTAssertNil(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1")!))
+        XCTAssertNil(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1?action=other")!))
+        XCTAssertEqual(HoldWaitAttributes.cancelURL("hw-1").absoluteString, "aria://hold-for-me/hw-1?action=cancel")
+
+        let model = model(StubBackend(wait: try wait("waiting")))
+        model.setAvailable(true)
+        await model.requestCancel("hw-1")
+        XCTAssertEqual(model.cancelRequest, "hw-1", "found through the PBX's open list")
+        await model.cancel("hw-1", rejoin: true)
+        XCTAssertNil(model.cancelRequest)
+
+        let off = self.model(StubBackend(wait: try wait("waiting")))
+        await off.requestCancel("hw-1")
+        XCTAssertNil(off.cancelRequest, "hidden while the feature is off")
+    }
+
+    func testElapsedReadsAsMinutesAndSeconds() {
+        XCTAssertEqual(HoldWaitCard.elapsed(754), "12:34")
+        XCTAssertEqual(HoldWaitCard.elapsed(5), "0:05")
+        XCTAssertEqual(HoldWaitCard.elapsed(3723), "1:02:03")
+        XCTAssertEqual(HoldWaitCard.elapsed(-3), "0:00")
     }
 }

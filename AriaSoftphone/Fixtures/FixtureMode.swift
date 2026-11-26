@@ -111,11 +111,14 @@ enum FixtureScene: String, CaseIterable {
     case inCallUnencrypted = "in-call-unencrypted"
     /// Extra: the in-call screen with Hold for me in the overflow.
     case inCallHoldForMe = "in-call-hold-for-me"
+    /// Extra: the Hold for me waiting card above the Dialer.
+    case holdWaiting = "hold-waiting"
 
     /// The DESIGN.md §8 file number, e.g. "05". An extra takes the number of
     /// the screen it is a variant of.
     var number: String {
         if self == .inCallUnencrypted || self == .inCallHoldForMe { return Self.inCall.number }
+        if self == .holdWaiting { return Self.dialer.number }
         let index = Self.allCases.firstIndex(of: self)! + 1
         return String(format: "%02d", index)
     }

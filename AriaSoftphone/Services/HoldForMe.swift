@@ -178,25 +178,51 @@ struct LiveHoldForMeBackend: HoldForMeBackend {
 
 @MainActor
 final class HoldForMeModel: ObservableObject {
-    static let shared = HoldForMeModel(backend: LiveHoldForMeBackend())
+    static let shared = HoldForMeModel(
+        backend: LiveHoldForMeBackend(),
+        activities: HoldActivityController(facade: LiveActivityFacade())
+    )
 
     /// The PBX offers Hold for me to this credential (C1).
-    @Published private(set) var available = false
+    @Published private(set) var available = false {
+        didSet { if available != oldValue { syncActivities() } }
+    }
     /// Open and just-ended waits, by `hold_wait_id`.
-    @Published private(set) var waits: [String: HoldWait] = [:]
+    @Published private(set) var waits: [String: HoldWait] = [:] {
+        didSet { syncActivities() }
+    }
     @Published private(set) var transcripts: [String: [TranscriptLine]] = [:]
     /// The latest refusal, to show as a banner and then clear.
     @Published var banner: HoldRefusal?
     @Published private(set) var settings: HoldSettings?
+    /// The wait the user asked to cancel (the card's Cancel, or the Live
+    /// Activity's link); the card asks Rejoin now or Hang up.
+    @Published var cancelRequest: String?
 
     var backend: HoldForMeBackend
+    /// The Live Activities; nil in tests that do not look at them.
+    var activities: HoldActivityController?
+    /// `GET /me`, to know whether Hold for me is offered.
+    var fetchIdentity: () async throws -> PbxApiClient.Identity = HoldForMeModel.liveIdentity
     /// The PBX's id for this phone's own call; nil when it is not listed.
     var resolveCallId: (ActiveCall) async -> String? = HoldForMeModel.resolveLive
     var isInConference: () -> Bool = { CallManager.shared.isInConference }
     private var isStarting = false
 
-    init(backend: HoldForMeBackend) {
+    init(backend: HoldForMeBackend, activities: HoldActivityController? = nil) {
         self.backend = backend
+        self.activities = activities
+    }
+
+    /// The open waits, oldest first: what the card and the activities show.
+    /// Nothing at all while the feature is off.
+    var openWaits: [HoldWait] {
+        guard available else { return [] }
+        return waits.values.filter(\.isOpen).sorted { ($0.startedAt, $0.holdWaitId) < ($1.startedAt, $1.holdWaitId) }
+    }
+
+    private func syncActivities() {
+        activities?.sync(openWaits)
     }
 
     /// Everything the account had; for sign-out.
@@ -206,6 +232,7 @@ final class HoldForMeModel: ObservableObject {
         transcripts = [:]
         banner = nil
         settings = nil
+        cancelRequest = nil
         isStarting = false
     }
 
@@ -218,6 +245,23 @@ final class HoldForMeModel: ObservableObject {
 
     func setAvailable(_ on: Bool) {
         if available != on { available = on }
+    }
+
+    /// The app came to the foreground: re-read `/me`, then take the PBX's
+    /// open waits (the socket runs only in the foreground, so a wait may have
+    /// ended meanwhile). A failed `/me` leaves the last known answer.
+    func becameActive() async {
+        if let identity = try? await fetchIdentity() { refreshAvailability(identity: identity) }
+        if available { await reconcile() } else { syncActivities() }
+    }
+
+    static func liveIdentity() async throws -> PbxApiClient.Identity {
+        let settings = AccountSettings.load()
+        guard !settings.apiUrl.isEmpty, KeychainStore.get(KeychainStore.jwtKey) != nil else {
+            throw PbxSessionError.notSignedIn
+        }
+        let client = PbxApiClient(baseUrl: settings.apiUrl)
+        return try await PbxSession.shared.authorized { try await client.identity(jwt: $0) }
     }
 
     /// Hold for me for `call`: the flag, an outgoing call that has been
@@ -255,9 +299,19 @@ final class HoldForMeModel: ObservableObject {
         }
     }
 
+    /// Ask to cancel `id`: the card opens its Rejoin now / Hang up choice.
+    /// A wait this phone has not heard of yet (the app was just opened from
+    /// the Live Activity) is looked up first.
+    func requestCancel(_ id: String) async {
+        if waits[id] == nil { await reconcile() }
+        guard available, waits[id]?.isOpen == true else { return }
+        cancelRequest = id
+    }
+
     /// Cancel a wait: ring the user to rejoin, or hang up on the far party.
     func cancel(_ id: String, rejoin: Bool) async {
         guard let wait = waits[id] else { return }
+        cancelRequest = nil
         if let updated = try? await backend.cancel(callId: wait.callId, action: rejoin ? "rejoin" : "hang_up") {
             waits[id] = updated
         }

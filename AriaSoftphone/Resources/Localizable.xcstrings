@@ -3203,6 +3203,28 @@
         }
       }
     },
+    "Hang up" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Colgar"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auflegen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raccrocher"
+          }
+        }
+      }
+    },
     "Hide keypad" : {
       "localizations" : {
         "es" : {
@@ -5579,6 +5601,28 @@
         }
       }
     },
+    "Rejoin now" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volver ahora"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt zurückkehren"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revenir maintenant"
+          }
+        }
+      }
+    },
     "Remove" : {
       "localizations" : {
         "es" : {
@@ -5707,6 +5751,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Résultat"
+          }
+        }
+      }
+    },
+    "Ringing you…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te estamos llamando…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir rufen Sie an…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nous vous appelons…"
           }
         }
       }
@@ -6459,6 +6525,28 @@
         }
       }
     },
+    "Someone answered" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alguien contestó"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jemand hat abgenommen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelqu'un a répondu"
+          }
+        }
+      }
+    },
     "Speaker" : {
       "localizations" : {
         "es" : {
@@ -6609,6 +6697,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Arrêter"
+          }
+        }
+      }
+    },
+    "Stop holding?" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Dejar de esperar?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten beenden?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrêter l'attente ?"
           }
         }
       }
@@ -7643,6 +7753,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pastille de messagerie sur l’icône"
+          }
+        }
+      }
+    },
+    "Waiting on hold · %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En espera · %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In der Warteschleife · %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En attente · %@"
           }
         }
       }

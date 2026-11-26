@@ -20,4 +20,22 @@ final class HoldForMeUITests: AriaUITestCase {
         XCTAssertTrue(element("call.moveTo").waitForExistence(timeout: 5), "the menu is open")
         XCTAssertFalse(element("call.holdForMe").exists)
     }
+
+    func testTheWaitingCardShowsElapsedAndCancelOffersRejoinOrHangUp() {
+        launch("hold-waiting")
+        let card = element("holdWait.card")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(card.label.contains("12:3"), "elapsed time: \(card.label)")
+        element("holdWait.cancel").tap()
+        XCTAssertTrue(element("holdWait.hangUp").waitForExistence(timeout: 5))
+        element("holdWait.rejoinNow").tap()
+        XCTAssertTrue(fixtureEvent("holdForMe.cancelled:rejoin"))
+        XCTAssertTrue(card.waitForNonExistence(timeout: 5), "the card goes when the wait ends")
+    }
+
+    func testTheWaitingCardIsHiddenWithoutTheFlag() {
+        launch("hold-waiting", extra: ["-FixtureNoHoldForMe"])
+        XCTAssertTrue(tab(0).waitForExistence(timeout: 5))
+        XCTAssertFalse(element("holdWait.card").exists)
+    }
 }

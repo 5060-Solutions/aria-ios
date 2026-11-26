@@ -17,7 +17,7 @@ enum FixtureBootstrap {
             SipEngineManager.shared.deviceId = FixtureData.account.pbxDeviceId
             SipEngineManager.shared.isRecovering = FixtureMode.isReconnecting
         }
-        installHoldForMe()
+        installHoldForMe(scene: scene)
         AccountSession.shared.applyFixture(signedIn: scene.isSignedIn)
         CallManager.shared.loadFixture(calls: FixtureData.calls(for: scene))
     }
@@ -25,12 +25,21 @@ enum FixtureBootstrap {
     /// Hold for me answers from memory, and is offered unless the launch
     /// arguments turn the flag off.
     @MainActor
-    private static func installHoldForMe() {
+    private static func installHoldForMe(scene: FixtureScene) {
         let model = HoldForMeModel.shared
         model.reset()
         model.backend = FixtureHoldForMeBackend()
         model.resolveCallId = { $0.callId }
         model.setAvailable(FixtureMode.offersHoldForMe)
+        model.activities = HoldActivityController(facade: FixtureActivityFacade())
+        if scene == .holdWaiting {
+            let started = Date().addingTimeInterval(-(12 * 60 + 34))
+            model.handle(.state(
+                HoldWait(holdWaitId: "fx-hold-1", callId: "fx-call-1", state: "waiting", greeting: .line,
+                         startedAt: started, stateSince: started, maxWaitSecs: 10800, falseAlarms: 0,
+                         remote: .init(number: "4155550142", name: nil), ringReason: nil, endedReason: nil),
+                transcript: []))
+        }
     }
 
     /// Start from empty settings, so a previous run or a real account on the
@@ -119,6 +128,18 @@ struct FixtureHoldForMeBackend: HoldForMeBackend {
         await record("holdForMe.greeting:\(greeting.rawValue)")
         return HoldSettings(greeting: greeting, assistantAvailable: saved.assistantAvailable, maxWaitSecs: saved.maxWaitSecs)
     }
+}
+
+/// Live Activities held in memory: fixtures never reach ActivityKit.
+@MainActor
+final class FixtureActivityFacade: ActivityFacade {
+    private var live: Set<String> = []
+    func existingIds() -> [String] { Array(live) }
+    func start(_ attributes: HoldWaitAttributes, state: HoldWaitAttributes.ContentState, staleDate: Date) {
+        live.insert(attributes.holdWaitId)
+    }
+    func update(id: String, state: HoldWaitAttributes.ContentState, staleDate: Date) {}
+    func end(id: String) { live.remove(id) }
 }
 
 // MARK: - Voicemail

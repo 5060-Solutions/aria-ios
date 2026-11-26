@@ -101,6 +101,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             ActivityRefresher.shared.becameActive()
             MessagingService.shared.becameActive()
             CallMoveModel.shared.becameActive()
+            // The flag from /me, and the waits the PBX still has open: one
+            // may have ended while the app was away.
+            Task { await HoldForMeModel.shared.becameActive() }
             Task { await Proximity.shared.becameActive() }
         }
     }
