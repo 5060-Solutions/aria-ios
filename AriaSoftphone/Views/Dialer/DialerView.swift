@@ -71,13 +71,16 @@ struct DialerView: View {
 
     private func pad(_ metrics: DialPadMetrics) -> some View {
         VStack(spacing: 0) {
-            StatusChip(
-                accountName: displayName.isEmpty ? username : displayName,
-                state: sipEngine.connectionState,
-                isDoNotDisturb: selfService.doNotDisturb == true,
-                isForwarding: selfService.isForwardingAll
-            ) {
-                showConnection = true
+            ZStack {
+                StatusChip(
+                    accountName: displayName.isEmpty ? username : displayName,
+                    state: sipEngine.connectionState,
+                    isDoNotDisturb: selfService.doNotDisturb == true,
+                    isForwarding: selfService.isForwardingAll
+                ) {
+                    showConnection = true
+                }
+                HStack { HeaderMark(); Spacer() }
             }
             .padding(.top, Space.xs)
             .onGeometryChange(for: CGFloat.self) { $0.size.height + Space.xs } action: { chipHeight = $0 }

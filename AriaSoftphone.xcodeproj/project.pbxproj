@@ -51,6 +51,7 @@
 		45EB1D9F6622F1A053207774 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D600DB1B22F44048B170F3 /* Theme.swift */; };
 		482DDF2723C58D758DCA1302 /* NetworkRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84AE8762E3CE45753FE29CD5 /* NetworkRecoveryTests.swift */; };
 		486C13E1BC66FE2FDCC37250 /* ForwardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1037FD2749085B2D44D7FA /* ForwardingView.swift */; };
+		487A475359BFF7CA0F63E550 /* LaunchIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49CD4678BD604BEC6FC51C2 /* LaunchIntro.swift */; };
 		4A368D2D3BC2B690E5FCF48A /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */; };
 		4B3DCE22F351CF0FACAE9B25 /* CallMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F9B60951C1CF0A502DD22D /* CallMove.swift */; };
 		4DFDC219DB5F921ED2081607 /* SetupLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC7328235BDF3F5C90DAA7C /* SetupLink.swift */; };
@@ -135,6 +136,7 @@
 		E8B63C7CA74C0374F1190497 /* AriaMobileCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */; };
 		EAE0B2670FFC393C7066FF2A /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70BD257DEA8C77B7FCC1F88 /* Avatar.swift */; };
 		EB0DC0E6B79631E00D3825EE /* ConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F417E48E79AC5552D6F060B /* ConnectionSheet.swift */; };
+		EC152C1FAEF4C9AECC323F94 /* LaunchIntroTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BF94E5927B841D7D6A1A95 /* LaunchIntroTests.swift */; };
 		EE9FADDB11605BDADFAD4689 /* ActivityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3EF068B7199B2FE8D0C28B /* ActivityRefresher.swift */; };
 		F14A5BA64EDC32FDCA25CA17 /* PhoneNumberKit in Frameworks */ = {isa = PBXBuildFile; productRef = A9BB8CFA39E3042312860562 /* PhoneNumberKit */; };
 		F19CA286DA66AD0D21D004F0 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6B96E5828C9B4D4BB38550 /* StubURLProtocol.swift */; };
@@ -240,6 +242,7 @@
 		9413BD30F0D5C2BCEB76CECC /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		96EE5B4497BF73AFAB012F0C /* CallTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTranscription.swift; sourceTree = "<group>"; };
 		977335B2802A80180636380B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		98BF94E5927B841D7D6A1A95 /* LaunchIntroTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchIntroTests.swift; sourceTree = "<group>"; };
 		997DB051E23D4E120FF4CE70 /* KeychainMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainMigrationTests.swift; sourceTree = "<group>"; };
 		9A4869ED93080641E10B496E /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		9B394D4A14FE5DDBFF909167 /* CallScreenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallScreenTests.swift; sourceTree = "<group>"; };
@@ -280,6 +283,7 @@
 		D0E1FE0C211A74E327ECD496 /* AriaUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AriaUITests.swift; sourceTree = "<group>"; };
 		D2113F4B394A54ACB9986933 /* ServerCallHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCallHistory.swift; sourceTree = "<group>"; };
 		D3725B4A968B21A006B806EF /* CallerNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallerNames.swift; sourceTree = "<group>"; };
+		D49CD4678BD604BEC6FC51C2 /* LaunchIntro.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchIntro.swift; sourceTree = "<group>"; };
 		D67AD6441F0C7F4FE54B6431 /* ContactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsView.swift; sourceTree = "<group>"; };
 		D70BD257DEA8C77B7FCC1F88 /* Avatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Avatar.swift; sourceTree = "<group>"; };
 		DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AriaSoftphoneApp.swift; sourceTree = "<group>"; };
@@ -354,6 +358,14 @@
 			path = Push;
 			sourceTree = "<group>";
 		};
+		218F1F9FA4720E040BD8D9ED /* Launch */ = {
+			isa = PBXGroup;
+			children = (
+				D49CD4678BD604BEC6FC51C2 /* LaunchIntro.swift */,
+			);
+			path = Launch;
+			sourceTree = "<group>";
+		};
 		25F6B9B77B0BBF617467CDD1 /* Diagnostics */ = {
 			isa = PBXGroup;
 			children = (
@@ -419,6 +431,7 @@
 				DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */,
 				74546B33F0820C01FC71E527 /* IPadLayoutTests.swift */,
 				997DB051E23D4E120FF4CE70 /* KeychainMigrationTests.swift */,
+				98BF94E5927B841D7D6A1A95 /* LaunchIntroTests.swift */,
 				DA0DF8B5FAAE3B38625A8814 /* LocalizationTests.swift */,
 				806512C6BFDA03885B045392 /* MessagingTests.swift */,
 				01DEE3030E150F3DAB66C478 /* MwiCallerNamesCodecsTests.swift */,
@@ -635,6 +648,7 @@
 				AC35A85E79F3ABD8A8996E25 /* Contacts */,
 				25F6B9B77B0BBF617467CDD1 /* Diagnostics */,
 				FC4046F03F5A1663FDFE023D /* Dialer */,
+				218F1F9FA4720E040BD8D9ED /* Launch */,
 				C1B2DDDD74CCEA38788D8AD0 /* Messages */,
 				CCCD6BC84B5F06E942B405FC /* Settings */,
 				C250B8EB145343BE264FAC85 /* Setup */,
@@ -842,6 +856,7 @@
 				D0B147CD950404B400F0FC27 /* IPadLayoutTests.swift in Sources */,
 				FADC8E36008E726A1888947E /* IncomingPushTriageTests.swift in Sources */,
 				94947B1A5C8E6F318A53E6D6 /* KeychainMigrationTests.swift in Sources */,
+				EC152C1FAEF4C9AECC323F94 /* LaunchIntroTests.swift in Sources */,
 				A80C0208337A0E657FBFB9B9 /* LocalizationTests.swift in Sources */,
 				3D28255F4138AE2DC47CB130 /* MessagingTests.swift in Sources */,
 				6026531CB811117FB0F26FA1 /* MwiCallerNamesCodecsTests.swift in Sources */,
@@ -916,6 +931,7 @@
 				F891814AFF53997FE76EAFE2 /* GatewayTokenRenewer.swift in Sources */,
 				C83FF6A53FEE2BA978A2B9A7 /* HistoryView.swift in Sources */,
 				37F9993221BC459599D7CEF5 /* KeychainStore.swift in Sources */,
+				487A475359BFF7CA0F63E550 /* LaunchIntro.swift in Sources */,
 				28D6781BE0E6B406D6798509 /* LocalNotifications.swift in Sources */,
 				D4338A2D06CC2410BA2028F5 /* ManualSetup.swift in Sources */,
 				D15F4BAA0B13A594B979A82A /* ManualSetupView.swift in Sources */,
