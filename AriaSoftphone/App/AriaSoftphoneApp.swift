@@ -15,6 +15,7 @@ struct AriaSoftphoneApp: App {
                 .environmentObject(sipEngine)
                 .modifier(DeepLinkHandling())
                 .modifier(CallNotices())
+                .modifier(CallMoveOverlays())
         }
     }
 }
@@ -99,6 +100,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         MainActor.assumeIsolated {
             ActivityRefresher.shared.becameActive()
             MessagingService.shared.becameActive()
+            CallMoveModel.shared.becameActive()
+            Task { await Proximity.shared.becameActive() }
         }
     }
 
@@ -107,6 +110,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         MainActor.assumeIsolated {
             ActivityRefresher.shared.resignedActive()
             MessagingService.shared.resignedActive()
+            CallMoveModel.shared.resignedActive()
+            Proximity.shared.resignedActive()
         }
     }
 

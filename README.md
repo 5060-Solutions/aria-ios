@@ -11,10 +11,16 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 - **Contacts integration** -- search and call from iOS contacts (CNContactStore)
 - **Call history** -- incoming, outgoing and missed calls, stored on device; tap to call back
 - **Messages** -- business texting (SMS/MMS) on the numbers a seat is assigned: conversations per inbox with unread state, threads with delivery status, photos, a segment counter, live refresh (WebSocket plus a 15 s poll), and notification taps that open the thread. Uses the extension-login JWT against `/api/v1/tenants/{id}/messaging/...`
+- **Call move** -- a banner ("Call with X on Desk phone · Move here") when a call is live on another of your devices, and "Move to…" in the call's menu. The PBX swaps the device leg and the far party stays connected; this app never sends or accepts SIP `Replaces`. A move this phone asked for is answered straight away, with no ringing screen (it needs `moveId` in the VoIP push, see below)
+- **Call handoff** -- Settings > Call handoff: suggest nearby calls, move a call when you leave, and an opt-in, off-by-default Bluetooth LE hint (foreground only). Wi-Fi is reported as a SHA-256 of the interface's subnet, never the SSID, so no Location permission is needed
 - **Voicemail** -- list, play, mark read and delete messages via the Aria PBX API
 - **QR provisioning** -- scan, review the server it points to, then sign in
 - **Outgoing calls** -- routed through the push gateway B2BUA
 - **On-device transcription** -- optional, device builds with `AI=1` only
+
+### Push payload for a moved call
+
+The PBX's INVITE for a move carries `X-Aria-Move: <move_id>`. The app reads it from the VoIP push (`moveId`, optionally `moveFrom` with the label of the device the call leaves), because PushKit needs the call reported before anything is fetched. The push gateway must add those keys to the push for an INVITE with that header.
 
 ## Requirements
 

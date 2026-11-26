@@ -158,11 +158,20 @@ class CallManager: NSObject, ObservableObject {
         callToken: String,
         callerUri: String,
         callerName pushedName: String?,
+        moveId: String? = nil,
+        moveFrom: String? = nil,
         completion: @escaping (Error?) -> Void
     ) {
         // The address book's name for the number when the push has none:
         // an in-memory lookup, so the report stays synchronous.
-        let callerName = CallerNames.shared.resolve(uri: callerUri, current: pushedName)
+        let resolvedName = CallerNames.shared.resolve(uri: callerUri, current: pushedName)
+        // The PBX's INVITE of a call moved to a device: one this phone asked
+        // for is answered at once; any other rings, labelled with where the
+        // call comes from.
+        let move = moveId.flatMap { PendingMoveStore.shared.consume(moveId: $0) }
+        let callerName: String? = (move == nil && moveId != nil)
+            ? CallMoveLabel.unrequested(name: resolvedName ?? callerUri, from: moveFrom)
+            : resolvedName
         switch IncomingPushTriage.decide(
             callToken: callToken,
             calls: registry.calls,
@@ -201,14 +210,16 @@ class CallManager: NSObject, ObservableObject {
         case .accept:
             // Claim the slot now, not in the completion: a second push that
             // arrives before CallKit answers must see this call.
-            registry.add(ActiveCall(
+            var incoming = ActiveCall(
                 uuid: uuid,
                 callToken: callToken,
                 remoteUri: callerUri,
                 remoteName: callerName,
                 direction: .inbound,
                 state: .incoming
-            ))
+            )
+            incoming.originalStartedAt = move?.callStartedAt
+            registry.add(incoming)
             reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
                 guard let self = self else { return }
                 if let error = error {
@@ -220,6 +231,16 @@ class CallManager: NSObject, ObservableObject {
                     return
                 }
                 completion(nil)
+                // A move this phone asked for: straight into the call, with
+                // no ringing screen. PushKit obliges the app to report every
+                // VoIP push as an *incoming* call, so it cannot be reported as
+                // outgoing (`CXStartCallAction` + `reportOutgoingCall`) here:
+                // that would be a second call for the same push. What is
+                // possible is to answer in the same run loop turn the report
+                // completes, with the caller named (not "Moving call"), so a
+                // locked phone shows the system's incoming UI for an instant
+                // at most and an unlocked one only the green call banner.
+                if move != nil { self.answerCall(uuid: uuid) }
             }
         }
     }
@@ -741,7 +762,13 @@ class CallManager: NSObject, ObservableObject {
 
         switch info.state {
         case .ended:
-            let ending = CallEnding.resolve(for: call, reason: info.endReason)
+            var ending = CallEnding.resolve(for: call, reason: info.endReason)
+            // The PBX ends this leg after moving the call to another device.
+            if info.endReason == .remoteHangup, call.isConnected,
+               let device = MainActor.assumeIsolated({ CallMoveModel.shared.takeMovedAway() }) {
+                ending = CallEnding(callKitReason: ending.callKitReason, outcome: .transferred)
+                MainActor.assumeIsolated { CallMoveModel.shared.showMoved(to: device) }
+            }
             if let reason = ending.callKitReason {
                 provider.reportCall(with: call.uuid, endedAt: Date(), reason: reason)
             }
@@ -1165,6 +1192,9 @@ struct ActiveCall: Identifiable {
     /// `G729`), once there is media.
     var codec: String?
     var connectedAt: Date?
+    /// When the call began on the device it was moved from; nil for a call
+    /// that did not move here.
+    var originalStartedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
 
@@ -1220,8 +1250,8 @@ struct ActiveCall: Identifiable {
     }
 
     var duration: TimeInterval {
-        guard let connectedAt = connectedAt else { return 0 }
-        return Date().timeIntervalSince(connectedAt)
+        guard let began = originalStartedAt ?? connectedAt else { return 0 }
+        return Date().timeIntervalSince(began)
     }
 
     var displayName: String {

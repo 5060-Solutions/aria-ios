@@ -83,6 +83,7 @@ struct SettingsView: View {
 
                     if hasAccount {
                         CallingSection()
+                        CallHandoffSection()
                         AudioRecordingSection()
                     }
 

@@ -347,6 +347,7 @@ class SipEngineManager: ObservableObject {
         // live calls' media and recovers the registration itself, and
         // reports progress through onRegistrationChanged.
         networkNotifier.signal()
+        Task { @MainActor in await Proximity.shared.pathChanged() }
         if available { restoreIfNeverRegistered() }
     }
 

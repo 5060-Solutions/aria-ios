@@ -115,6 +115,29 @@
           }
         }
       }
+    },
+    "NSBluetoothAlwaysUsageDescription" : {
+      "comment" : "Privacy - Bluetooth Always Usage Description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aria nutzt Bluetooth nur, wenn du es in den Einstellungen einschaltest, damit deine Geräte sich erkennen und einen Anruf übergeben können. Nur bei geöffneter App."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aria usa Bluetooth solo si lo activas en Ajustes, para que tus dispositivos se detecten entre sí y puedan pasarse una llamada. Solo funciona con la app abierta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aria utilise le Bluetooth uniquement si vous l’activez dans les Réglages, pour que vos appareils se repèrent et puissent se transmettre un appel. Uniquement lorsque l’app est ouverte."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

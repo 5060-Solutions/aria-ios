@@ -19,6 +19,7 @@ struct CallView: View {
     /// the sheet never moves to a call that takes the screen meanwhile.
     @State private var transferCall: ActiveCall?
     @State private var showAddCall = false
+    @State private var showMoveTo = false
     @State private var isCompletingTransfer = false
     @State private var transferError: String?
     @State private var link = CallLinkStatus()
@@ -82,6 +83,9 @@ struct CallView: View {
             .sheet(isPresented: $showAddCall) {
                 AddCallView()
                     .environmentObject(callManager)
+            }
+            .sheet(isPresented: $showMoveTo) {
+                MoveToView()
             }
     }
 
@@ -330,6 +334,8 @@ struct CallView: View {
             } else {
                 Button("Record", systemImage: "record.circle") { startRecording(shown.uuid) }
             }
+            Button("Move to…", systemImage: "arrow.left.arrow.right") { showMoveTo = true }
+                .accessibilityIdentifier("call.moveTo")
             if callManager.isInConference {
                 Button("Split Calls", systemImage: "arrow.triangle.branch") { callManager.splitConference() }
                     .accessibilityIdentifier("call.split")
@@ -402,6 +408,12 @@ struct CallView: View {
                         .accessibilityLabel(Text("Call time"))
                         .accessibilityValue(Text(Duration.seconds(Int(shown.duration))
                             .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))))
+                }
+                if let began = shown.originalStartedAt {
+                    Text("Started \(began.formatted(date: .omitted, time: .shortened))")
+                        .ariaFont(.label)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .accessibilityIdentifier("call.movedStart")
                 }
             case .held:
                 statusText(String(localized: "On hold"), systemImage: "pause.fill")
