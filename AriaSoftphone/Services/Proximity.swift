@@ -26,8 +26,6 @@ import CoreBluetooth
 /// hashes of one user's own devices, which keeps the common 192.168.x.0/24
 /// subnets of unrelated homes from meeting.
 enum NetworkIdentity {
-    static let prefix = "aria-network-v1:"
-
     /// "192.168.1.0/24" for an address and its mask.
     static func subnetKey(address: UInt32, mask: UInt32) -> String {
         let network = address & mask
@@ -36,14 +34,19 @@ enum NetworkIdentity {
         return "\(bytes.map(String.init).joined(separator: "."))/\(prefixLength)"
     }
 
-    /// Lowercase hex SHA-256 of the subnet key.
-    static func hash(subnetKey: String) -> String {
-        SHA256.hash(data: Data((prefix + subnetKey).utf8))
-            .map { String(format: "%02x", $0) }.joined()
+    /// The call-move contract's `network_hash`, the same on every platform:
+    /// `lowercase_hex(sha256("aria-net-v1|" + extension_id + "|" + gateway + "|" + network/prefix))`.
+    /// The extension id (lowercased) salts it per user.
+    static func hash(extensionId: String, gateway: String, subnetKey: String) -> String {
+        let input = "aria-net-v1|\(extensionId.lowercased())|\(gateway)|\(subnetKey)"
+        return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// The hash of the Wi-Fi or Ethernet subnet now, nil on cellular only.
-    static func current() -> String? {
+    /// The hash of the Wi-Fi or Ethernet network now; nil without an IPv4
+    /// default route (cellular only, IPv6 only, a full-tunnel VPN) or when
+    /// signed out.
+    static func current(extensionId: String? = UserDefaults.standard.string(forKey: AccountSettings.Key.extensionId)) -> String? {
+        guard let extensionId, !extensionId.isEmpty else { return nil }
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0, let first = head else { return nil }
         defer { freeifaddrs(head) }
@@ -62,7 +65,55 @@ enum NetworkIdentity {
             let netmask = mask.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { UInt32(bigEndian: $0.pointee.sin_addr.s_addr) }
             // Link-local (no DHCP lease) says nothing about a network.
             if address >> 16 == 0xA9FE { continue }
-            return hash(subnetKey: subnetKey(address: address, mask: netmask))
+            // The default route must be on this interface.
+            guard let gateway = defaultGateway(interfaceIndex: if_nametoindex(name)) else { continue }
+            let g = [24, 16, 8, 0].map { String((gateway >> UInt32($0)) & 0xff) }.joined(separator: ".")
+            return hash(extensionId: extensionId, gateway: g, subnetKey: subnetKey(address: address, mask: netmask))
+        }
+        return nil
+    }
+
+    /// The IPv4 default gateway on `interfaceIndex` from the kernel's routing
+    /// table (`sysctl` NET_RT_FLAGS), as a host-order address.
+    static func defaultGateway(interfaceIndex: UInt32) -> UInt32? {
+        var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, AF_INET, 2 /* NET_RT_FLAGS */, 2 /* RTF_GATEWAY */]
+        var length = 0
+        guard sysctl(&mib, UInt32(mib.count), nil, &length, nil, 0) == 0, length > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: length)
+        guard sysctl(&mib, UInt32(mib.count), &buffer, &length, nil, 0) == 0 else { return nil }
+        return parseDefaultGateway(Array(buffer.prefix(length)), interfaceIndex: interfaceIndex)
+    }
+
+    /// Reads `rt_msghdr` records (92-byte header, then sockaddrs for the
+    /// RTA_* bits set in `rtm_addrs`, each padded to 4 bytes) and returns the
+    /// gateway of the IPv4 default route (destination 0.0.0.0) on the interface.
+    static func parseDefaultGateway(_ bytes: [UInt8], interfaceIndex: UInt32) -> UInt32? {
+        let headerSize = 92
+        var offset = 0
+        while offset + headerSize <= bytes.count {
+            let length = Int(bytes[offset]) | Int(bytes[offset + 1]) << 8
+            guard length >= headerSize, offset + length <= bytes.count else { return nil }
+            let index = UInt32(bytes[offset + 4]) | UInt32(bytes[offset + 5]) << 8
+            let addrs = Int32(bytes[offset + 12]) | Int32(bytes[offset + 13]) << 8
+            var cursor = offset + headerSize
+            var destination: UInt32?
+            var gateway: UInt32?
+            for bit in 0..<8 where addrs & (1 << Int32(bit)) != 0 {
+                guard cursor < offset + length else { break }
+                let saLength = Int(bytes[cursor])
+                let family = cursor + 1 < bytes.count ? Int32(bytes[cursor + 1]) : 0
+                if family == AF_INET, saLength >= 8, cursor + 8 <= bytes.count {
+                    let value = UInt32(bytes[cursor + 4]) << 24 | UInt32(bytes[cursor + 5]) << 16
+                        | UInt32(bytes[cursor + 6]) << 8 | UInt32(bytes[cursor + 7])
+                    if bit == 0 { destination = value } else if bit == 1 { gateway = value }
+                } else if bit == 0, saLength <= 8 {
+                    // A default route's destination may be a zero-length sockaddr.
+                    destination = 0
+                }
+                cursor += saLength == 0 ? 4 : (saLength + 3) & ~3
+            }
+            if index == interfaceIndex, destination == 0, let gateway { return gateway }
+            offset += length
         }
         return nil
     }
@@ -296,6 +347,9 @@ final class Proximity: ObservableObject {
     func resignedActive() {
         reportTimer?.invalidate()
         reportTimer = nil
+        // The token's rotation would start BLE again in the background.
+        rotation?.cancel()
+        rotation = nil
         ble.stop()
     }
 
@@ -306,6 +360,8 @@ final class Proximity: ObservableObject {
         hasReportedOnce = false
         reportTimer?.invalidate()
         reportTimer = nil
+        rotation?.cancel()
+        rotation = nil
         ble.stop()
     }
 
@@ -422,11 +478,19 @@ final class Proximity: ObservableObject {
         rotation?.cancel()
         rotation = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(lifetime * 1_000_000_000))
-            if !Task.isCancelled { await self?.updateBle() }
+            if !Task.isCancelled { await self?.rotateIfActive() }
         }
     }
 
     private var rotation: Task<Void, Never>?
+    var hasScheduledRotation: Bool { rotation != nil }
+
+    /// A token rotation: only while the app is visible (a cancelled task, or
+    /// BLE already stopped, restarts nothing).
+    private func rotateIfActive() async {
+        guard ble.isRunning else { return }
+        await updateBle()
+    }
 
     private func reportBleSeen(_ seen: [BleSighting]) async {
         guard !seen.isEmpty, await moves.ownRegistration() != nil, let instance = moves.ownSipInstance() else { return }

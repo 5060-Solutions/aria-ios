@@ -232,7 +232,14 @@ class CallManager: NSObject, ObservableObject {
                 }
                 completion(nil)
                 // A move this phone asked for: straight into the call, with
-                // no ringing screen.
+                // no ringing screen. PushKit obliges the app to report every
+                // VoIP push as an *incoming* call, so it cannot be reported as
+                // outgoing (`CXStartCallAction` + `reportOutgoingCall`) here:
+                // that would be a second call for the same push. What is
+                // possible is to answer in the same run loop turn the report
+                // completes, with the caller named (not "Moving call"), so a
+                // locked phone shows the system's incoming UI for an instant
+                // at most and an unlocked one only the green call banner.
                 if move != nil { self.answerCall(uuid: uuid) }
             }
         }

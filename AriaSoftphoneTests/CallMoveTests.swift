@@ -141,6 +141,7 @@ final class CallMoveTests: XCTestCase {
         let store = PendingMoveStore()
         let t0 = Date()
         store.register(moveId: "m1", callStartedAt: t0, fromLabel: "Desk", now: t0)
+        XCTAssertEqual(PendingMoveStore.lifetime, 30)
         XCTAssertNil(store.consume(moveId: "m1", now: t0.addingTimeInterval(PendingMoveStore.lifetime + 1)))
     }
 

@@ -182,7 +182,7 @@ final class PendingMoveStore {
 
     static let shared = PendingMoveStore()
     /// The PBX gives up on a move after 20 s.
-    static let lifetime: TimeInterval = 60
+    static let lifetime: TimeInterval = 30
 
     private let lock = NSLock()
     private var entries: [String: Entry] = [:]

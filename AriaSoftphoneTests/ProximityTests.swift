@@ -11,13 +11,48 @@ final class ProximityTests: XCTestCase {
         XCTAssertEqual(NetworkIdentity.subnetKey(address: 0x0A00_0507, mask: 0xFFFF_0000), "10.0.0.0/16")
     }
 
+    private let ext = "ce0284f1-9c1e-420e-8bff-3b7b1f33cc25"
+
+    /// The vector every app asserts: gateway 192.168.1.1, network 192.168.1.0/24.
+    func testTheHashMatchesTheSharedVector() {
+        let key = NetworkIdentity.subnetKey(address: 0xC0A8_0139, mask: 0xFFFF_FF00)
+        XCTAssertEqual(key, "192.168.1.0/24")
+        XCTAssertEqual(
+            NetworkIdentity.hash(extensionId: ext.uppercased(), gateway: "192.168.1.1", subnetKey: key),
+            "c220200c4e27272ef046b841eba83e316a8c004fd8c5a91289d6df1936ba90a3"
+        )
+    }
+
     func testTheHashIsStableHexAndHidesTheNetwork() {
-        let hash = NetworkIdentity.hash(subnetKey: "192.168.1.0/24")
+        let hash = NetworkIdentity.hash(extensionId: ext, gateway: "192.168.1.1", subnetKey: "192.168.1.0/24")
         XCTAssertEqual(hash.count, 64)
-        XCTAssertEqual(hash, NetworkIdentity.hash(subnetKey: "192.168.1.0/24"))
-        XCTAssertNotEqual(hash, NetworkIdentity.hash(subnetKey: "192.168.2.0/24"))
+        XCTAssertNotEqual(hash, NetworkIdentity.hash(extensionId: ext, gateway: "192.168.1.1", subnetKey: "192.168.2.0/24"))
+        XCTAssertNotEqual(hash, NetworkIdentity.hash(extensionId: "other", gateway: "192.168.1.1", subnetKey: "192.168.1.0/24"))
         XCTAssertFalse(hash.contains("192"))
         XCTAssertNotNil(hash.range(of: "^[0-9a-f]{64}$", options: .regularExpression))
+    }
+
+    func testTheDefaultGatewayIsReadFromTheRoutingTable() {
+        // One rt_msghdr (92 bytes) for the default route on interface 6: a
+        // destination 0.0.0.0 and gateway 192.168.1.1 sockaddr_in each (16 bytes).
+        func sockaddr(_ a: UInt8, _ b: UInt8, _ c: UInt8, _ d: UInt8) -> [UInt8] {
+            [16, UInt8(AF_INET), 0, 0, a, b, c, d, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+        let body = sockaddr(0, 0, 0, 0) + sockaddr(192, 168, 1, 1)
+        var header = [UInt8](repeating: 0, count: 92)
+        let total = 92 + body.count
+        header[0] = UInt8(total & 0xff); header[1] = UInt8(total >> 8)
+        header[4] = 6                  // rtm_index
+        header[12] = 0b11              // rtm_addrs: RTA_DST | RTA_GATEWAY
+        let message = header + body
+        XCTAssertEqual(NetworkIdentity.parseDefaultGateway(message, interfaceIndex: 6), 0xC0A8_0101)
+        XCTAssertNil(NetworkIdentity.parseDefaultGateway(message, interfaceIndex: 7), "another interface's route")
+        XCTAssertNil(NetworkIdentity.parseDefaultGateway([], interfaceIndex: 6))
+    }
+
+    func testNoExtensionMeansNoHash() {
+        XCTAssertNil(NetworkIdentity.current(extensionId: nil))
+        XCTAssertNil(NetworkIdentity.current(extensionId: ""))
     }
 
     // MARK: Bluetooth token
@@ -285,6 +320,20 @@ final class ProximityTests: XCTestCase {
         proximity.ble.onSeen?([BleSighting(token: token, rssi: -60)])
         for _ in 0..<20 where backend.seen.isEmpty { try? await Task.sleep(nanoseconds: 50_000_000) }
         XCTAssertEqual(backend.seen, [[BleSighting(token: token, rssi: -60)]])
+    }
+
+    @MainActor func testResigningCancelsTheTokenRotation() async {
+        let backend = FakeProximity()
+        backend.stored.ble = true
+        let (proximity, _) = make(backend, FakeMoves())
+        await proximity.becameActive()
+        XCTAssertTrue(proximity.hasScheduledRotation)
+        proximity.resignedActive()
+        XCTAssertFalse(proximity.hasScheduledRotation)
+        XCTAssertFalse(proximity.ble.isRunning)
+        await proximity.becameActive()
+        proximity.reset()
+        XCTAssertFalse(proximity.hasScheduledRotation)
     }
 
     @MainActor func testBluetoothDoesNotStartWhileOff() async {
