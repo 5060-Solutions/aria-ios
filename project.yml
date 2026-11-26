@@ -7,6 +7,14 @@ options:
   deploymentTarget:
     iOS: "26.0"
   xcodeVersion: "16.0"
+# The version lives here, not in Info.plist, and once for every target: an
+# embedded extension whose version differs from the app's is rejected at
+# upload (ITMS-90473). Bump MARKETING_VERSION per release and
+# CURRENT_PROJECT_VERSION per upload.
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
 packages:
   # As-you-type number formatting (libphonenumber metadata): PhoneFormat.swift.
   PhoneNumberKit:
@@ -34,10 +42,8 @@ targets:
         # permission strings live in InfoPlist.xcstrings.
         SWIFT_EMIT_LOC_STRINGS: YES
         LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-        # The version lives here, not in Info.plist: bump MARKETING_VERSION
-        # per release and CURRENT_PROJECT_VERSION per upload.
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        # MARKETING_VERSION and CURRENT_PROJECT_VERSION are project-wide
+        # (settings, above), shared with the AriaHoldActivity extension.
         # iPhone and iPad. The iPad layout is a sidebar at regular width
         # (SidebarShell); the call screen and dial pad size to the room they
         # have.
@@ -165,8 +171,6 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         SWIFT_EMIT_LOC_STRINGS: YES
         LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2"
         SKIP_INSTALL: YES
     dependencies:
