@@ -2554,14 +2554,22 @@ public struct CallOffer {
     public var callerUri: String
     public var callerName: String?
     public var sdpOffer: String
+    /**
+     * The INVITE's X-Aria-Move value when the PBX is moving a call here.
+     */
+    public var moveId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(callToken: String, callerUri: String, callerName: String?, sdpOffer: String) {
+    public init(callToken: String, callerUri: String, callerName: String?, sdpOffer: String, 
+        /**
+         * The INVITE's X-Aria-Move value when the PBX is moving a call here.
+         */moveId: String?) {
         self.callToken = callToken
         self.callerUri = callerUri
         self.callerName = callerName
         self.sdpOffer = sdpOffer
+        self.moveId = moveId
     }
 }
 
@@ -2581,6 +2589,9 @@ extension CallOffer: Equatable, Hashable {
         if lhs.sdpOffer != rhs.sdpOffer {
             return false
         }
+        if lhs.moveId != rhs.moveId {
+            return false
+        }
         return true
     }
 
@@ -2589,6 +2600,7 @@ extension CallOffer: Equatable, Hashable {
         hasher.combine(callerUri)
         hasher.combine(callerName)
         hasher.combine(sdpOffer)
+        hasher.combine(moveId)
     }
 }
 
@@ -2603,7 +2615,8 @@ public struct FfiConverterTypeCallOffer: FfiConverterRustBuffer {
                 callToken: FfiConverterString.read(from: &buf), 
                 callerUri: FfiConverterString.read(from: &buf), 
                 callerName: FfiConverterOptionString.read(from: &buf), 
-                sdpOffer: FfiConverterString.read(from: &buf)
+                sdpOffer: FfiConverterString.read(from: &buf), 
+                moveId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -2612,6 +2625,7 @@ public struct FfiConverterTypeCallOffer: FfiConverterRustBuffer {
         FfiConverterString.write(value.callerUri, into: &buf)
         FfiConverterOptionString.write(value.callerName, into: &buf)
         FfiConverterString.write(value.sdpOffer, into: &buf)
+        FfiConverterOptionString.write(value.moveId, into: &buf)
     }
 }
 
