@@ -185,9 +185,23 @@ class PbxApiClient {
     struct Identity: Decodable {
         /// The extension the credential acts as on self-service routes.
         let actingExtension: String?
+        /// The company's calling country (ISO 3166-1 alpha-2), when set.
+        let callingCountry: String?
+        let homeAreaCode: String?
+        let role: String?
+        let isSuperadmin: Bool?
+
+        /// May read `calling/settings` (a tenant-admin route).
+        var isAdmin: Bool {
+            isSuperadmin == true || ["superadmin", "tenant_admin", "admin", "reseller_admin"].contains(role ?? "")
+        }
 
         enum CodingKeys: String, CodingKey {
             case actingExtension = "acting_extension"
+            case callingCountry = "calling_country"
+            case homeAreaCode = "home_area_code"
+            case role
+            case isSuperadmin = "is_superadmin"
         }
     }
 

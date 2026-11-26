@@ -120,4 +120,43 @@ final class PhoneFormatTests: XCTestCase {
         XCTAssertEqual(store.country, "GB")
         XCTAssertEqual(DefaultCountry(defaults: defaults).country, "GB", "cached across launches")
     }
+
+    // MARK: Source order
+
+    private func identity(country: String? = nil, role: String = "user") -> PbxApiClient.Identity {
+        let json: [String: Any?] = ["calling_country": country, "role": role, "is_superadmin": false]
+        let data = try! JSONSerialization.data(withJSONObject: json.compactMapValues { $0 })
+        return try! JSONDecoder().decode(PbxApiClient.Identity.self, from: data)
+    }
+
+    func testMeCountryWinsAndSettingsAreNotAsked() async {
+        var asked = false
+        let code = await DefaultCountry.resolve(
+            me: { self.identity(country: "gb", role: "tenant_admin") },
+            settings: { asked = true; return "US" })
+        XCTAssertEqual(code, "GB")
+        XCTAssertFalse(asked)
+    }
+
+    func testAdminWithNoMeCountryUsesSettings() async {
+        let code = await DefaultCountry.resolve(me: { self.identity(role: "tenant_admin") }, settings: { "DE" })
+        XCTAssertEqual(code, "DE")
+    }
+
+    func testNonAdminNeverCallsSettings() async {
+        var asked = false
+        let code = await DefaultCountry.resolve(me: { self.identity() }, settings: { asked = true; return "US" })
+        XCTAssertNil(code)
+        XCTAssertFalse(asked)
+    }
+
+    @MainActor
+    func testNothingKnownLeavesTheDeviceRegion() async {
+        let defaults = UserDefaults(suiteName: "PhoneFormatTests2")!
+        defaults.removePersistentDomain(forName: "PhoneFormatTests2")
+        let store = DefaultCountry(defaults: defaults)
+        let code = await DefaultCountry.resolve(me: { throw URLError(.notConnectedToInternet) }, settings: { "US" })
+        store.set(code)
+        XCTAssertEqual(store.country, PhoneFormat.deviceCountry)
+    }
 }

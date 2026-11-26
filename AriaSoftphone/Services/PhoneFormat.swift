@@ -155,10 +155,20 @@ final class DefaultCountry: ObservableObject {
         if code != country { country = code }
     }
 
-    /// Ask the PBX for the company's calling country. GET .../calling/settings
-    /// is a tenant-admin route, so a seat gets 403 and keeps the cached value
-    /// (the device region until something better is known); `/me` carries no
-    /// country.
+    /// Where the country comes from, in order: `/me`'s `calling_country`
+    /// (any signed-in user); the admin-only calling settings, asked only of
+    /// an admin; then what is cached, then the device region. nil keeps the
+    /// current value.
+    nonisolated static func resolve(
+        me: () async throws -> PbxApiClient.Identity,
+        settings: () async throws -> String?
+    ) async -> String? {
+        guard let identity = try? await me() else { return nil }
+        if let code = PhoneFormat.normalized(identity.callingCountry) { return code }
+        guard identity.isAdmin else { return nil }
+        return PhoneFormat.normalized(try? await settings())
+    }
+
     func refresh() async {
         if FixtureMode.isActive { return }
         let settings = AccountSettings.load()
@@ -167,7 +177,10 @@ final class DefaultCountry: ObservableObject {
               KeychainStore.get(KeychainStore.jwtKey) != nil else { return }
         let client = PbxApiClient(baseUrl: settings.apiUrl)
         let code = try? await PbxSession.shared.authorized { jwt in
-            try await client.callingCountry(jwt: jwt, tenantId: tenantId)
+            await Self.resolve(
+                me: { try await client.identity(jwt: jwt) },
+                settings: { try await client.callingCountry(jwt: jwt, tenantId: tenantId) }
+            )
         }
         set(code)
     }
