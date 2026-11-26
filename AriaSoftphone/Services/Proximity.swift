@@ -6,7 +6,8 @@ import CoreBluetooth
 //
 // Three signals, all optional on the server side:
 //  - the Wi-Fi network this phone is on, as a hash (never the SSID);
-//  - leaving that network while another of the user's devices has a call;
+//  - leaving that network while another of the user's devices has a call
+//    (a `left_network` context event);
 //  - with the user's opt-in, a Bluetooth LE token seen from another device.
 //
 // The server decides when to suggest a handoff (`handoff_suggested`); the app
@@ -69,7 +70,8 @@ enum NetworkIdentity {
 
 // MARK: - Settings and events
 
-/// The user's `/me/call-handoff` settings.
+/// The user's `/me/call-handoff` settings. `suggest_nearby` defaults to true
+/// on the server, the rest to false.
 struct CallHandoffSettings: Codable, Equatable {
     /// Offer to continue a call here when this phone is near it.
     var suggestNearby: Bool
@@ -80,58 +82,114 @@ struct CallHandoffSettings: Codable, Equatable {
 
     static let off = CallHandoffSettings(suggestNearby: false, autoMoveOnLeave: false, ble: false)
 
+    init(suggestNearby: Bool, autoMoveOnLeave: Bool, ble: Bool) {
+        self.suggestNearby = suggestNearby
+        self.autoMoveOnLeave = autoMoveOnLeave
+        self.ble = ble
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        suggestNearby = try c.decodeIfPresent(Bool.self, forKey: .suggestNearby) ?? true
+        autoMoveOnLeave = try c.decodeIfPresent(Bool.self, forKey: .autoMoveOnLeave) ?? false
+        ble = try c.decodeIfPresent(Bool.self, forKey: .ble) ?? false
+    }
+
     enum CodingKeys: String, CodingKey {
         case suggestNearby = "suggest_nearby"
         case autoMoveOnLeave = "auto_move_on_leave"
-        case ble = "ble_enabled"
+        case ble = "ble_opt_in"
     }
 }
 
 /// A server-issued rotating Bluetooth token (`GET .../ble-token`).
 struct BleToken: Decodable, Equatable {
-    /// Lowercase hex, 24 characters (12 bytes).
+    /// Lowercase hex, 32 characters (16 bytes).
     let token: String
-    let expiresAt: Date?
+    let rotatesAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case token
-        case expiresAt = "expires_at"
+        case rotatesAt = "rotates_at"
+    }
+
+    init(token: String, rotatesAt: Date?) {
+        self.token = token
+        self.rotatesAt = rotatesAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        token = try c.decode(String.self, forKey: .token)
+        // `rotates_at` is RFC 3339, with or without fractional seconds.
+        if let text = try c.decodeIfPresent(String.self, forKey: .rotatesAt) {
+            let plain = ISO8601DateFormatter()
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            rotatesAt = plain.date(from: text) ?? fractional.date(from: text)
+        } else {
+            rotatesAt = nil
+        }
+    }
+}
+
+/// One token heard over Bluetooth, with its signal strength.
+struct BleSighting: Equatable {
+    /// The most tokens one report may carry.
+    static let maxPerReport = 32
+    let token: String
+    let rssi: Int
+}
+
+/// What `POST .../context` answered.
+struct ContextResult: Decodable, Equatable {
+    /// `moved`, `suggested` or `none`.
+    let action: String
+    let callId: String?
+    let moveId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case action
+        case callId = "call_id"
+        case moveId = "move_id"
     }
 }
 
 enum ProximityEvent: Equatable {
-    /// The server suggests continuing `call` on this phone.
-    case handoffSuggested(UserCall)
+    /// The server suggests moving `callId` to `toRegistrationId`
+    /// (`reason`: `nearby`, `left_network` or `desktop_locked`).
+    case handoffSuggested(callId: String, toRegistrationId: String, reason: String)
 
     static func parse(_ text: String) -> ProximityEvent? {
         guard let data = text.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               object["type"] as? String == "handoff_suggested",
-              let call = object["call"],
-              let callData = try? JSONSerialization.data(withJSONObject: call),
-              let decoded = try? PbxApiClient.jsonDecoder.decode(UserCall.self, from: callData)
+              let callId = object["call_id"] as? String, !callId.isEmpty,
+              let target = object["to_registration_id"] as? String, !target.isEmpty
         else { return nil }
-        return .handoffSuggested(decoded)
+        return .handoffSuggested(callId: callId, toRegistrationId: target, reason: object["reason"] as? String ?? "")
     }
 }
 
 // MARK: - Bluetooth token encoding
 
-/// A token travels as the advertised service UUID: 4 magic bytes ("ARIA")
-/// then the token's 12 bytes. iOS apps cannot advertise service data, and a
-/// scanner that sees a UUID with the magic prefix knows it is Aria's.
+/// A token travels as the advertised service UUID: the server's 16 bytes
+/// (32 hex digits) are exactly one 128-bit UUID. iOS apps cannot advertise
+/// service data, so the UUID is the whole message.
 enum BleTokenCoding {
-    static let magic: [UInt8] = [0x41, 0x52, 0x49, 0x41]
-
     static func serviceUUID(forToken token: String) -> CBUUID? {
-        guard token.count == 24, let bytes = bytes(fromHex: token) else { return nil }
-        return CBUUID(data: Data(magic + bytes))
+        guard token.count == 32, let bytes = bytes(fromHex: token) else { return nil }
+        return CBUUID(data: Data(bytes))
     }
 
+    /// The token a service UUID carries; nil for a standard Bluetooth
+    /// service (a 16-bit number or the base UUID widened).
     static func token(from uuid: CBUUID) -> String? {
         let data = [UInt8](uuid.data)
-        guard data.count == 16, Array(data.prefix(4)) == magic else { return nil }
-        return data.dropFirst(4).map { String(format: "%02x", $0) }.joined()
+        guard data.count == 16 else { return nil }
+        let hex = data.map { String(format: "%02x", $0) }.joined()
+        guard !hex.hasSuffix("00001000800000805f9b34fb") else { return nil }
+        return hex
     }
 
     private static func bytes(fromHex hex: String) -> [UInt8]? {
@@ -152,12 +210,11 @@ enum BleTokenCoding {
 protocol ProximityBackend {
     func settings() async throws -> CallHandoffSettings
     func saveSettings(_ settings: CallHandoffSettings) async throws -> CallHandoffSettings
-    /// Report this phone's network hash.
-    func reportNetwork(registrationId: String, hash: String?) async throws
-    /// This phone left the network it was on while another device had a call.
-    func reportLeftNetwork(registrationId: String, previousHash: String?) async throws
-    func bleToken(registrationId: String) async throws -> BleToken
-    func reportBleSeen(registrationId: String, tokens: [String]) async throws
+    /// Report where this phone is: its network hash, and the tokens it heard.
+    func reportProximity(sipInstance: String, networkHash: String?, bleSeen: [BleSighting]) async throws
+    /// Report a context event (`left_network`).
+    func reportContext(sipInstance: String, event: String) async throws -> ContextResult
+    func bleToken(sipInstance: String) async throws -> BleToken
 }
 
 struct LiveProximityBackend: ProximityBackend {
@@ -176,29 +233,18 @@ struct LiveProximityBackend: ProximityBackend {
         try await withClient { try await $0.setCallHandoffSettings(jwt: $1, settings) }
     }
 
-    func reportNetwork(registrationId: String, hash: String?) async throws {
+    func reportProximity(sipInstance: String, networkHash: String?, bleSeen: [BleSighting]) async throws {
         try await withClient {
-            try await $0.postProximity(jwt: $1, registrationId: registrationId,
-                                       body: ["type": "network", "network_hash": hash.map { $0 as Any } ?? NSNull()])
+            try await $0.postProximity(jwt: $1, sipInstance: sipInstance, networkHash: networkHash, bleSeen: bleSeen)
         }
     }
 
-    func reportLeftNetwork(registrationId: String, previousHash: String?) async throws {
-        try await withClient {
-            try await $0.postProximity(jwt: $1, registrationId: registrationId,
-                                       body: ["type": "left_network", "network_hash": previousHash.map { $0 as Any } ?? NSNull()])
-        }
+    func reportContext(sipInstance: String, event: String) async throws -> ContextResult {
+        try await withClient { try await $0.postContext(jwt: $1, sipInstance: sipInstance, event: event) }
     }
 
-    func bleToken(registrationId: String) async throws -> BleToken {
-        try await withClient { try await $0.bleToken(jwt: $1, registrationId: registrationId) }
-    }
-
-    func reportBleSeen(registrationId: String, tokens: [String]) async throws {
-        try await withClient {
-            try await $0.postProximity(jwt: $1, registrationId: registrationId,
-                                       body: ["type": "ble_seen", "tokens": tokens])
-        }
+    func bleToken(sipInstance: String) async throws -> BleToken {
+        try await withClient { try await $0.bleToken(jwt: $1, sipInstance: sipInstance) }
     }
 }
 
@@ -221,13 +267,15 @@ final class Proximity: ObservableObject {
     private(set) var lastHash: String?
     private var hasReportedOnce = false
     let ble: BleProximity
+    static let reportInterval: TimeInterval = 60
+    private var reportTimer: Timer?
 
     init(backend: ProximityBackend, moves: CallMoveModel, ble: BleProximity = BleProximity()) {
         self.backend = backend
         self.moves = moves
         self.ble = ble
-        ble.onSeen = { [weak self] tokens in
-            Task { @MainActor in await self?.reportBleSeen(tokens) }
+        ble.onSeen = { [weak self] seen in
+            Task { @MainActor in await self?.reportBleSeen(seen) }
         }
     }
 
@@ -236,11 +284,18 @@ final class Proximity: ObservableObject {
     func becameActive() async {
         guard moves.isSignedIn() else { return }
         if let loaded = try? await backend.settings() { settings = loaded }
-        await reportNetworkIfChanged()
+        await reportNetworkNow()
         await updateBle()
+        // About every minute while the app is visible.
+        reportTimer?.invalidate()
+        reportTimer = Timer.scheduledTimer(withTimeInterval: Self.reportInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { Task { await self?.reportNetworkNow() } }
+        }
     }
 
     func resignedActive() {
+        reportTimer?.invalidate()
+        reportTimer = nil
         ble.stop()
     }
 
@@ -249,6 +304,8 @@ final class Proximity: ObservableObject {
         suggestion = nil
         lastHash = nil
         hasReportedOnce = false
+        reportTimer?.invalidate()
+        reportTimer = nil
         ble.stop()
     }
 
@@ -273,10 +330,22 @@ final class Proximity: ObservableObject {
     /// Report the network hash when it differs from the last one reported.
     func reportNetworkIfChanged() async {
         let hash = readNetworkHash()
-        guard !hasReportedOnce || hash != lastHash, let registration = await moves.ownRegistration() else { return }
+        guard !hasReportedOnce || hash != lastHash else { return }
+        await sendNetwork(hash)
+    }
+
+    /// Report the network hash again whatever it is: on the foreground and
+    /// about every minute while the app is visible.
+    func reportNetworkNow() async {
+        guard moves.isSignedIn() else { return }
+        await sendNetwork(readNetworkHash())
+    }
+
+    private func sendNetwork(_ hash: String?) async {
+        guard await moves.ownRegistration() != nil, let instance = moves.ownSipInstance() else { return }
         hasReportedOnce = true
         lastHash = hash
-        try? await backend.reportNetwork(registrationId: registration, hash: hash)
+        try? await backend.reportProximity(sipInstance: instance, networkHash: hash, bleSeen: [])
     }
 
     /// A path change. When this phone left the network it was on while
@@ -290,8 +359,15 @@ final class Proximity: ObservableObject {
             previous: previous, now: now, otherDeviceHasCall: moves.hasCallElsewhere
         )
         await reportNetworkIfChanged()
-        guard otherDeviceHasCall, let registration = await moves.ownRegistration() else { return }
-        try? await backend.reportLeftNetwork(registrationId: registration, previousHash: previous)
+        guard otherDeviceHasCall, settings?.suggestNearby != false,
+              await moves.ownRegistration() != nil, let instance = moves.ownSipInstance(),
+              let answer = try? await backend.reportContext(sipInstance: instance, event: "left_network")
+        else { return }
+        // `moved`: the PBX is already moving the call here, and its INVITE
+        // is answered without ringing because this phone started it.
+        if answer.action == "moved", let callId = answer.callId, let moveId = answer.moveId {
+            moves.registerMove(moveId: moveId, callId: callId)
+        }
     }
 
     /// Leaving is a network we were on that is no longer the one we are on,
@@ -303,11 +379,23 @@ final class Proximity: ObservableObject {
     // MARK: Events
 
     func handle(_ event: ProximityEvent) {
+        Task { @MainActor in await handleSuggestion(event) }
+    }
+
+    /// Shows the call for a suggestion to move it to this phone. A
+    /// suggestion naming another device is that device's to show.
+    func handleSuggestion(_ event: ProximityEvent) async {
         switch event {
-        case .handoffSuggested(let call):
+        case .handoffSuggested(let callId, let target, _):
             // Only while this phone has no call and the user wants them.
-            guard settings?.suggestNearby != false, !moves.hasLocalCall() else { return }
-            suggestion = call
+            guard settings?.suggestNearby != false, !moves.hasLocalCall(),
+                  await moves.ownRegistration() == target else { return }
+            var call = moves.call(withId: callId)
+            if call == nil {
+                await moves.refresh()
+                call = moves.call(withId: callId)
+            }
+            if let call { suggestion = call }
         }
     }
 
@@ -322,15 +410,15 @@ final class Proximity: ObservableObject {
     // MARK: Bluetooth
 
     func updateBle() async {
-        guard settings?.ble == true, let registration = await moves.ownRegistration() else {
+        guard settings?.ble == true, await moves.ownRegistration() != nil, let instance = moves.ownSipInstance() else {
             ble.stop()
             return
         }
-        guard let token = try? await backend.bleToken(registrationId: registration),
+        guard let token = try? await backend.bleToken(sipInstance: instance),
               let uuid = BleTokenCoding.serviceUUID(forToken: token.token) else { return }
         ble.start(advertising: uuid)
         // Rotate before it expires.
-        let lifetime = token.expiresAt.map { max(30, $0.timeIntervalSinceNow - 10) } ?? 300
+        let lifetime = token.rotatesAt.map { max(30, $0.timeIntervalSinceNow - 10) } ?? 300
         rotation?.cancel()
         rotation = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(lifetime * 1_000_000_000))
@@ -340,9 +428,9 @@ final class Proximity: ObservableObject {
 
     private var rotation: Task<Void, Never>?
 
-    private func reportBleSeen(_ tokens: [String]) async {
-        guard !tokens.isEmpty, let registration = await moves.ownRegistration() else { return }
-        try? await backend.reportBleSeen(registrationId: registration, tokens: tokens)
+    private func reportBleSeen(_ seen: [BleSighting]) async {
+        guard !seen.isEmpty, await moves.ownRegistration() != nil, let instance = moves.ownSipInstance() else { return }
+        try? await backend.reportProximity(sipInstance: instance, networkHash: lastHash, bleSeen: seen)
     }
 }
 
@@ -354,14 +442,15 @@ final class Proximity: ObservableObject {
 /// tracker. Off unless the user turned it on in Settings; the system asks
 /// for Bluetooth permission the first time it starts.
 final class BleProximity: NSObject, CBPeripheralManagerDelegate, CBCentralManagerDelegate {
-    /// Tokens seen (other than our own), at most once per `reportInterval`.
-    var onSeen: (([String]) -> Void)?
+    /// Tokens seen (other than our own) with their signal strength, at most
+    /// once per `reportInterval`, the strongest 32.
+    var onSeen: (([BleSighting]) -> Void)?
     static let reportInterval: TimeInterval = 20
 
     private var peripheral: CBPeripheralManager?
     private var central: CBCentralManager?
     private var advertised: CBUUID?
-    private var seen: Set<String> = []
+    private var seen: [String: Int] = [:]
     private var flushTimer: Timer?
     private(set) var isRunning = false
 
@@ -385,14 +474,15 @@ final class BleProximity: NSObject, CBPeripheralManagerDelegate, CBCentralManage
         central?.stopScan()
         flushTimer?.invalidate()
         flushTimer = nil
-        seen = []
+        seen = [:]
     }
 
     private func flush() {
         guard !seen.isEmpty else { return }
-        let tokens = Array(seen)
-        seen = []
-        onSeen?(tokens)
+        let sightings = seen.sorted { $0.value > $1.value }.prefix(BleSighting.maxPerReport)
+            .map { BleSighting(token: $0.key, rssi: $0.value) }
+        seen = [:]
+        onSeen?(sightings)
     }
 
     private func advertiseIfReady() {
@@ -404,7 +494,8 @@ final class BleProximity: NSObject, CBPeripheralManagerDelegate, CBCentralManage
     private func scanIfReady() {
         guard isRunning, let central, central.state == .poweredOn else { return }
         // No service filter: a foreground scan may be unfiltered, and the
-        // token is only recognised by its prefix.
+        // tokens are the 128-bit service UUIDs (the standard
+        // 16-bit ones are skipped).
         central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
 
@@ -419,7 +510,7 @@ final class BleProximity: NSObject, CBPeripheralManagerDelegate, CBCentralManage
     ) {
         guard let uuids = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] else { return }
         for uuid in uuids where uuid != advertised {
-            if let token = BleTokenCoding.token(from: uuid) { seen.insert(token) }
+            if let token = BleTokenCoding.token(from: uuid) { seen[token] = max(seen[token] ?? Int.min, RSSI.intValue) }
         }
     }
 }

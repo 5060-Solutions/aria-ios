@@ -385,6 +385,22 @@ final class CallMoveModel: ObservableObject {
         return device.registrationId
     }
 
+    /// The `+sip.instance` this phone registers with, nil before it has a device id.
+    func ownSipInstance() -> String? {
+        let id = deviceId()
+        return id.isEmpty ? nil : CallMoveRules.sipInstance(deviceId: id)
+    }
+
+    /// A call of the user's from the last read.
+    func call(withId id: String) -> UserCall? { calls.first { $0.id == id } }
+
+    /// A move this phone started through the PBX's own trigger (`left_network`
+    /// answered `moved`): its INVITE is answered with no ring.
+    func registerMove(moveId: String, callId: String) {
+        let call = call(withId: callId)
+        pending.register(moveId: moveId, callStartedAt: call?.startedAt ?? Date(), fromLabel: call?.deviceLabel ?? "")
+    }
+
     func loadDevices() async {
         guard let all = try? await backend.devices() else { return }
         devices = CallMoveRules.targets(all, ownRegistrationId: await ownRegistration())
