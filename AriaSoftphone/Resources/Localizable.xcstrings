@@ -3313,6 +3313,28 @@
         }
       }
     },
+    "Holding for you" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperando por ti"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir warten für Sie"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On attend pour vous"
+          }
+        }
+      }
+    },
     "I'll tell them — Record" : {
       "localizations" : {
         "es" : {

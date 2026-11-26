@@ -769,6 +769,9 @@ class CallManager: NSObject, ObservableObject {
                 ending = CallEnding(callKitReason: ending.callKitReason, outcome: .transferred)
                 MainActor.assumeIsolated { CallMoveModel.shared.showMoved(to: device) }
             }
+            if info.endReason == .heldForYou {
+                registry.modify(uuid: call.uuid) { $0.heldForYou = true }
+            }
             if let reason = ending.callKitReason {
                 provider.reportCall(with: call.uuid, endedAt: Date(), reason: reason)
             }
@@ -1197,6 +1200,8 @@ struct ActiveCall: Identifiable {
     var originalStartedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
+    /// Ended because the PBX released this phone into a Hold for me wait.
+    var heldForYou = false
 
     init(
         uuid: UUID,
@@ -1287,6 +1292,9 @@ enum CallOutcome: String, Codable {
     case cancelled
     /// Could not be set up.
     case failed
+    /// The PBX released this phone into a Hold for me wait; the far party is
+    /// still on the line. Not a failure and not a missed call.
+    case heldForYou
 
     static func resolve(for call: ActiveCall, endedLocally: Bool) -> CallOutcome {
         if call.connectedAt != nil { return .answered }
@@ -1324,6 +1332,8 @@ struct CallEnding: Equatable {
             return CallEnding(callKitReason: .declinedElsewhere, outcome: .rejected)
         case .transferred:
             return CallEnding(callKitReason: .remoteEnded, outcome: .transferred)
+        case .heldForYou:
+            return CallEnding(callKitReason: .remoteEnded, outcome: .heldForYou)
         case .failed:
             return CallEnding(callKitReason: .failed, outcome: connected ? .answered : .failed)
         case .localHangup, .cancelled:

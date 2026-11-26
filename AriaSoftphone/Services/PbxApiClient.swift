@@ -190,6 +190,9 @@ class PbxApiClient {
         let homeAreaCode: String?
         let role: String?
         let isSuperadmin: Bool?
+        /// Optional capabilities the PBX offers this credential; absent on an
+        /// older PBX.
+        let features: [String]?
 
         /// May read `calling/settings` (a tenant-admin route).
         var isAdmin: Bool {
@@ -202,6 +205,7 @@ class PbxApiClient {
             case homeAreaCode = "home_area_code"
             case role
             case isSuperadmin = "is_superadmin"
+            case features
         }
     }
 
@@ -873,4 +877,10 @@ extension PbxApiClient {
         }
         return moveId
     }
+}
+
+extension PbxApiClient.Identity {
+    /// The PBX offers Hold for me to this credential. Every Hold for me
+    /// surface is hidden unless this is true.
+    var holdForMe: Bool { features?.contains("hold_for_me") == true }
 }

@@ -80,6 +80,7 @@
 		7A0E1E61ED15D47F234C750A /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B7C5262F16A24870C43E5C /* MessagesView.swift */; };
 		7AE6A6C9AC950F292CBFFE22 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE69EC6A23C8B126C1AC79B /* DiagnosticsView.swift */; };
 		7CC7D6530E82B9FEBC519F62 /* ConnectionDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850E9F3CBF3AD64722A79348 /* ConnectionDetails.swift */; };
+		7DD16AB2574614D3B32E5F89 /* HoldForMeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E108394D4C5F32BD15287E7 /* HoldForMeTests.swift */; };
 		7EBD2F47C15BA63CF2548F23 /* DialerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1BFE08E58ED03840CB1AB8 /* DialerTests.swift */; };
 		7F50F59C183D76B0930A7B42 /* SystemDNSC.c in Sources */ = {isa = PBXBuildFile; fileRef = C389781FE73853D883C56157 /* SystemDNSC.c */; };
 		80FC14C0EB49B84D765A0887 /* AudioConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */; };
@@ -249,6 +250,7 @@
 		9BFE2D41BD8330AF296E13FE /* CallMoveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallMoveTests.swift; sourceTree = "<group>"; };
 		9CC7328235BDF3F5C90DAA7C /* SetupLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupLink.swift; sourceTree = "<group>"; };
 		9D0C47721D0A5D1042EFCA1E /* SystemDNS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemDNS.swift; sourceTree = "<group>"; };
+		9E108394D4C5F32BD15287E7 /* HoldForMeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldForMeTests.swift; sourceTree = "<group>"; };
 		9EAFBD5A5DFDE3C74B025AEC /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		A0217225FEAE80967892E255 /* DiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsTests.swift; sourceTree = "<group>"; };
 		A1F9B60951C1CF0A502DD22D /* CallMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallMove.swift; sourceTree = "<group>"; };
@@ -428,6 +430,7 @@
 				E32FED50CF08223E364A6773 /* FixtureModeTests.swift */,
 				31F2EE516A473D31F87BAFD5 /* GatewayAuthTests.swift */,
 				93BFE1053CFB3959B1113A72 /* HistoryContactsTests.swift */,
+				9E108394D4C5F32BD15287E7 /* HoldForMeTests.swift */,
 				DF6D9BC40D03D86F5BE0E02B /* IncomingPushTriageTests.swift */,
 				74546B33F0820C01FC71E527 /* IPadLayoutTests.swift */,
 				997DB051E23D4E120FF4CE70 /* KeychainMigrationTests.swift */,
@@ -853,6 +856,7 @@
 				8BC3D666C26DF14A313243A1 /* FixtureModeTests.swift in Sources */,
 				BDDE708BD9056D3C958F3910 /* GatewayAuthTests.swift in Sources */,
 				E5CCE7A8F714E61D4321F8AE /* HistoryContactsTests.swift in Sources */,
+				7DD16AB2574614D3B32E5F89 /* HoldForMeTests.swift in Sources */,
 				D0B147CD950404B400F0FC27 /* IPadLayoutTests.swift in Sources */,
 				FADC8E36008E726A1888947E /* IncomingPushTriageTests.swift in Sources */,
 				94947B1A5C8E6F318A53E6D6 /* KeychainMigrationTests.swift in Sources */,

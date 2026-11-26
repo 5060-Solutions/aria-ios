@@ -253,6 +253,7 @@ extension CallRecord {
         case .missed: return String(localized: "Missed")
         case .rejected: return String(localized: "Declined")
         case .cancelled: return String(localized: "Cancelled")
+        case .heldForYou: return String(localized: "Holding for you")
         case .failed: return direction == .inbound ? String(localized: "Missed") : String(localized: "Failed")
         }
     }

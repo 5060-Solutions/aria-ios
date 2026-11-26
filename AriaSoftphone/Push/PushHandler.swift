@@ -31,6 +31,10 @@ struct IncomingPush: Equatable {
     var moveId: String? = nil
     /// The device the call is moving from, when the gateway says (`moveFrom`).
     var moveFrom: String? = nil
+    /// `X-Aria-Hold-Return`: the Hold for me wait whose far party is back.
+    var holdReturnId: String? = nil
+    /// `X-Aria-Hold-Return-Name`: who is back.
+    var holdReturnName: String? = nil
 
     enum Rejection: Error, Equatable {
         /// No call token: there is no call to fetch.
@@ -81,7 +85,9 @@ struct IncomingPush: Equatable {
             callerName: string("callerName", "caller_name"),
             gatewayUrl: gatewayUrl,
             moveId: string("moveId", "move_id"),
-            moveFrom: string("moveFrom", "move_from")
+            moveFrom: string("moveFrom", "move_from"),
+            holdReturnId: string("holdReturnId", "hold_return_id"),
+            holdReturnName: string("holdReturnName", "hold_return_name")
         ))
     }
 }
