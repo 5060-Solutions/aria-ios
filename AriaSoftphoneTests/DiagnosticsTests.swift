@@ -24,7 +24,7 @@ final class AppLogTests: XCTestCase {
 
 @MainActor
 final class ConnectionDetailsTests: XCTestCase {
-    private func source(callId: String? = "c1") -> ConnectionDetails.Source {
+    private func source(callId: String? = "c1", encrypted: Bool = true) -> ConnectionDetails.Source {
         ConnectionDetails.Source(
             state: { .error("gateway: timeout") },
             account: {
@@ -36,7 +36,7 @@ final class ConnectionDetailsTests: XCTestCase {
             lastError: { "gateway: timeout" },
             network: { NetworkPath(isSatisfied: true, interfaces: ["en0", "pdp_ip0"], addresses: []) },
             activeCallId: { callId },
-            isEncrypted: { _ in true },
+            isEncrypted: { _ in encrypted },
             mediaStats: { _ in
                 MediaStats(packetsSent: 10, packetsReceived: 9, bytesSent: 1600, bytesReceived: 1440,
                            jitterMs: 2.5, packetLoss: 1, rttMs: 40)
@@ -57,6 +57,12 @@ final class ConnectionDetailsTests: XCTestCase {
         XCTAssertEqual(s.stats?.packetsReceived, 9)
         XCTAssertNil(s.codec)
         XCTAssertFalse(s.preferredCodecs.isEmpty)
+    }
+
+    func testAnUnencryptedCallIsReportedNotHidden() {
+        let details = ConnectionDetails(source: source(encrypted: false))
+        details.refresh()
+        XCTAssertEqual(details.snapshot.srtp, false)
     }
 
     func testNoCallMeansNoMedia() {

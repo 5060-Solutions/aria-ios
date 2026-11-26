@@ -871,6 +871,28 @@
         }
       }
     },
+    "Call not encrypted" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamada no cifrada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anruf nicht verschlüsselt"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appel non chiffré"
+          }
+        }
+      }
+    },
     "Call on hold" : {
       "localizations" : {
         "es" : {
@@ -2873,6 +2895,28 @@
         }
       }
     },
+    "Explains why this call isn't encrypted" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Explica por qué esta llamada no está cifrada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erklärt, warum dieser Anruf nicht verschlüsselt ist"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Explique pourquoi cet appel n’est pas chiffré"
+          }
+        }
+      }
+    },
     "Ext %@ · %@" : {
       "localizations" : {
         "es" : {
@@ -4325,6 +4369,28 @@
         }
       }
     },
+    "None (unencrypted)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno (sin cifrar)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine (unverschlüsselt)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun (non chiffré)"
+          }
+        }
+      }
+    },
     "Not delivered" : {
       "localizations" : {
         "es" : {
@@ -4365,6 +4431,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Non remis : %@"
+          }
+        }
+      }
+    },
+    "Not encrypted" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No cifrada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verschlüsselt"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non chiffré"
           }
         }
       }
@@ -6873,6 +6961,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Thème"
+          }
+        }
+      }
+    },
+    "This call isn't encrypted. The phone system didn't accept a secure connection." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta llamada no está cifrada. La centralita no aceptó una conexión segura."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Anruf ist nicht verschlüsselt. Die Telefonanlage hat keine sichere Verbindung akzeptiert."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet appel n’est pas chiffré. Le standard n’a pas accepté de connexion sécurisée."
           }
         }
       }

@@ -38,6 +38,7 @@ final class FixtureModeTests: XCTestCase {
             "01-onboarding", "02-dialer", "03-dialer-number", "04-incoming-call", "05-in-call",
             "06-in-call-two-calls", "07-history", "08-contacts", "09-voicemail",
             "10-voicemail-playing", "11-settings", "12-forwarding", "13-connection-sheet",
+            "05-in-call-unencrypted",
         ])
     }
 
@@ -61,6 +62,16 @@ final class FixtureModeTests: XCTestCase {
         XCTAssertNotNil(registry.talking?.callId)
         XCTAssertTrue(registry.background.isEmpty)
         XCTAssertGreaterThan(registry.talking?.duration ?? 0, 60)
+    }
+
+    func testUnencryptedSceneHasTheSameTalkingCall() {
+        let calls = FixtureData.calls(for: .inCallUnencrypted)
+        XCTAssertEqual(calls.map(\.state), [.connected])
+        XCTAssertEqual(calls.first?.remoteName, FixtureData.activeCaller.name)
+        XCTAssertEqual(calls.first?.isEncrypted, false)
+        XCTAssertEqual(FixtureData.calls(for: .inCall).first?.isEncrypted, true)
+        XCTAssertEqual(FixtureMode.parse(["app", "-UITestMode", "-FixtureScene", "in-call-unencrypted"]).scene,
+                       .inCallUnencrypted)
     }
 
     func testTwoCallSceneHoldsTheOlderAndCanSwap() {

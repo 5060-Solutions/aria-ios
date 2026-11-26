@@ -21,6 +21,12 @@ enum AriaColor {
     static let onError = Color("Theme/OnError")
     static let errorContainer = Color("Theme/ErrorContainer")
     static let success = Color("Theme/Success")
+    /// Amber, for what the user should know but need not act on at once,
+    /// such as a call that is not encrypted. Text in `warning` clears 4.5:1
+    /// on the surfaces and on `warningContainer`, in both appearances.
+    static let warning = Color("Theme/Warning")
+    static let warningContainer = Color("Theme/WarningContainer")
+    static let onWarningContainer = Color("Theme/OnWarningContainer")
     static let background = Color("Theme/Background")
     static let surface = Color("Theme/Surface")
     static let surfaceContainerHigh = Color("Theme/SurfaceContainerHigh")
