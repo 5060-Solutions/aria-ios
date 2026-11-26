@@ -2558,18 +2558,34 @@ public struct CallOffer {
      * The INVITE's X-Aria-Move value when the PBX is moving a call here.
      */
     public var moveId: String?
+    /**
+     * The INVITE's X-Aria-Hold-Return value: the PBX is ringing this device because the far party of a Hold for me wait is back.
+     */
+    public var holdReturnId: String?
+    /**
+     * The INVITE's X-Aria-Hold-Return-Name value: who is back.
+     */
+    public var holdReturnName: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(callToken: String, callerUri: String, callerName: String?, sdpOffer: String, 
         /**
          * The INVITE's X-Aria-Move value when the PBX is moving a call here.
-         */moveId: String?) {
+         */moveId: String?, 
+        /**
+         * The INVITE's X-Aria-Hold-Return value: the PBX is ringing this device because the far party of a Hold for me wait is back.
+         */holdReturnId: String?, 
+        /**
+         * The INVITE's X-Aria-Hold-Return-Name value: who is back.
+         */holdReturnName: String?) {
         self.callToken = callToken
         self.callerUri = callerUri
         self.callerName = callerName
         self.sdpOffer = sdpOffer
         self.moveId = moveId
+        self.holdReturnId = holdReturnId
+        self.holdReturnName = holdReturnName
     }
 }
 
@@ -2592,6 +2608,12 @@ extension CallOffer: Equatable, Hashable {
         if lhs.moveId != rhs.moveId {
             return false
         }
+        if lhs.holdReturnId != rhs.holdReturnId {
+            return false
+        }
+        if lhs.holdReturnName != rhs.holdReturnName {
+            return false
+        }
         return true
     }
 
@@ -2601,6 +2623,8 @@ extension CallOffer: Equatable, Hashable {
         hasher.combine(callerName)
         hasher.combine(sdpOffer)
         hasher.combine(moveId)
+        hasher.combine(holdReturnId)
+        hasher.combine(holdReturnName)
     }
 }
 
@@ -2616,7 +2640,9 @@ public struct FfiConverterTypeCallOffer: FfiConverterRustBuffer {
                 callerUri: FfiConverterString.read(from: &buf), 
                 callerName: FfiConverterOptionString.read(from: &buf), 
                 sdpOffer: FfiConverterString.read(from: &buf), 
-                moveId: FfiConverterOptionString.read(from: &buf)
+                moveId: FfiConverterOptionString.read(from: &buf), 
+                holdReturnId: FfiConverterOptionString.read(from: &buf), 
+                holdReturnName: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -2626,6 +2652,8 @@ public struct FfiConverterTypeCallOffer: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.callerName, into: &buf)
         FfiConverterString.write(value.sdpOffer, into: &buf)
         FfiConverterOptionString.write(value.moveId, into: &buf)
+        FfiConverterOptionString.write(value.holdReturnId, into: &buf)
+        FfiConverterOptionString.write(value.holdReturnName, into: &buf)
     }
 }
 
@@ -3805,6 +3833,10 @@ public enum EndReason {
      * An outgoing call was hung up before it was answered.
      */
     case cancelled
+    /**
+     * The PBX released this handset into a Hold for me wait; the far party is still on the line.
+     */
+    case heldForYou
 }
 
 
@@ -3833,6 +3865,8 @@ public struct FfiConverterTypeEndReason: FfiConverterRustBuffer {
         case 7: return .failed
         
         case 8: return .cancelled
+        
+        case 9: return .heldForYou
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3872,6 +3906,10 @@ public struct FfiConverterTypeEndReason: FfiConverterRustBuffer {
         
         case .cancelled:
             writeInt(&buf, Int32(8))
+        
+        
+        case .heldForYou:
+            writeInt(&buf, Int32(9))
         
         }
     }

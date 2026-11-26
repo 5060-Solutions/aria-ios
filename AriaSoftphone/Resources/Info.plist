@@ -59,6 +59,8 @@
 	<string>Aria shows your contacts so you can search and call them. Your contacts stay on this device.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Aria uses the microphone so the other person can hear you during calls.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INStartCallIntent</string>

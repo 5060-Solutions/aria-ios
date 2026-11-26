@@ -7,6 +7,14 @@ options:
   deploymentTarget:
     iOS: "26.0"
   xcodeVersion: "16.0"
+# The version lives here, not in Info.plist, and once for every target: an
+# embedded extension whose version differs from the app's is rejected at
+# upload (ITMS-90473). Bump MARKETING_VERSION per release and
+# CURRENT_PROJECT_VERSION per upload.
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
 packages:
   # As-you-type number formatting (libphonenumber metadata): PhoneFormat.swift.
   PhoneNumberKit:
@@ -34,10 +42,8 @@ targets:
         # permission strings live in InfoPlist.xcstrings.
         SWIFT_EMIT_LOC_STRINGS: YES
         LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-        # The version lives here, not in Info.plist: bump MARKETING_VERSION
-        # per release and CURRENT_PROJECT_VERSION per upload.
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        # MARKETING_VERSION and CURRENT_PROJECT_VERSION are project-wide
+        # (settings, above), shared with the AriaHoldActivity extension.
         # iPhone and iPad. The iPad layout is a sidebar at regular width
         # (SidebarShell); the call screen and dial pad size to the room they
         # have.
@@ -71,6 +77,11 @@ targets:
         embed: false
         optional: true
       - package: PhoneNumberKit
+      # The Hold for me Live Activity. Built unsigned like the app; it needs
+      # its own App ID, com.solutions5060.aria.holdactivity, once signing is
+      # set up. No App Group: the activity shares no storage with the app.
+      - target: AriaHoldActivity
+        embed: true
     info:
       path: AriaSoftphone/Resources/Info.plist
       properties:
@@ -119,6 +130,9 @@ targets:
         UIBackgroundModes:
           - voip
           - audio
+        # The Hold for me waiting card. Local updates only: the gateway has
+        # no Live Activity push type, so there is no push token.
+        NSSupportsLiveActivities: true
         # aria:// setup links and actions; sip:/sips: links from other apps.
         CFBundleURLTypes:
           - CFBundleURLName: com.solutions5060.aria
@@ -138,6 +152,44 @@ targets:
             echo "note: Run ./build-rust.sh manually before building"
           fi
         basedOnDependencyAnalysis: false
+
+  # The Hold for me Live Activity (lock screen and Dynamic Island). It shares
+  # the activity's attributes and the app's string catalog, nothing else.
+  AriaHoldActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AriaHoldActivity
+      - path: AriaSoftphone/Shared/HoldWaitAttributes.swift
+      - path: AriaSoftphone/Resources/Localizable.xcstrings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.solutions5060.aria.holdactivity
+        INFOPLIST_FILE: AriaHoldActivity/Info.plist
+        DEVELOPMENT_TEAM: ""
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: false
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: AriaHoldActivity/Info.plist
+      properties:
+        CFBundleDisplayName: Aria
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations:
+          - en
+          - es
+          - fr
+          - de
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
   AriaSoftphoneTests:
     type: bundle.unit-test

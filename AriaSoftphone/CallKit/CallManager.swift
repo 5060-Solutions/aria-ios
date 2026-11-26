@@ -20,6 +20,9 @@ class CallManager: NSObject, ObservableObject {
     /// Set when a connected call was lost with the connection (its gateway
     /// instance died): the UI shows "Call dropped — connection lost".
     @Published var droppedCallNotice: DroppedCallNotice?
+    /// Set when the PBX released the call into a Hold for me wait: the UI
+    /// shows "Holding for you" (not an error).
+    @Published var heldForYouNotice: HeldForYouNotice?
 
     /// Whether audio is currently going to the built-in speaker. Follows the
     /// actual route, so it is also right after a change from Control Centre
@@ -33,7 +36,17 @@ class CallManager: NSObject, ObservableObject {
     var otherCalls: [ActiveCall] { registry.background }
 
     private let provider: CXProvider
+    /// Sees each update reported to CallKit for an incoming call; tests
+    /// record it to read the name the system would show.
+    var onIncomingReport: ((CXCallUpdate) -> Void)?
+    /// A hold-return ring ended here unanswered (declined, missed, or the
+    /// PBX stopped ringing); given the wait's id. Brings the Hold for me card
+    /// and Live Activity up to date; tests record it.
+    var onUnansweredHoldReturn: (String) -> Void = { _ in HoldForMeModel.reconcileAfterUnansweredRing() }
     private let callController = CXCallController()
+    /// The name last given to CallKit for each ringing hold-return call, so
+    /// a relabel is reported once.
+    private var holdReturnKitNames: [UUID: String] = [:]
 
     /// Tokens of incoming calls that have ended here (declined, missed,
     /// answered and hung up, refused as busy). A repeat push or a late
@@ -106,6 +119,25 @@ class CallManager: NSObject, ObservableObject {
         isSpeakerOn = outputs.contains { $0.portType == .builtInSpeaker }
     }
 
+    /// The waits are known (or have changed): a ringing hold-return call
+    /// rung for anything other than a person (Rejoin now, the maximum wait)
+    /// loses "They're back" on the system's incoming screen. The push carries
+    /// no ring reason, so the first report cannot know.
+    func relabelHoldReturnRings(waits: [String: HoldWait]) {
+        let ringing = registry.calls.filter { $0.state == .incoming && $0.holdReturnId != nil }
+        holdReturnKitNames = holdReturnKitNames.filter { entry in ringing.contains { $0.uuid == entry.key } }
+        for call in ringing {
+            guard let id = call.holdReturnId else { continue }
+            let name = HoldReturnRing(wait: waits[id]).callKitName(
+                holdReturnName: call.holdReturnName, callerName: call.remoteName, callerUri: call.remoteUri)
+            guard holdReturnKitNames[call.uuid] != name else { continue }
+            holdReturnKitNames[call.uuid] = name
+            let update = Self.callUpdate(remoteUri: call.remoteUri, remoteName: name)
+            onIncomingReport?(update)
+            provider.reportCall(with: call.uuid, updated: update)
+        }
+    }
+
     // MARK: - Incoming Call (from push notification)
 
     /// What every call can do, for both directions. Holding has to be
@@ -133,6 +165,7 @@ class CallManager: NSObject, ObservableObject {
         completion: @escaping (Error?) -> Void
     ) {
         let update = Self.callUpdate(remoteUri: callerUri, remoteName: callerName)
+        onIncomingReport?(update)
 
         provider.reportNewIncomingCall(with: uuid, update: update) { error in
             if let error = error {
@@ -160,6 +193,8 @@ class CallManager: NSObject, ObservableObject {
         callerName pushedName: String?,
         moveId: String? = nil,
         moveFrom: String? = nil,
+        holdReturnId: String? = nil,
+        holdReturnName: String? = nil,
         completion: @escaping (Error?) -> Void
     ) {
         // The address book's name for the number when the push has none:
@@ -172,6 +207,12 @@ class CallManager: NSObject, ObservableObject {
         let callerName: String? = (move == nil && moveId != nil)
             ? CallMoveLabel.unrequested(name: resolvedName ?? callerUri, from: moveFrom)
             : resolvedName
+        // The far party of a Hold for me wait is back: say so on the system's
+        // incoming screen. The push is authoritative, so this does not wait
+        // for the feature flag or the offer.
+        let kitName: String? = holdReturnId == nil
+            ? callerName
+            : HoldReturnLabel.callKitName(holdReturnName: holdReturnName, callerName: callerName, callerUri: callerUri)
         switch IncomingPushTriage.decide(
             callToken: callToken,
             calls: registry.calls,
@@ -181,7 +222,7 @@ class CallManager: NSObject, ObservableObject {
             // A redelivered push for a call already ringing (or one that
             // has ended). PushKit still needs a report, so report a call and
             // end it at once — without touching the real one or history.
-            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 if error == nil {
                     self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
                 }
@@ -194,12 +235,13 @@ class CallManager: NSObject, ObservableObject {
             // be answered properly. It is still reported first, as PushKit
             // requires, then ended.
             finishedTokens.insert(callToken)
-            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 guard let self = self else { return }
                 if error == nil {
                     self.provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
                 }
-                self.recordMissedCall(remoteUri: callerUri, remoteName: callerName)
+                self.recordMissedCall(remoteUri: callerUri, remoteName: callerName, notify: holdReturnId == nil)
+                if let holdReturnId { self.onUnansweredHoldReturn(holdReturnId) }
                 DispatchQueue.global(qos: .utility).async {
                     try? SipEngineManager.shared.ensureReady()
                     try? SipEngineManager.shared.rejectCall(callToken: callToken)
@@ -219,8 +261,11 @@ class CallManager: NSObject, ObservableObject {
                 state: .incoming
             )
             incoming.originalStartedAt = move?.callStartedAt
+            incoming.holdReturnId = holdReturnId
+            incoming.holdReturnName = holdReturnName
             registry.add(incoming)
-            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+            if holdReturnId != nil, let kitName { holdReturnKitNames[uuid] = kitName }
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 guard let self = self else { return }
                 if let error = error {
                     // CallKit refused it (Do Not Disturb, blocked caller):
@@ -248,7 +293,17 @@ class CallManager: NSObject, ObservableObject {
     /// Attach the offer fetched for a pushed call.
     func offerReceived(_ offer: CallOffer) {
         guard let call = registry.call(callToken: offer.callToken) else { return }
-        registry.modify(uuid: call.uuid) { $0.offer = offer }
+        registry.modify(uuid: call.uuid) {
+            $0.offer = offer
+            // The offer confirms what the push said.
+            if let id = offer.holdReturnId {
+                $0.holdReturnId = id
+                $0.holdReturnName = offer.holdReturnName ?? $0.holdReturnName
+                // Already answered before the offer arrived: the window runs
+                // from the connect.
+                if $0.joinedAt == nil { $0.joinedAt = $0.connectedAt }
+            }
+        }
     }
 
     /// The offer for a pushed call could not be fetched: end it in CallKit.
@@ -686,6 +741,7 @@ class CallManager: NSObject, ObservableObject {
             $0.callId = callId
             $0.state = $0.isOnHold ? .onHold : .connected
             $0.connectedAt = now
+            if $0.holdReturnId != nil { $0.joinedAt = now }
         }
 
         if call.direction == .outbound {
@@ -711,8 +767,11 @@ class CallManager: NSObject, ObservableObject {
         if let callId = call.callId {
             RecordingsStore.shared.finish(callId: callId, path: nil)
         }
-        if outcome == .missed {
+        if Self.notifiesMissedCall(call, outcome: outcome) {
             LocalNotifications.postMissedCall(remoteUri: call.remoteUri, remoteName: call.remoteName)
+        }
+        if let holdReturnId = call.holdReturnId, call.connectedAt == nil {
+            onUnansweredHoldReturn(holdReturnId)
         }
 
         // Runs on its own queue and only if the user opted in, so a slow
@@ -734,9 +793,16 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
+    /// Whether a call that ended with `outcome` gets a local "Missed call"
+    /// notification. Not a hold-return ring: the PBX rings up to three rounds
+    /// and sends its own Hold for me alert when nobody answered.
+    static func notifiesMissedCall(_ call: ActiveCall, outcome: CallOutcome) -> Bool {
+        outcome == .missed && call.holdReturnId == nil
+    }
+
     /// Record an incoming call that never became one of ours.
-    private func recordMissedCall(remoteUri: String, remoteName: String?) {
-        LocalNotifications.postMissedCall(remoteUri: remoteUri, remoteName: remoteName)
+    private func recordMissedCall(remoteUri: String, remoteName: String?, notify: Bool = true) {
+        if notify { LocalNotifications.postMissedCall(remoteUri: remoteUri, remoteName: remoteName) }
         CallHistoryStore.shared.add(CallRecord(
             direction: .inbound,
             remoteUri: remoteUri,
@@ -775,6 +841,10 @@ class CallManager: NSObject, ObservableObject {
             if CallEnding.isDropped(call, reason: info.endReason) {
                 droppedCallNotice = DroppedCallNotice(remote: call.displayName)
                 AppLog.shared.log("call", "Dropped: connection lost")
+            }
+            if ending.outcome == .heldForYou {
+                heldForYouNotice = HeldForYouNotice(remote: call.displayName)
+                AppLog.shared.log("call", "Released into a Hold for me wait")
             }
             finishCall(call, outcome: ending.outcome)
             return
@@ -1197,6 +1267,13 @@ struct ActiveCall: Identifiable {
     var originalStartedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
+    /// The Hold for me wait whose far party is back, and who they are: from
+    /// the push, confirmed by the offer.
+    var holdReturnId: String?
+    var holdReturnName: String?
+    /// When a hold-return call was answered here: Still on hold is offered
+    /// for `HoldReturnRules.stillOnHoldWindow` after it.
+    var joinedAt: Date?
 
     init(
         uuid: UUID,
@@ -1238,6 +1315,11 @@ struct ActiveCall: Identifiable {
         case .inbound:
             return callToken.map { .reject(callToken: $0) } ?? .none
         }
+    }
+
+    /// The name a hold-return ring shows: who is back.
+    var holdReturnLabelName: String {
+        HoldReturnLabel.name(holdReturnName: holdReturnName, callerName: remoteName, callerUri: remoteUri)
     }
 
     /// Whether the call has connected (and not yet ended), held or not.
@@ -1287,6 +1369,9 @@ enum CallOutcome: String, Codable {
     case cancelled
     /// Could not be set up.
     case failed
+    /// The PBX released this phone into a Hold for me wait; the far party is
+    /// still on the line. Not a failure and not a missed call.
+    case heldForYou
 
     static func resolve(for call: ActiveCall, endedLocally: Bool) -> CallOutcome {
         if call.connectedAt != nil { return .answered }
@@ -1324,6 +1409,8 @@ struct CallEnding: Equatable {
             return CallEnding(callKitReason: .declinedElsewhere, outcome: .rejected)
         case .transferred:
             return CallEnding(callKitReason: .remoteEnded, outcome: .transferred)
+        case .heldForYou:
+            return CallEnding(callKitReason: .remoteEnded, outcome: .heldForYou)
         case .failed:
             return CallEnding(callKitReason: .failed, outcome: connected ? .answered : .failed)
         case .localHangup, .cancelled:
@@ -1660,6 +1747,17 @@ struct CallRegistry {
     }
 }
 
+/// A call the PBX released into a Hold for me wait; the far party is still on
+/// the line and the PBX will ring again when a person answers.
+struct HeldForYouNotice: Identifiable, Equatable {
+    let id = UUID()
+    let remote: String
+
+    var message: String {
+        String(localized: "Holding for you")
+    }
+}
+
 /// A call that was dropped because the connection was lost.
 struct DroppedCallNotice: Identifiable, Equatable {
     let id = UUID()
@@ -1743,6 +1841,7 @@ extension CallManager {
             call.callId = "fx-\(uuid.uuidString.prefix(8))"
             call.connectedAt = Date()
             call.state = .connected
+            if call.holdReturnId != nil { call.joinedAt = call.connectedAt }
         }
     }
 

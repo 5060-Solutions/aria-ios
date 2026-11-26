@@ -85,13 +85,19 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack {
-            Group {
-                if horizontalSizeClass == .regular {
-                    SidebarShell(selection: $selectedTab)
-                } else {
-                    tabs
+            // The wait cards take their own row above the tabs, so they push
+            // the screen down rather than lie over its header.
+            VStack(spacing: 0) {
+                HoldWaitCards()
+                Group {
+                    if horizontalSizeClass == .regular {
+                        SidebarShell(selection: $selectedTab)
+                    } else {
+                        tabs
+                    }
                 }
             }
+            .background(AriaColor.background)
             .tint(AriaColor.primary)
             // A text notification was tapped: open its thread.
             .onChange(of: messaging.pendingThread, initial: true) { _, pending in

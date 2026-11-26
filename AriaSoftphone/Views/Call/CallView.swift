@@ -20,6 +20,9 @@ struct CallView: View {
     @State private var transferCall: ActiveCall?
     @State private var showAddCall = false
     @State private var showMoveTo = false
+    /// The call the Hold for me sheet is for, fixed when it is tapped.
+    @State private var holdForMeCall: ActiveCall?
+    @ObservedObject private var holdForMe = HoldForMeModel.shared
     @State private var isCompletingTransfer = false
     @State private var transferError: String?
     @State private var link = CallLinkStatus()
@@ -63,6 +66,12 @@ struct CallView: View {
         }
         .environment(\.colorScheme, .dark)
         .banner($banner)
+        // A refused Hold for me leaves the call as it was; say why.
+        .onChange(of: holdForMe.banner) { _, refusal in
+            guard let refusal else { return }
+            banner = .error(String(localized: refusal.message))
+            holdForMe.banner = nil
+        }
         .animation(Motion.standard(reduceMotion: reduceMotion), value: shown?.state)
         .animation(Motion.standard(reduceMotion: reduceMotion), value: callManager.otherCalls.map(\.uuid))
         return withAnnouncements(withAlerts(withSheets(screen, shown: shown)), shown: shown)
@@ -86,6 +95,9 @@ struct CallView: View {
             }
             .sheet(isPresented: $showMoveTo) {
                 MoveToView()
+            }
+            .sheet(item: $holdForMeCall) { call in
+                HoldForMeSheet(call: call)
             }
     }
 
@@ -122,6 +134,7 @@ struct CallView: View {
                     try? await Task.sleep(for: .seconds(2))
                 }
             }
+            .task(id: shown?.uuid) { announceBack(shown) }
             .onAppear { nameFocused = true }
             .onChange(of: shown?.state) { _, state in
                 announce(state)
@@ -336,6 +349,10 @@ struct CallView: View {
             }
             Button("Move to…", systemImage: "arrow.left.arrow.right") { showMoveTo = true }
                 .accessibilityIdentifier("call.moveTo")
+            if holdForMe.canHoldForMe(shown) {
+                Button(String(localized: "Hold for me"), systemImage: "hourglass") { holdForMeCall = shown }
+                    .accessibilityIdentifier("call.holdForMe")
+            }
             if callManager.isInConference {
                 Button("Split Calls", systemImage: "arrow.triangle.branch") { callManager.splitConference() }
                     .accessibilityIdentifier("call.split")
@@ -417,6 +434,8 @@ struct CallView: View {
                 }
             case .held:
                 statusText(String(localized: "On hold"), systemImage: "pause.fill")
+            case .incoming where shown.holdReturnId != nil:
+                holdReturnStatus(shown)
             case .incoming:
                 statusText(String(localized: "Incoming call"), systemImage: "antenna.radiowaves.left.and.right",
                            ringing: true)
@@ -424,6 +443,26 @@ struct CallView: View {
                 statusText(shown.direction == .outbound ? String(localized: "Calling…") : String(localized: "Connecting…"),
                            systemImage: "antenna.radiowaves.left.and.right", ringing: true)
             }
+        }
+    }
+
+    /// Why a hold-return call is ringing, from its wait when known.
+    private func holdReturnRing(_ shown: ActiveCall) -> HoldReturnRing {
+        HoldReturnRing(wait: shown.holdReturnId.flatMap { holdForMe.waits[$0] })
+    }
+
+    /// The far party of a Hold for me wait is back. After the maximum wait
+    /// the ring says so instead and asks what to do; Rejoin now rings like
+    /// any incoming call.
+    @ViewBuilder
+    private func holdReturnStatus(_ shown: ActiveCall) -> some View {
+        let ring = holdReturnRing(shown)
+        let systemImage = ring == .theyreBack || ring == .rejoin ? "antenna.radiowaves.left.and.right" : "hourglass"
+        statusText(ring.status(name: shown.holdReturnLabelName), systemImage: systemImage, ringing: true)
+        if ring.showsTapToRejoin {
+            Text("Tap to rejoin")
+                .ariaFont(.label)
+                .foregroundStyle(.white.opacity(0.7))
         }
     }
 
@@ -535,8 +574,51 @@ struct CallView: View {
 
     // MARK: Bottom
 
-    @ViewBuilder
     private func bottomActions(_ shown: ActiveCall?) -> some View {
+        VStack(spacing: Space.m) {
+            if let shown { holdReturnExtras(shown) }
+            answerOrHangUp(shown)
+        }
+    }
+
+    /// A hold-return ring shows what the far party said and Still on hold;
+    /// once answered, Still on hold stays for the PBX's ten seconds.
+    @ViewBuilder
+    private func holdReturnExtras(_ shown: ActiveCall) -> some View {
+        if let id = shown.holdReturnId {
+            let showsStillOnHold = holdReturnRing(shown).showsStillOnHold
+            if phase(of: shown) == .incoming {
+                let lines = holdForMe.transcripts[id] ?? []
+                if !lines.isEmpty { HoldReturnTranscript(lines: lines) }
+                if showsStillOnHold { stillOnHoldButton(shown, waitId: id, endsCall: true) }
+            } else if showsStillOnHold, let joinedAt = shown.joinedAt {
+                // Re-drawn at the boundary, so the button goes on time.
+                TimelineView(.explicit([joinedAt, joinedAt.addingTimeInterval(HoldReturnRules.stillOnHoldWindow)])) { _ in
+                    if HoldReturnRules.showsStillOnHold(joinedAt: joinedAt, now: Date()) {
+                        stillOnHoldButton(shown, waitId: id, endsCall: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Still on hold": the person is not there. Ringing, the local ring
+    /// then ends too (the PBX goes back to waiting). A refusal or a second
+    /// tap while one is in flight changes nothing.
+    private func stillOnHoldButton(_ shown: ActiveCall, waitId: String, endsCall: Bool) -> some View {
+        AriaButton("Still on hold", systemImage: "hourglass", kind: .standard) {
+            Task {
+                guard await holdForMe.stillOnHold(waitId) else { return }
+                if endsCall { callManager.endCall(uuid: shown.uuid) }
+            }
+        }
+        .foregroundStyle(.white)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .accessibilityIdentifier("call.stillOnHold")
+    }
+
+    @ViewBuilder
+    private func answerOrHangUp(_ shown: ActiveCall?) -> some View {
         if let shown, phase(of: shown) == .incoming {
             if callManager.otherCalls.isEmpty {
                 HStack(spacing: Space.xxxl + Space.xl) {
@@ -606,6 +688,14 @@ struct CallView: View {
         } catch {
             banner = .error(error.localizedDescription)
         }
+    }
+
+    /// A hold-return ring is announced to VoiceOver by name: "They're back"
+    /// only when a person is (or may be) there.
+    private func announceBack(_ shown: ActiveCall?) {
+        guard let shown, shown.holdReturnId != nil, phase(of: shown) == .incoming else { return }
+        let text = holdReturnRing(shown).announcement(name: shown.holdReturnLabelName)
+        AccessibilityNotification.Announcement(text).post()
     }
 
     private func announce(_ state: ActiveCall.ActiveCallState?) {

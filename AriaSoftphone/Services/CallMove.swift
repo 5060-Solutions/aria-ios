@@ -319,6 +319,13 @@ final class CallMoveModel: ObservableObject {
         startListening()
     }
 
+    /// Start the socket when it is not running: a push woke the app, and
+    /// the events it carries (Hold for me's transcript) are wanted now.
+    func ensureListening() {
+        guard socketTask == nil else { return }
+        becameActive()
+    }
+
     func resignedActive() {
         isActive = false
         timer?.invalidate()
@@ -519,6 +526,7 @@ final class CallMoveModel: ObservableObject {
                 heard = true
                 if case .string(let text) = frame {
                     if let event = CallMoveEvent.parse(text) { handle(event) }
+                    if let hold = HoldWaitEvent.parse(text) { HoldForMeModel.shared.handle(hold) }
                     if let proximity = ProximityEvent.parse(text) { Proximity.shared.handle(proximity) }
                 }
             } catch {

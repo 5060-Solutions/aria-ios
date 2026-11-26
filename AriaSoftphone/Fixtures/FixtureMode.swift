@@ -21,6 +21,17 @@ enum FixtureMode {
     static let activatingArguments: Set<String> = ["-UITestMode", "-ScreenshotMode"]
     static let sceneArgument = "-FixtureScene"
     static let reconnectingArgument = "-FixtureReconnecting"
+    /// Turns the Hold for me flag off; fixtures offer it otherwise.
+    static let noHoldForMeArgument = "-FixtureNoHoldForMe"
+
+    /// Whether the fixture's `/me` offers Hold for me (DEBUG only).
+    static var offersHoldForMe: Bool {
+        #if DEBUG
+        return isActive && !ProcessInfo.processInfo.arguments.contains(noHoldForMeArgument)
+        #else
+        return false
+        #endif
+    }
 
     /// Whether onboarding opens the QR scanner at once (DEBUG only).
     static var opensScanner: Bool {
@@ -98,11 +109,19 @@ enum FixtureScene: String, CaseIterable {
     /// Extra: the in-call screen for a call whose media is not encrypted
     /// (the amber capsule and the one-time notice).
     case inCallUnencrypted = "in-call-unencrypted"
+    /// Extra: the in-call screen with Hold for me in the overflow.
+    case inCallHoldForMe = "in-call-hold-for-me"
+    /// Extra: the Hold for me waiting card above the Dialer.
+    case holdWaiting = "hold-waiting"
+    /// Extra: the incoming screen for a Hold for me ring, far party back.
+    case incomingHoldReturn = "incoming-hold-return"
 
     /// The DESIGN.md §8 file number, e.g. "05". An extra takes the number of
     /// the screen it is a variant of.
     var number: String {
-        if self == .inCallUnencrypted { return Self.inCall.number }
+        if self == .inCallUnencrypted || self == .inCallHoldForMe { return Self.inCall.number }
+        if self == .holdWaiting { return Self.dialer.number }
+        if self == .incomingHoldReturn { return Self.incomingCall.number }
         let index = Self.allCases.firstIndex(of: self)! + 1
         return String(format: "%02d", index)
     }

@@ -3,7 +3,8 @@ import UIKit
 
 /// App-wide notices about calls, shown over whatever screen is up: today,
 /// "Call dropped — connection lost" when the core ended a connected call
-/// because its gateway instance went away.
+/// because its gateway instance went away; and "Holding for you" when the
+/// PBX released the call into a Hold for me wait.
 struct CallNotices: ViewModifier {
     @ObservedObject private var callManager = CallManager.shared
 
@@ -27,6 +28,25 @@ struct CallNotices: ViewModifier {
                     }
                 }
             }
+            .overlay(alignment: .top) {
+                if let notice = callManager.heldForYouNotice, callManager.droppedCallNotice == nil {
+                    Banner(message: .info(notice.message)) {
+                        callManager.heldForYouNotice = nil
+                    }
+                    .padding(.horizontal, Space.screenMargin)
+                    .padding(.top, Space.xs)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .accessibilityIdentifier("notice.heldForYou")
+                    .task(id: notice.id) {
+                        UIAccessibility.post(notification: .announcement, argument: notice.message)
+                        try? await Task.sleep(for: .seconds(6))
+                        if callManager.heldForYouNotice?.id == notice.id {
+                            callManager.heldForYouNotice = nil
+                        }
+                    }
+                }
+            }
             .animation(.smooth, value: callManager.droppedCallNotice)
+            .animation(.smooth, value: callManager.heldForYouNotice)
     }
 }

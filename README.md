@@ -13,6 +13,7 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 - **Messages** -- business texting (SMS/MMS) on the numbers a seat is assigned: conversations per inbox with unread state, threads with delivery status, photos, a segment counter, live refresh (WebSocket plus a 15 s poll), and notification taps that open the thread. Uses the extension-login JWT against `/api/v1/tenants/{id}/messaging/...`
 - **Call move** -- a banner ("Call with X on Desk phone · Move here") when a call is live on another of your devices, and "Move to…" in the call's menu. The PBX swaps the device leg and the far party stays connected; this app never sends or accepts SIP `Replaces`. A move this phone asked for is answered straight away, with no ringing screen (it needs `moveId` in the VoIP push, see below)
 - **Call handoff** -- Settings > Call handoff: suggest nearby calls, move a call when you leave, and an opt-in, off-by-default Bluetooth LE hint (foreground only). Wi-Fi is reported as a SHA-256 of the interface's subnet, never the SSID, so no Location permission is needed
+- **Hold for me** -- in the call's overflow menu on an answered outgoing call: the PBX waits on hold and rings you when a person answers. A card and a Live Activity show the wait, and Settings > Hold for me sets the default greeting. Hidden unless `GET /api/v1/me` lists `hold_for_me` in `features`
 - **Voicemail** -- list, play, mark read and delete messages via the Aria PBX API
 - **QR provisioning** -- scan, review the server it points to, then sign in
 - **Outgoing calls** -- routed through the push gateway B2BUA
@@ -21,6 +22,14 @@ Native iOS softphone built with SwiftUI, CallKit, and PushKit. Uses [aria-mobile
 ### Push payload for a moved call
 
 The PBX's INVITE for a move carries `X-Aria-Move: <move_id>`. The app reads it from the VoIP push (`moveId`, optionally `moveFrom` with the label of the device the call leaves), because PushKit needs the call reported before anything is fetched. The push gateway must add those keys to the push for an INVITE with that header.
+
+### Hold for me
+
+Every Hold for me surface is hidden until the PBX offers it (`features` contains `"hold_for_me"`). The call screen shows a wait card, and the `AriaHoldActivity` extension shows the Live Activity on the Lock Screen and in the Dynamic Island. When the far party is back, the PBX rings the phone with `X-Aria-Hold-Return`, and the incoming screen says "They're back" with what the assistant heard.
+
+Alert pushes with `data.type == "hold_wait"` and `aps.category` `HOLD_WAIT` get a "Call again" action that redials `remote_number`; a plain tap opens the app to a banner with the same button. The category is always registered and does nothing unless a PBX that supports Hold for me sends such a push.
+
+For whoever signs the build: register the App ID `com.solutions5060.aria.holdactivity` (the Live Activity extension) and give it a provisioning profile. No App Group is needed.
 
 ## Requirements
 

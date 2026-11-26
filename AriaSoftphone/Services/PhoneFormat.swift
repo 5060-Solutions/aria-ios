@@ -178,7 +178,11 @@ final class DefaultCountry: ObservableObject {
         let client = PbxApiClient(baseUrl: settings.apiUrl)
         let code = try? await PbxSession.shared.authorized { jwt in
             await Self.resolve(
-                me: { try await client.identity(jwt: jwt) },
+                me: {
+                    let identity = try await client.identity(jwt: jwt)
+                    await HoldForMeModel.shared.refreshAvailability(identity: identity)
+                    return identity
+                },
                 settings: { try await client.callingCountry(jwt: jwt, tenantId: tenantId) }
             )
         }

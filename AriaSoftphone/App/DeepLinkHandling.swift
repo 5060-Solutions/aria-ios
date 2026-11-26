@@ -30,7 +30,7 @@ struct DeepLinkHandling: ViewModifier {
                         },
                         onRescan: { coordinator.dismiss() }
                     )
-                case .dial:
+                case .dial, .holdCancel, .holdOpen:
                     EmptyView()
                 }
             }

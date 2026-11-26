@@ -31,6 +31,10 @@ struct IncomingPush: Equatable {
     var moveId: String? = nil
     /// The device the call is moving from, when the gateway says (`moveFrom`).
     var moveFrom: String? = nil
+    /// `X-Aria-Hold-Return`: the Hold for me wait whose far party is back.
+    var holdReturnId: String? = nil
+    /// `X-Aria-Hold-Return-Name`: who is back.
+    var holdReturnName: String? = nil
 
     enum Rejection: Error, Equatable {
         /// No call token: there is no call to fetch.
@@ -81,7 +85,9 @@ struct IncomingPush: Equatable {
             callerName: string("callerName", "caller_name"),
             gatewayUrl: gatewayUrl,
             moveId: string("moveId", "move_id"),
-            moveFrom: string("moveFrom", "move_from")
+            moveFrom: string("moveFrom", "move_from"),
+            holdReturnId: string("holdReturnId", "hold_return_id"),
+            holdReturnName: string("holdReturnName", "hold_return_name")
         ))
     }
 }
@@ -181,11 +187,18 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             callerUri: callerUri,
             callerName: callerName,
             moveId: parsed.moveId,
-            moveFrom: parsed.moveFrom
+            moveFrom: parsed.moveFrom,
+            holdReturnId: parsed.holdReturnId,
+            holdReturnName: parsed.holdReturnName
         ) { error in
             guard error == nil else {
                 completion()
                 return
+            }
+            // The far party is back: have the socket and the open waits on
+            // their way, so the transcript and the ring reason arrive.
+            if parsed.holdReturnId != nil {
+                Task { @MainActor in await HoldForMeModel.shared.ensureListening() }
             }
 
             // Fetch the full call offer from the gateway. On a cold launch

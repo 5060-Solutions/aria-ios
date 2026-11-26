@@ -107,6 +107,13 @@ final class CallStateTests: XCTestCase {
         XCTAssertEqual(ending(connected, .remoteHangup).outcome, .answered)
     }
 
+    func testHeldForYouEndsAsARemoteEndNotAFailure() {
+        let connected = call(.outbound, connectedAt: Date())
+        XCTAssertEqual(ending(connected, .heldForYou),
+                       CallEnding(callKitReason: .remoteEnded, outcome: .heldForYou))
+        XCTAssertFalse(CallEnding.isDropped(connected, reason: .heldForYou))
+    }
+
     func testOwnActionsAreNotReportedToCallKitAgain() {
         XCTAssertNil(ending(call(.outbound, connectedAt: Date()), .localHangup).callKitReason)
         XCTAssertEqual(ending(call(.outbound), .cancelled),
