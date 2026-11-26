@@ -36,6 +36,9 @@ class CallManager: NSObject, ObservableObject {
     var otherCalls: [ActiveCall] { registry.background }
 
     private let provider: CXProvider
+    /// Sees each update reported to CallKit for an incoming call; tests
+    /// record it to read the name the system would show.
+    var onIncomingReport: ((CXCallUpdate) -> Void)?
     private let callController = CXCallController()
 
     /// Tokens of incoming calls that have ended here (declined, missed,
@@ -136,6 +139,7 @@ class CallManager: NSObject, ObservableObject {
         completion: @escaping (Error?) -> Void
     ) {
         let update = Self.callUpdate(remoteUri: callerUri, remoteName: callerName)
+        onIncomingReport?(update)
 
         provider.reportNewIncomingCall(with: uuid, update: update) { error in
             if let error = error {
@@ -163,6 +167,8 @@ class CallManager: NSObject, ObservableObject {
         callerName pushedName: String?,
         moveId: String? = nil,
         moveFrom: String? = nil,
+        holdReturnId: String? = nil,
+        holdReturnName: String? = nil,
         completion: @escaping (Error?) -> Void
     ) {
         // The address book's name for the number when the push has none:
@@ -175,6 +181,12 @@ class CallManager: NSObject, ObservableObject {
         let callerName: String? = (move == nil && moveId != nil)
             ? CallMoveLabel.unrequested(name: resolvedName ?? callerUri, from: moveFrom)
             : resolvedName
+        // The far party of a Hold for me wait is back: say so on the system's
+        // incoming screen. The push is authoritative, so this does not wait
+        // for the feature flag or the offer.
+        let kitName: String? = holdReturnId == nil
+            ? callerName
+            : HoldReturnLabel.callKitName(holdReturnName: holdReturnName, callerName: callerName, callerUri: callerUri)
         switch IncomingPushTriage.decide(
             callToken: callToken,
             calls: registry.calls,
@@ -184,7 +196,7 @@ class CallManager: NSObject, ObservableObject {
             // A redelivered push for a call already ringing (or one that
             // has ended). PushKit still needs a report, so report a call and
             // end it at once — without touching the real one or history.
-            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 if error == nil {
                     self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
                 }
@@ -197,7 +209,7 @@ class CallManager: NSObject, ObservableObject {
             // be answered properly. It is still reported first, as PushKit
             // requires, then ended.
             finishedTokens.insert(callToken)
-            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 guard let self = self else { return }
                 if error == nil {
                     self.provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
@@ -222,8 +234,10 @@ class CallManager: NSObject, ObservableObject {
                 state: .incoming
             )
             incoming.originalStartedAt = move?.callStartedAt
+            incoming.holdReturnId = holdReturnId
+            incoming.holdReturnName = holdReturnName
             registry.add(incoming)
-            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: callerName) { [weak self] error in
+            reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 guard let self = self else { return }
                 if let error = error {
                     // CallKit refused it (Do Not Disturb, blocked caller):
@@ -251,7 +265,14 @@ class CallManager: NSObject, ObservableObject {
     /// Attach the offer fetched for a pushed call.
     func offerReceived(_ offer: CallOffer) {
         guard let call = registry.call(callToken: offer.callToken) else { return }
-        registry.modify(uuid: call.uuid) { $0.offer = offer }
+        registry.modify(uuid: call.uuid) {
+            $0.offer = offer
+            // The offer confirms what the push said.
+            if let id = offer.holdReturnId {
+                $0.holdReturnId = id
+                $0.holdReturnName = offer.holdReturnName ?? $0.holdReturnName
+            }
+        }
     }
 
     /// The offer for a pushed call could not be fetched: end it in CallKit.
@@ -689,6 +710,7 @@ class CallManager: NSObject, ObservableObject {
             $0.callId = callId
             $0.state = $0.isOnHold ? .onHold : .connected
             $0.connectedAt = now
+            if $0.holdReturnId != nil { $0.joinedAt = now }
         }
 
         if call.direction == .outbound {
@@ -1204,6 +1226,13 @@ struct ActiveCall: Identifiable {
     var originalStartedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
+    /// The Hold for me wait whose far party is back, and who they are: from
+    /// the push, confirmed by the offer.
+    var holdReturnId: String?
+    var holdReturnName: String?
+    /// When a hold-return call was answered here: Still on hold is offered
+    /// for `HoldReturnRules.stillOnHoldWindow` after it.
+    var joinedAt: Date?
 
     init(
         uuid: UUID,
@@ -1245,6 +1274,11 @@ struct ActiveCall: Identifiable {
         case .inbound:
             return callToken.map { .reject(callToken: $0) } ?? .none
         }
+    }
+
+    /// The name a hold-return ring shows: who is back.
+    var holdReturnLabelName: String {
+        HoldReturnLabel.name(holdReturnName: holdReturnName, callerName: remoteName, callerUri: remoteUri)
     }
 
     /// Whether the call has connected (and not yet ended), held or not.
@@ -1766,6 +1800,7 @@ extension CallManager {
             call.callId = "fx-\(uuid.uuidString.prefix(8))"
             call.connectedAt = Date()
             call.state = .connected
+            if call.holdReturnId != nil { call.joinedAt = call.connectedAt }
         }
     }
 

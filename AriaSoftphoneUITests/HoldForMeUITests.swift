@@ -38,4 +38,14 @@ final class HoldForMeUITests: AriaUITestCase {
         XCTAssertTrue(tab(0).waitForExistence(timeout: 5))
         XCTAssertFalse(element("holdWait.card").exists)
     }
+
+    func testTheyreBackShowsTheTranscriptAndStillOnHold() {
+        launch("incoming-hold-return")
+        XCTAssertTrue(app.staticTexts["They're back — Acme Bank"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tap to rejoin"].exists)
+        XCTAssertTrue(element("holdReturn.transcript").exists)
+        element("call.stillOnHold").tap()
+        XCTAssertTrue(fixtureEvent("holdForMe.stillOnHold"))
+        XCTAssertTrue(element("call.stillOnHold").waitForNonExistence(timeout: 5), "the ringing call ends")
+    }
 }

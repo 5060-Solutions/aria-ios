@@ -207,7 +207,11 @@ final class HoldForMeModel: ObservableObject {
     /// The PBX's id for this phone's own call; nil when it is not listed.
     var resolveCallId: (ActiveCall) async -> String? = HoldForMeModel.resolveLive
     var isInConference: () -> Bool = { CallManager.shared.isInConference }
+    /// Starts the call-move socket when it is not running (it carries
+    /// `hold_wait_state`).
+    var startSocket: () -> Void = { CallMoveModel.shared.ensureListening() }
     private var isStarting = false
+    private var stillOnHoldInFlight: Set<String> = []
 
     init(backend: HoldForMeBackend, activities: HoldActivityController? = nil) {
         self.backend = backend
@@ -240,6 +244,7 @@ final class HoldForMeModel: ObservableObject {
         settings = nil
         cancelRequest = nil
         isStarting = false
+        stillOnHoldInFlight = []
     }
 
     // MARK: Availability
@@ -334,11 +339,26 @@ final class HoldForMeModel: ObservableObject {
     }
 
     /// "Still on hold" after joining: the person is not there yet.
-    func stillOnHold(_ id: String) async {
-        guard let wait = waits[id] else { return }
+    /// False when a tap is ignored because one is still in flight. An unknown
+    /// wait, a refusal (409) or a network failure are quiet: the call simply
+    /// goes on.
+    @discardableResult
+    func stillOnHold(_ id: String) async -> Bool {
+        guard !stillOnHoldInFlight.contains(id) else { return false }
+        guard let wait = waits[id] else { return true }
+        stillOnHoldInFlight.insert(id)
+        defer { stillOnHoldInFlight.remove(id) }
         if let updated = try? await backend.stillOnHold(callId: wait.callId) {
             waits[id] = updated
         }
+        return true
+    }
+
+    /// The far party is back (a hold-return push): make sure the socket and
+    /// the open waits are coming, so the transcript and ring reason arrive.
+    func ensureListening() async {
+        startSocket()
+        await becameActive()
     }
 
     /// Replace what is known with the PBX's open waits (the socket runs only

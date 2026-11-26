@@ -32,6 +32,18 @@ enum FixtureBootstrap {
         model.resolveCallId = { $0.callId }
         model.setAvailable(FixtureMode.offersHoldForMe)
         model.activities = HoldActivityController(facade: FixtureActivityFacade())
+        if scene == .incomingHoldReturn {
+            let started = Date().addingTimeInterval(-(18 * 60))
+            model.handle(.state(
+                HoldWait(holdWaitId: "fx-hold-1", callId: "fx-call-1", state: "ringing", greeting: .assistant,
+                         startedAt: started, stateSince: Date(), maxWaitSecs: 10800, falseAlarms: 0,
+                         remote: .init(number: FixtureData.incomingCaller.uri, name: "Acme Bank"),
+                         ringReason: "human", endedReason: nil),
+                transcript: [
+                    TranscriptLine(speaker: "assistant", text: "I'm an automated assistant for Sam."),
+                    TranscriptLine(speaker: "caller", text: "Hi, this is Dana from Acme."),
+                ]))
+        }
         if scene == .holdWaiting {
             let started = Date().addingTimeInterval(-(12 * 60 + 34))
             model.handle(.state(

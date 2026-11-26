@@ -7058,7 +7058,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Otra parte"
+            "value" : "Ellos"
           }
         },
         "de" : {
@@ -8944,6 +8944,160 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attente déjà en cours pour cet appel."
+          }
+        }
+      }
+    },
+    "They're back — %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya volvieron — %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie sind zurück — %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ils sont de retour — %@"
+          }
+        }
+      }
+    },
+    "Tap to rejoin" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para volver"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippen, um zurückzukehren"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez pour revenir"
+          }
+        }
+      }
+    },
+    "Still waiting after %lld hours. Rejoin or hang up?" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguimos esperando tras %lld horas. ¿Volver o colgar?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach %lld Stunden wird noch gewartet. Zurückkehren oder auflegen?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toujours en attente après %lld heures. Revenir ou raccrocher ?"
+          }
+        }
+      }
+    },
+    "Still on hold" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sigo en espera"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch in der Warteschleife"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toujours en attente"
+          }
+        }
+      }
+    },
+    "They're back, %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya volvieron, %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie sind zurück, %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ils sont de retour, %@"
+          }
+        }
+      }
+    },
+    "What they said" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que dijeron"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was gesagt wurde"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qui a été dit"
+          }
+        }
+      }
+    },
+    "Assistant" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asistente"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assistent"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assistant"
           }
         }
       }

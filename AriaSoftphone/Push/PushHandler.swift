@@ -187,11 +187,18 @@ class PushHandler: NSObject, PKPushRegistryDelegate {
             callerUri: callerUri,
             callerName: callerName,
             moveId: parsed.moveId,
-            moveFrom: parsed.moveFrom
+            moveFrom: parsed.moveFrom,
+            holdReturnId: parsed.holdReturnId,
+            holdReturnName: parsed.holdReturnName
         ) { error in
             guard error == nil else {
                 completion()
                 return
+            }
+            // The far party is back: have the socket and the open waits on
+            // their way, so the transcript and the ring reason arrive.
+            if parsed.holdReturnId != nil {
+                Task { @MainActor in await HoldForMeModel.shared.ensureListening() }
             }
 
             // Fetch the full call offer from the gateway. On a cold launch

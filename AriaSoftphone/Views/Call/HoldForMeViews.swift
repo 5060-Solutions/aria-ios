@@ -114,3 +114,75 @@ struct HoldForMeSheet: View {
         }
     }
 }
+
+
+/// When a hold-return call may say "Still on hold".
+enum HoldReturnRules {
+    /// The PBX accepts Still on hold for this long after the user joined.
+    static let stillOnHoldWindow: TimeInterval = 10
+
+    static func showsStillOnHold(joinedAt: Date?, now: Date) -> Bool {
+        guard let joinedAt else { return false }
+        return now.timeIntervalSince(joinedAt) < stillOnHoldWindow
+    }
+}
+
+/// Who is back, for the system's incoming screen and the app's own.
+enum HoldReturnLabel {
+    /// The push's name, else the caller's, else the number.
+    static func name(holdReturnName: String?, callerName: String?, callerUri: String) -> String {
+        for candidate in [holdReturnName, callerName] {
+            if let candidate, !candidate.isEmpty { return candidate }
+        }
+        return callerUri
+    }
+
+    static func callKitName(holdReturnName: String?, callerName: String?, callerUri: String) -> String {
+        let name = name(holdReturnName: holdReturnName, callerName: callerName, callerUri: callerUri)
+        return String(localized: "They're back — \(name)")
+    }
+}
+
+/// What the far party said while the assistant held the line (C3): shown
+/// above Decline and Answer when the transcript is not empty.
+struct HoldReturnTranscript: View {
+    let lines: [TranscriptLine]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text("What they said")
+                .ariaFont(.label)
+                .foregroundStyle(.white.opacity(0.75))
+                .accessibilityAddTraits(.isHeader)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                        row(line)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 140)
+        }
+        .padding(Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("holdReturn.transcript")
+    }
+
+    private func row(_ line: TranscriptLine) -> some View {
+        let speaker = line.speaker == "assistant"
+            ? String(localized: "Assistant") : String(localized: "Them")
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(speaker)
+                .ariaFont(.label)
+                .foregroundStyle(.white.opacity(0.7))
+            Text(line.text)
+                .ariaFont(.bodySmall)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}

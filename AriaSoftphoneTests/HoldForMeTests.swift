@@ -36,6 +36,74 @@ final class HoldForMeTests: XCTestCase {
         XCTAssertNil(none.holdReturnName)
     }
 
+    // MARK: They're back
+
+    @MainActor
+    func testPushNamesTheHoldReturnBeforeTheOffer() {
+        let manager = CallManager.shared
+        var updates: [CXCallUpdate] = []
+        manager.onIncomingReport = { updates.append($0) }
+        defer {
+            manager.onIncomingReport = nil
+            manager.loadFixture(calls: [])
+        }
+        manager.reportPushIncomingCall(
+            uuid: UUID(), callToken: "tok-hr-1", callerUri: "+18005550100", callerName: "Ignored",
+            holdReturnId: "hw-1", holdReturnName: "Acme Bank"
+        ) { _ in }
+        XCTAssertEqual(updates.map(\.localizedCallerName), ["They're back — Acme Bank"], "named with no offer yet")
+        let call = manager.registry.call(callToken: "tok-hr-1")
+        XCTAssertEqual(call?.holdReturnId, "hw-1")
+        XCTAssertEqual(call?.holdReturnName, "Acme Bank")
+        XCTAssertNil(call?.offer)
+    }
+
+    @MainActor
+    func testTheHoldReturnLabelFallsBackToTheCallerThenTheNumber() {
+        let manager = CallManager.shared
+        var updates: [CXCallUpdate] = []
+        manager.onIncomingReport = { updates.append($0) }
+        defer {
+            manager.onIncomingReport = nil
+            manager.loadFixture(calls: [])
+        }
+        manager.reportPushIncomingCall(
+            uuid: UUID(), callToken: "tok-hr-2", callerUri: "+18005550100", callerName: "Acme Bank",
+            holdReturnId: "hw-1", holdReturnName: nil
+        ) { _ in }
+        manager.loadFixture(calls: [])
+        manager.reportPushIncomingCall(
+            uuid: UUID(), callToken: "tok-hr-3", callerUri: "sip-unknown-xyz", callerName: nil,
+            holdReturnId: "hw-1"
+        ) { _ in }
+        XCTAssertEqual(updates.map(\.localizedCallerName),
+                       ["They're back — Acme Bank", "They're back — sip-unknown-xyz"])
+    }
+
+    @MainActor
+    func testAnOfferConfirmsTheHoldReturn() {
+        let manager = CallManager.shared
+        defer { manager.loadFixture(calls: []) }
+        var call = ActiveCall(uuid: UUID(), callToken: "tok-hr-4", remoteUri: "+18005550100", remoteName: nil,
+                              direction: .inbound, state: .incoming)
+        call.holdReturnId = "hw-1"
+        manager.loadFixture(calls: [call])
+        manager.offerReceived(CallOffer(
+            callToken: "tok-hr-4", callerUri: "+18005550100", callerName: "Acme", sdpOffer: "",
+            moveId: nil, holdReturnId: "hw-2", holdReturnName: "Acme Bank"))
+        let updated = manager.registry.call(callToken: "tok-hr-4")
+        XCTAssertEqual(updated?.holdReturnId, "hw-2")
+        XCTAssertEqual(updated?.holdReturnName, "Acme Bank")
+    }
+
+    func testStillOnHoldIsOfferedOnlyForTenSecondsAfterJoining() {
+        let now = Date()
+        XCTAssertTrue(HoldReturnRules.showsStillOnHold(joinedAt: now.addingTimeInterval(-9), now: now))
+        XCTAssertFalse(HoldReturnRules.showsStillOnHold(joinedAt: now.addingTimeInterval(-10), now: now))
+        XCTAssertFalse(HoldReturnRules.showsStillOnHold(joinedAt: now.addingTimeInterval(-11), now: now))
+        XCTAssertFalse(HoldReturnRules.showsStillOnHold(joinedAt: nil, now: now))
+    }
+
     func testHeldForYouIsNotADroppedCall() {
         var call = ActiveCall(uuid: UUID(), callToken: "tok", remoteUri: "18005550100", remoteName: "Acme",
                               direction: .outbound, state: .connected)
@@ -125,7 +193,14 @@ final class HoldForMeServiceTests: XCTestCase {
             return wait
         }
         func cancel(callId: String, action: String) async throws -> HoldWait { wait }
-        func stillOnHold(callId: String) async throws -> HoldWait { wait }
+        var stillOnHoldCalls: [String] = []
+        var stillOnHoldDelay: UInt64 = 0
+        func stillOnHold(callId: String) async throws -> HoldWait {
+            stillOnHoldCalls.append(callId)
+            if stillOnHoldDelay > 0 { try await Task.sleep(nanoseconds: stillOnHoldDelay) }
+            if let error { throw error }
+            return wait
+        }
         func openWaits() async throws -> [HoldWait] { open }
         func settings() async throws -> HoldSettings {
             HoldSettings(greeting: .line, assistantAvailable: true, maxWaitSecs: 10800)
@@ -144,6 +219,53 @@ final class HoldForMeServiceTests: XCTestCase {
         model.resolveCallId = { _ in "c-1" }
         model.isInConference = { inConference }
         return model
+    }
+
+    // MARK: Still on hold
+
+    func testStillOnHoldIgnoresDoubleTapsWhileOneIsInFlight() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        backend.stillOnHoldDelay = 100_000_000
+        let model = model(backend)
+        model.handle(.state(try sampleWait(), transcript: []))
+        async let first = model.stillOnHold("hw-1")
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let second = await model.stillOnHold("hw-1")
+        let ranFirst = await first
+        XCTAssertTrue(ranFirst)
+        XCTAssertFalse(second, "a tap while one is in flight is ignored")
+        XCTAssertEqual(backend.stillOnHoldCalls, ["c-1"])
+        let third = await model.stillOnHold("hw-1")
+        XCTAssertTrue(third, "a later tap goes through")
+        XCTAssertEqual(backend.stillOnHoldCalls.count, 2)
+    }
+
+    func testStillOnHoldRefusedByThePbxIsQuiet() async throws {
+        let backend = StubBackend(wait: try sampleWait(), error: HoldRequestError(status: 409, reason: nil))
+        let model = model(backend)
+        model.handle(.state(try sampleWait(), transcript: []))
+        let ran = await model.stillOnHold("hw-1")
+        XCTAssertTrue(ran)
+        XCTAssertNil(model.banner, "a 409 shows nothing")
+    }
+
+    func testStillOnHoldForAnUnknownWaitDoesNotCallThePbx() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        let ran = await model.stillOnHold("nope")
+        XCTAssertTrue(ran)
+        XCTAssertTrue(backend.stillOnHoldCalls.isEmpty)
+    }
+
+    func testEnsureListeningStartsTheSocketAndFetchesTheOpenWaits() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        model.fetchIdentity = { try self.identity(#"{"features":["hold_for_me"]}"#) }
+        var started = 0
+        model.startSocket = { started += 1 }
+        await model.ensureListening()
+        XCTAssertEqual(started, 1)
+        XCTAssertEqual(model.waits["hw-1"], try sampleWait())
     }
 
     func testStartPostsTheGreetingAndName() async throws {

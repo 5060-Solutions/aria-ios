@@ -38,7 +38,7 @@ final class FixtureModeTests: XCTestCase {
             "01-onboarding", "02-dialer", "03-dialer-number", "04-incoming-call", "05-in-call",
             "06-in-call-two-calls", "07-history", "08-contacts", "09-voicemail",
             "10-voicemail-playing", "11-settings", "12-forwarding", "13-connection-sheet",
-            "05-in-call-unencrypted", "05-in-call-hold-for-me", "02-hold-waiting",
+            "05-in-call-unencrypted", "05-in-call-hold-for-me", "02-hold-waiting", "04-incoming-hold-return",
         ])
     }
 

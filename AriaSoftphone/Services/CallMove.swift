@@ -319,6 +319,13 @@ final class CallMoveModel: ObservableObject {
         startListening()
     }
 
+    /// Start the socket when it is not running: a push woke the app, and
+    /// the events it carries (Hold for me's transcript) are wanted now.
+    func ensureListening() {
+        guard socketTask == nil else { return }
+        becameActive()
+    }
+
     func resignedActive() {
         isActive = false
         timer?.invalidate()
