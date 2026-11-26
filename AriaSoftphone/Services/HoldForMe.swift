@@ -221,12 +221,18 @@ final class HoldForMeModel: ObservableObject {
         return waits.values.filter(\.isOpen).sorted { ($0.startedAt, $0.holdWaitId) < ($1.startedAt, $1.holdWaitId) }
     }
 
+    /// Whether the PBX's answer (open waits, or "not offered") has been seen
+    /// since launch. Until then an activity this model does not know of may
+    /// belong to a wait that is still live, so none is ended.
+    private var hasReconciled = false
+
     private func syncActivities() {
-        activities?.sync(openWaits)
+        activities?.sync(openWaits, endUnknown: hasReconciled)
     }
 
     /// Everything the account had; for sign-out.
     func reset() {
+        hasReconciled = true
         available = false
         waits = [:]
         transcripts = [:]
@@ -251,8 +257,18 @@ final class HoldForMeModel: ObservableObject {
     /// open waits (the socket runs only in the foreground, so a wait may have
     /// ended meanwhile). A failed `/me` leaves the last known answer.
     func becameActive() async {
-        if let identity = try? await fetchIdentity() { refreshAvailability(identity: identity) }
-        if available { await reconcile() } else { syncActivities() }
+        var heardFromPbx = false
+        if let identity = try? await fetchIdentity() {
+            refreshAvailability(identity: identity)
+            heardFromPbx = true
+        }
+        if available {
+            await reconcile()
+        } else if heardFromPbx {
+            // Not offered: no activity may stay.
+            hasReconciled = true
+            syncActivities()
+        }
     }
 
     static func liveIdentity() async throws -> PbxApiClient.Identity {
@@ -303,7 +319,7 @@ final class HoldForMeModel: ObservableObject {
     /// A wait this phone has not heard of yet (the app was just opened from
     /// the Live Activity) is looked up first.
     func requestCancel(_ id: String) async {
-        if waits[id] == nil { await reconcile() }
+        if !available || waits[id] == nil { await becameActive() }
         guard available, waits[id]?.isOpen == true else { return }
         cancelRequest = id
     }
@@ -329,6 +345,7 @@ final class HoldForMeModel: ObservableObject {
     /// in the foreground); a wait it no longer lists is dropped.
     func reconcile() async {
         guard let open = try? await backend.openWaits() else { return }
+        hasReconciled = true
         let fresh = Dictionary(open.map { ($0.holdWaitId, $0) }, uniquingKeysWith: { _, latest in latest })
         waits = fresh
         transcripts = transcripts.filter { fresh[$0.key] != nil }

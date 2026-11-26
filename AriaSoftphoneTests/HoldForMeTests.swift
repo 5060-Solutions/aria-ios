@@ -490,4 +490,42 @@ final class HoldForMeServiceTests: XCTestCase {
         XCTAssertEqual(HoldWaitCard.elapsed(3723), "1:02:03")
         XCTAssertEqual(HoldWaitCard.elapsed(-3), "0:00")
     }
+
+    func testAColdLaunchCancelLinkAsksEvenBeforeTheFlagIsKnown() async throws {
+        let model = model(StubBackend(wait: try wait("waiting")))
+        XCTAssertFalse(model.available)
+        model.fetchIdentity = { try self.identity(#"{"features":["hold_for_me"]}"#) }
+        await model.requestCancel("hw-1")
+        XCTAssertTrue(model.available)
+        XCTAssertEqual(model.cancelRequest, "hw-1")
+    }
+
+    func testLiveActivitiesSurviveAColdLaunchUntilReconciled() async throws {
+        let facade = FakeFacade()
+        facade.live["hw-1"] = .init(state: "waiting", stateSince: Date())
+        let backend = StubBackend(wait: try wait("ringing"))
+        let model = HoldForMeModel(backend: backend, activities: HoldActivityController(facade: facade))
+
+        // /me fails offline: nothing is ended.
+        model.fetchIdentity = { throw URLError(.notConnectedToInternet) }
+        await model.becameActive()
+        XCTAssertTrue(facade.ended.isEmpty)
+
+        // /me answers, the PBX still lists the wait: updated, never ended or restarted.
+        model.fetchIdentity = { try self.identity(#"{"features":["hold_for_me"]}"#) }
+        await model.becameActive()
+        XCTAssertTrue(facade.ended.isEmpty)
+        XCTAssertTrue(facade.started.isEmpty)
+        XCTAssertEqual(facade.live["hw-1"]?.state, "ringing")
+    }
+
+    func testAnActivityIsEndedOnceThePbxSaysNotOffered() async throws {
+        let facade = FakeFacade()
+        facade.live["hw-1"] = .init(state: "waiting", stateSince: Date())
+        let model = HoldForMeModel(backend: StubBackend(wait: try wait("waiting")),
+                                   activities: HoldActivityController(facade: facade))
+        model.fetchIdentity = { try self.identity(#"{}"#) }
+        await model.becameActive()
+        XCTAssertEqual(facade.ended, ["hw-1"])
+    }
 }

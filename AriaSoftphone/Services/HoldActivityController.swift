@@ -42,13 +42,16 @@ final class HoldActivityController {
     /// has none, update a changed state, and end every other activity,
     /// whether it belongs to an ended wait or to one this app no longer
     /// knows (it was killed while waiting).
-    func sync(_ waits: [HoldWait]) {
+    ///
+    /// `endUnknown` false keeps activities this controller has not itself
+    /// started or updated: right after a launch they may be a live wait's.
+    func sync(_ waits: [HoldWait], endUnknown: Bool = true) {
         let open = waits.filter(\.isOpen)
         let openIds = Set(open.map(\.holdWaitId))
         let existing = Set(facade.existingIds())
 
         for id in existing.union(sent.keys) where !openIds.contains(id) {
-            if existing.contains(id) { facade.end(id: id) }
+            if existing.contains(id) && (endUnknown || sent[id] != nil) { facade.end(id: id) }
             sent[id] = nil
         }
         for wait in open {
