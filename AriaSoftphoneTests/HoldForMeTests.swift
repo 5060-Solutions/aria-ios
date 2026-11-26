@@ -48,6 +48,29 @@ final class HoldForMeTests: XCTestCase {
         XCTAssertFalse(CallRecord(call: call, outcome: ending.outcome).isMissed)
     }
 
+    func testReleaseIntoAWaitShowsTheNoticeNotADrop() {
+        let manager = CallManager.shared
+        var call = ActiveCall(uuid: UUID(), callToken: nil, remoteUri: "18005550100", remoteName: "Acme",
+                              direction: .outbound, state: .connected)
+        call.callId = "outgoing-hfy"
+        call.connectedAt = Date()
+        manager.loadFixture(calls: [call])
+        manager.droppedCallNotice = nil
+        manager.heldForYouNotice = nil
+
+        manager.updateCallState(info: CallInfo(
+            callId: "outgoing-hfy", remoteUri: "18005550100", remoteName: "Acme", state: .ended,
+            direction: .outbound, muted: false, onHold: false, durationSecs: 60, endReason: .heldForYou))
+
+        XCTAssertEqual(manager.heldForYouNotice?.message, "Holding for you")
+        XCTAssertNil(manager.droppedCallNotice)
+        XCTAssertNil(manager.registry[call.uuid])
+        let record = CallHistoryStore.shared.records.first
+        XCTAssertEqual(record?.outcome, .heldForYou)
+        XCTAssertEqual(record?.isMissed, false)
+        manager.loadFixture(calls: [])
+    }
+
     func testRecentsShowsHoldingForYou() {
         var call = ActiveCall(uuid: UUID(), callToken: "tok", remoteUri: "18005550100", remoteName: "Acme",
                               direction: .outbound, state: .connected)

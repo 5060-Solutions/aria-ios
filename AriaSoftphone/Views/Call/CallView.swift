@@ -395,9 +395,7 @@ struct CallView: View {
 
     @ViewBuilder
     private func statusLine(_ shown: ActiveCall?) -> some View {
-        if let shown, shown.heldForYou {
-            statusText(String(localized: "Holding for you"), systemImage: "hourglass")
-        } else if let shown {
+        if let shown {
             switch phase(of: shown) {
             case .active:
                 TimelineView(.periodic(from: .now, by: 1)) { _ in

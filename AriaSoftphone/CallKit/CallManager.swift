@@ -20,6 +20,9 @@ class CallManager: NSObject, ObservableObject {
     /// Set when a connected call was lost with the connection (its gateway
     /// instance died): the UI shows "Call dropped — connection lost".
     @Published var droppedCallNotice: DroppedCallNotice?
+    /// Set when the PBX released the call into a Hold for me wait: the UI
+    /// shows "Holding for you" (not an error).
+    @Published var heldForYouNotice: HeldForYouNotice?
 
     /// Whether audio is currently going to the built-in speaker. Follows the
     /// actual route, so it is also right after a change from Control Centre
@@ -769,15 +772,16 @@ class CallManager: NSObject, ObservableObject {
                 ending = CallEnding(callKitReason: ending.callKitReason, outcome: .transferred)
                 MainActor.assumeIsolated { CallMoveModel.shared.showMoved(to: device) }
             }
-            if info.endReason == .heldForYou {
-                registry.modify(uuid: call.uuid) { $0.heldForYou = true }
-            }
             if let reason = ending.callKitReason {
                 provider.reportCall(with: call.uuid, endedAt: Date(), reason: reason)
             }
             if CallEnding.isDropped(call, reason: info.endReason) {
                 droppedCallNotice = DroppedCallNotice(remote: call.displayName)
                 AppLog.shared.log("call", "Dropped: connection lost")
+            }
+            if ending.outcome == .heldForYou {
+                heldForYouNotice = HeldForYouNotice(remote: call.displayName)
+                AppLog.shared.log("call", "Released into a Hold for me wait")
             }
             finishCall(call, outcome: ending.outcome)
             return
@@ -1200,8 +1204,6 @@ struct ActiveCall: Identifiable {
     var originalStartedAt: Date?
     /// The offer fetched for an incoming call, once it has arrived.
     var offer: CallOffer?
-    /// Ended because the PBX released this phone into a Hold for me wait.
-    var heldForYou = false
 
     init(
         uuid: UUID,
@@ -1667,6 +1669,17 @@ struct CallRegistry {
         let resumes = connected.filter { !$0.isOnHold && callKitHeld.contains($0.uuid) }
         return holds.map { HoldChange(uuid: $0.uuid, onHold: true) }
             + resumes.map { HoldChange(uuid: $0.uuid, onHold: false) }
+    }
+}
+
+/// A call the PBX released into a Hold for me wait; the far party is still on
+/// the line and the PBX will ring again when a person answers.
+struct HeldForYouNotice: Identifiable, Equatable {
+    let id = UUID()
+    let remote: String
+
+    var message: String {
+        String(localized: "Holding for you")
     }
 }
 
