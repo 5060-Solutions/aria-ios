@@ -168,6 +168,7 @@ final class AccountSession: ObservableObject {
         VoicemailService.shared.reset()
         MessagingService.shared.reset()
         CallMoveModel.shared.reset()
+        HoldForMeModel.shared.reset()
         Proximity.shared.reset()
         hasSession = false
         errorMessage = nil

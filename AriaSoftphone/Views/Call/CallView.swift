@@ -20,6 +20,9 @@ struct CallView: View {
     @State private var transferCall: ActiveCall?
     @State private var showAddCall = false
     @State private var showMoveTo = false
+    /// The call the Hold for me sheet is for, fixed when it is tapped.
+    @State private var holdForMeCall: ActiveCall?
+    @ObservedObject private var holdForMe = HoldForMeModel.shared
     @State private var isCompletingTransfer = false
     @State private var transferError: String?
     @State private var link = CallLinkStatus()
@@ -63,6 +66,12 @@ struct CallView: View {
         }
         .environment(\.colorScheme, .dark)
         .banner($banner)
+        // A refused Hold for me leaves the call as it was; say why.
+        .onChange(of: holdForMe.banner) { _, refusal in
+            guard let refusal else { return }
+            banner = .error(String(localized: refusal.message))
+            holdForMe.banner = nil
+        }
         .animation(Motion.standard(reduceMotion: reduceMotion), value: shown?.state)
         .animation(Motion.standard(reduceMotion: reduceMotion), value: callManager.otherCalls.map(\.uuid))
         return withAnnouncements(withAlerts(withSheets(screen, shown: shown)), shown: shown)
@@ -86,6 +95,9 @@ struct CallView: View {
             }
             .sheet(isPresented: $showMoveTo) {
                 MoveToView()
+            }
+            .sheet(item: $holdForMeCall) { call in
+                HoldForMeSheet(call: call)
             }
     }
 
@@ -336,6 +348,10 @@ struct CallView: View {
             }
             Button("Move to…", systemImage: "arrow.left.arrow.right") { showMoveTo = true }
                 .accessibilityIdentifier("call.moveTo")
+            if holdForMe.canHoldForMe(shown) {
+                Button(String(localized: "Hold for me"), systemImage: "hourglass") { holdForMeCall = shown }
+                    .accessibilityIdentifier("call.holdForMe")
+            }
             if callManager.isInConference {
                 Button("Split Calls", systemImage: "arrow.triangle.branch") { callManager.splitConference() }
                     .accessibilityIdentifier("call.split")

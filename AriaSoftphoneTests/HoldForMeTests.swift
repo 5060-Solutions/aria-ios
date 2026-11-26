@@ -79,3 +79,268 @@ final class HoldForMeTests: XCTestCase {
         XCTAssertEqual(record.summary, "Holding for you")
     }
 }
+
+/// Hold for me's wire, events, refusals and availability, against the shared
+/// contract's shapes (C2, C3).
+@MainActor
+final class HoldForMeServiceTests: XCTestCase {
+    private let waitJSON = """
+    {"hold_wait_id":"hw-1","call_id":"c-1","state":"waiting","greeting":"line",
+     "started_at":"2026-11-26T15:04:05Z","state_since":"2026-11-26T15:04:05Z",
+     "max_wait_secs":10800,"false_alarms":0,
+     "remote":{"number":"+18005550100","name":"Acme Bank"},
+     "ring_reason":null,"ended_reason":null}
+    """
+
+    private func client() -> PbxApiClient {
+        PbxApiClient(baseUrl: "https://api.example.com", session: StubURLProtocol.session())
+    }
+
+    private func call(direction: ActiveCall.CallDirection = .outbound, connected: Bool = true,
+                      name: String? = "Acme Bank") -> ActiveCall {
+        var call = ActiveCall(uuid: UUID(), callToken: nil, remoteUri: "+18005550100", remoteName: name,
+                              direction: direction, state: connected ? .connected : .connecting)
+        call.callId = "engine-1"
+        if connected { call.connectedAt = Date() }
+        return call
+    }
+
+    private func identity(_ json: String) throws -> PbxApiClient.Identity {
+        try PbxApiClient.jsonDecoder.decode(PbxApiClient.Identity.self, from: Data(json.utf8))
+    }
+
+    /// A backend that answers, or fails with `error`, and records its calls.
+    private final class StubBackend: HoldForMeBackend {
+        var error: Error?
+        var started: [(callId: String, greeting: HoldGreeting?, name: String?)] = []
+        let wait: HoldWait
+
+        init(wait: HoldWait, error: Error? = nil) { self.wait = wait; self.error = error }
+
+        func start(callId: String, greeting: HoldGreeting?, displayName: String?) async throws -> HoldWait {
+            started.append((callId, greeting, displayName))
+            if let error { throw error }
+            return wait
+        }
+        func cancel(callId: String, action: String) async throws -> HoldWait { wait }
+        func stillOnHold(callId: String) async throws -> HoldWait { wait }
+        func openWaits() async throws -> [HoldWait] { [wait] }
+        func settings() async throws -> HoldSettings {
+            HoldSettings(greeting: .line, assistantAvailable: true, maxWaitSecs: 10800)
+        }
+        func setGreeting(_ greeting: HoldGreeting) async throws -> HoldSettings {
+            HoldSettings(greeting: greeting, assistantAvailable: true, maxWaitSecs: 10800)
+        }
+    }
+
+    private func sampleWait() throws -> HoldWait {
+        try PbxApiClient.jsonDecoder.decode(HoldWait.self, from: Data(waitJSON.utf8))
+    }
+
+    private func model(_ backend: HoldForMeBackend, inConference: Bool = false) -> HoldForMeModel {
+        let model = HoldForMeModel(backend: backend)
+        model.resolveCallId = { _ in "c-1" }
+        model.isInConference = { inConference }
+        return model
+    }
+
+    func testStartPostsTheGreetingAndName() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(202, waitJSON)
+        let wait = try await client().startHoldForMe(jwt: "jwt", callId: "c-1", greeting: .line, displayName: "Acme Bank")
+        XCTAssertEqual(wait.holdWaitId, "hw-1")
+        XCTAssertEqual(wait.remote.name, "Acme Bank")
+        XCTAssertEqual(wait.maxWaitSecs, 10800)
+        XCTAssertTrue(wait.isOpen)
+        let sent = try XCTUnwrap(StubURLProtocol.requests.first)
+        XCTAssertEqual(sent.method, "POST")
+        XCTAssertEqual(sent.url.path, "/api/v1/me/calls/c-1/hold-for-me")
+        XCTAssertEqual(sent.body?["greeting"] as? String, "line")
+        XCTAssertEqual(sent.body?["display_name"] as? String, "Acme Bank")
+
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(202, waitJSON)
+        _ = try await client().startHoldForMe(jwt: "jwt", callId: "c-1", greeting: nil, displayName: nil)
+        XCTAssertEqual(StubURLProtocol.requests.first?.body?.count, 0, "an empty body takes the user's setting")
+    }
+
+    func testCancelUsesTheActionQuery() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(202, waitJSON)
+        _ = try await client().cancelHoldForMe(jwt: "jwt", callId: "c-1", action: "rejoin")
+        let sent = try XCTUnwrap(StubURLProtocol.requests.first)
+        XCTAssertEqual(sent.method, "DELETE")
+        XCTAssertEqual(sent.url.path, "/api/v1/me/calls/c-1/hold-for-me")
+        XCTAssertEqual(URLComponents(url: sent.url, resolvingAgainstBaseURL: false)?.queryItems,
+                       [URLQueryItem(name: "action", value: "rejoin")])
+
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(202, waitJSON)
+        _ = try await client().stillOnHold(jwt: "jwt", callId: "c-1")
+        XCTAssertEqual(StubURLProtocol.requests.first?.url.path, "/api/v1/me/calls/c-1/hold-for-me/still-on-hold")
+        XCTAssertEqual(StubURLProtocol.requests.first?.method, "POST")
+    }
+
+    func testTheOtherRoutesUseTheContractPaths() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(200, "[\(waitJSON)]")
+        let waits = try await client().holdWaits(jwt: "jwt")
+        XCTAssertEqual(waits.map(\.holdWaitId), ["hw-1"])
+        XCTAssertEqual(StubURLProtocol.requests.first?.url.path, "/api/v1/me/hold-waits")
+
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(200, #"{"greeting":"assistant","assistant_available":false,"max_wait_secs":600}"#)
+        let settings = try await client().holdForMeSettings(jwt: "jwt")
+        XCTAssertEqual(settings.greeting, .assistant)
+        XCTAssertFalse(settings.assistantAvailable)
+        XCTAssertEqual(StubURLProtocol.requests.first?.url.path, "/api/v1/me/hold-for-me/settings")
+
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(200, #"{"greeting":"silence","assistant_available":true,"max_wait_secs":600}"#)
+        _ = try await client().setHoldForMeGreeting(jwt: "jwt", .silence)
+        XCTAssertEqual(StubURLProtocol.requests.first?.method, "PUT")
+        XCTAssertEqual(StubURLProtocol.requests.first?.body?["greeting"] as? String, "silence")
+    }
+
+    func testRefusalsMapToCopy() async throws {
+        XCTAssertEqual(HoldRefusal(status: 409, reason: "emergency"), .emergency)
+        XCTAssertEqual(HoldRefusal(status: 409, reason: "conference"), .busy)
+        XCTAssertEqual(HoldRefusal(status: 409, reason: "transfer"), .busy)
+        XCTAssertEqual(HoldRefusal(status: 409, reason: "already_holding"), .already)
+        for reason in ["not_outgoing", "not_answered", "nonsense", nil] {
+            XCTAssertEqual(HoldRefusal(status: 409, reason: reason), .other)
+        }
+        for status in [403, 404, 422, 500] {
+            XCTAssertEqual(HoldRefusal(status: status, reason: "emergency"), .other)
+        }
+        XCTAssertEqual(String(localized: HoldRefusal.emergency.message), "Not available on emergency calls.")
+        XCTAssertEqual(String(localized: HoldRefusal.busy.message), "Not available while a transfer or merge is in progress.")
+        XCTAssertEqual(String(localized: HoldRefusal.already.message), "Already holding this call.")
+        XCTAssertEqual(String(localized: HoldRefusal.other.message), "Couldn't start Hold for me.")
+
+        // The route's 409 carries its reason; the client keeps it.
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(409, #"{"error":"refused","reason":"already_holding"}"#)
+        do {
+            _ = try await client().startHoldForMe(jwt: "jwt", callId: "c-1", greeting: nil, displayName: nil)
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual(HoldRefusal(error: error), .already)
+        }
+
+        // Through the model: the call is untouched, the wait list stays empty,
+        // and the banner names the reason. A network failure reads as `.other`.
+        let wait = try sampleWait()
+        let cases: [(Error, HoldRefusal)] = [
+            (HoldRequestError(status: 409, reason: "emergency"), .emergency),
+            (HoldRequestError(status: 409, reason: "conference"), .busy),
+            (HoldRequestError(status: 409, reason: "transfer"), .busy),
+            (HoldRequestError(status: 409, reason: "already_holding"), .already),
+            (HoldRequestError(status: 500, reason: nil), .other),
+            (URLError(.notConnectedToInternet), .other),
+        ]
+        for (error, expected) in cases {
+            let backend = StubBackend(wait: wait, error: error)
+            let model = model(backend)
+            let active = call()
+            await model.start(call: active, greeting: .line)
+            XCTAssertEqual(model.banner, expected, "\(error)")
+            XCTAssertTrue(model.waits.isEmpty)
+            XCTAssertEqual(active.state, .connected)
+        }
+    }
+
+    func testStartRecordsTheWaitAndSendsTheDisplayName() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        await model.start(call: call(), greeting: .assistant)
+        XCTAssertEqual(backend.started.first?.callId, "c-1")
+        XCTAssertEqual(backend.started.first?.greeting, .assistant)
+        XCTAssertEqual(backend.started.first?.name, "Acme Bank")
+        XCTAssertEqual(model.waits["hw-1"]?.state, "waiting")
+        XCTAssertNil(model.banner)
+
+        // No name known: nothing is sent for it.
+        await model.start(call: call(name: nil), greeting: .silence)
+        XCTAssertNil(backend.started.last?.name)
+    }
+
+    func testAnUnresolvableCallIsRefusedWithoutTheNetwork() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        model.resolveCallId = { _ in nil }
+        await model.start(call: call(), greeting: .line)
+        XCTAssertEqual(model.banner, .other)
+        XCTAssertTrue(backend.started.isEmpty)
+    }
+
+    func testHoldWaitEventParsesTheContract() throws {
+        let json = """
+        {"type":"hold_wait_state","tenant_id":"t","extension_id":"e",
+         "hold_wait":\(waitJSON),
+         "transcript":[{"speaker":"assistant","text":"I'm an automated assistant for Sam."},
+                       {"speaker":"caller","text":"Hi, this is Dana from Acme."}]}
+        """
+        guard case .state(let wait, let transcript)? = HoldWaitEvent.parse(json) else {
+            return XCTFail("did not parse")
+        }
+        XCTAssertEqual(wait.holdWaitId, "hw-1")
+        XCTAssertEqual(wait.callId, "c-1")
+        XCTAssertEqual(wait.greeting, .line)
+        XCTAssertEqual(transcript.count, 2)
+        XCTAssertEqual(transcript[1], TranscriptLine(speaker: "caller", text: "Hi, this is Dana from Acme."))
+
+        XCTAssertNil(HoldWaitEvent.parse(#"{"type":"call_ended","call_id":"c"}"#))
+        XCTAssertNil(HoldWaitEvent.parse("not json"))
+    }
+
+    func testTheModelKeepsTheLatestStateAndTranscript() throws {
+        let model = model(StubBackend(wait: try sampleWait()))
+        let wait = try sampleWait()
+        model.handle(.state(wait, transcript: [TranscriptLine(speaker: "caller", text: "Hi")]))
+        model.handle(.state(wait, transcript: []))
+        XCTAssertEqual(model.waits["hw-1"], wait)
+        XCTAssertEqual(model.transcripts["hw-1"], [])
+    }
+
+    func testTheButtonNeedsTheFlagAnOutgoingCallAndNoConference() throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        XCTAssertFalse(model.canHoldForMe(call()), "no flag")
+
+        model.refreshAvailability(identity: try identity(#"{"features":["hold_for_me"]}"#))
+        XCTAssertTrue(model.canHoldForMe(call()))
+        XCTAssertFalse(model.canHoldForMe(call(direction: .inbound)), "incoming call")
+        XCTAssertFalse(model.canHoldForMe(call(connected: false)), "not answered")
+
+        let inConference = self.model(backend, inConference: true)
+        inConference.refreshAvailability(identity: try identity(#"{"features":["hold_for_me"]}"#))
+        XCTAssertFalse(inConference.canHoldForMe(call()), "conference")
+    }
+
+    func testAvailabilityFollowsTheIdentityAndResets() throws {
+        let model = model(StubBackend(wait: try sampleWait()))
+        model.refreshAvailability(identity: try identity(#"{}"#))
+        XCTAssertFalse(model.available, "an absent features field means off")
+        model.refreshAvailability(identity: try identity(#"{"features":["hold_for_me"]}"#))
+        XCTAssertTrue(model.available)
+        model.handle(.state(try sampleWait(), transcript: []))
+        model.reset()
+        XCTAssertFalse(model.available)
+        XCTAssertTrue(model.waits.isEmpty)
+        XCTAssertTrue(model.transcripts.isEmpty)
+    }
+
+    func testReconcileReplacesTheWaitsWithThePbxOpenList() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        var stale = try sampleWait()
+        stale = HoldWait(holdWaitId: "hw-old", callId: "c-0", state: "waiting", greeting: .line,
+                         startedAt: stale.startedAt, stateSince: stale.stateSince, maxWaitSecs: 10800,
+                         falseAlarms: 0, remote: stale.remote, ringReason: nil, endedReason: nil)
+        model.handle(.state(stale, transcript: []))
+        await model.reconcile()
+        XCTAssertEqual(Set(model.waits.keys), ["hw-1"])
+        XCTAssertNil(model.transcripts["hw-old"])
+    }
+}

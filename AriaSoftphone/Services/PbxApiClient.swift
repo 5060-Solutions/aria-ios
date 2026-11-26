@@ -749,7 +749,7 @@ class PbxApiClient {
 
     /// The JSON body of the last non-2xx response from `send`, for routes
     /// whose errors carry fields beyond the message.
-    private var lastErrorBody: [String: Any]?
+    private(set) var lastErrorBody: [String: Any]?
 
     /// Send a request and return the body of a 2xx response.
     func send(

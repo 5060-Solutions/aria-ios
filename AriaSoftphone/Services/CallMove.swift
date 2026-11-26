@@ -519,6 +519,7 @@ final class CallMoveModel: ObservableObject {
                 heard = true
                 if case .string(let text) = frame {
                     if let event = CallMoveEvent.parse(text) { handle(event) }
+                    if let hold = HoldWaitEvent.parse(text) { HoldForMeModel.shared.handle(hold) }
                     if let proximity = ProximityEvent.parse(text) { Proximity.shared.handle(proximity) }
                 }
             } catch {

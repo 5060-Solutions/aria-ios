@@ -105,7 +105,7 @@ enum FixtureData {
         switch scene {
         case .incomingCall:
             return [incoming()]
-        case .inCall:
+        case .inCall, .inCallHoldForMe:
             return [connected(activeCaller, id: "fx-call-1", since: now.addingTimeInterval(-207))]
         case .inCallUnencrypted:
             // The phone system declined SRTP.

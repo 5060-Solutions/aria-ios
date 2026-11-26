@@ -17,8 +17,20 @@ enum FixtureBootstrap {
             SipEngineManager.shared.deviceId = FixtureData.account.pbxDeviceId
             SipEngineManager.shared.isRecovering = FixtureMode.isReconnecting
         }
+        installHoldForMe()
         AccountSession.shared.applyFixture(signedIn: scene.isSignedIn)
         CallManager.shared.loadFixture(calls: FixtureData.calls(for: scene))
+    }
+
+    /// Hold for me answers from memory, and is offered unless the launch
+    /// arguments turn the flag off.
+    @MainActor
+    private static func installHoldForMe() {
+        let model = HoldForMeModel.shared
+        model.reset()
+        model.backend = FixtureHoldForMeBackend()
+        model.resolveCallId = { $0.callId }
+        model.setAvailable(FixtureMode.offersHoldForMe)
     }
 
     /// Start from empty settings, so a previous run or a real account on the
@@ -62,6 +74,51 @@ struct FixtureContactsSource: ContactsSource {
     var isAuthorized: Bool { accessGranted }
     func requestAccess() async throws -> Bool { accessGranted }
     func fetchContacts() throws -> [ContactEntry] { contacts }
+}
+
+// MARK: - Hold for me
+
+/// Starts and cancels waits in memory, recording each into `FixtureEvents`.
+struct FixtureHoldForMeBackend: HoldForMeBackend {
+    var saved = HoldSettings(greeting: .line, assistantAvailable: true, maxWaitSecs: 10800)
+
+    private func record(_ event: String) async {
+        await MainActor.run { FixtureEvents.shared.holdForMe.append(event) }
+    }
+
+    private func wait(callId: String, greeting: HoldGreeting, name: String?, state: String = "waiting") -> HoldWait {
+        let now = Date()
+        return HoldWait(
+            holdWaitId: "fx-hold-1", callId: callId, state: state, greeting: greeting,
+            startedAt: now, stateSince: now, maxWaitSecs: saved.maxWaitSecs, falseAlarms: 0,
+            remote: .init(number: FixtureData.activeCaller.uri, name: name),
+            ringReason: nil, endedReason: state == "ended" ? "hung_up" : nil
+        )
+    }
+
+    func start(callId: String, greeting: HoldGreeting?, displayName: String?) async throws -> HoldWait {
+        let used = greeting ?? saved.greeting
+        await record("holdForMe.started:\(used.rawValue)")
+        return wait(callId: callId, greeting: used, name: displayName)
+    }
+
+    func cancel(callId: String, action: String) async throws -> HoldWait {
+        await record("holdForMe.cancelled:\(action)")
+        return wait(callId: callId, greeting: saved.greeting, name: nil, state: "ended")
+    }
+
+    func stillOnHold(callId: String) async throws -> HoldWait {
+        await record("holdForMe.stillOnHold")
+        return wait(callId: callId, greeting: saved.greeting, name: nil)
+    }
+
+    func openWaits() async throws -> [HoldWait] { [] }
+    func settings() async throws -> HoldSettings { saved }
+
+    func setGreeting(_ greeting: HoldGreeting) async throws -> HoldSettings {
+        await record("holdForMe.greeting:\(greeting.rawValue)")
+        return HoldSettings(greeting: greeting, assistantAvailable: saved.assistantAvailable, maxWaitSecs: saved.maxWaitSecs)
+    }
 }
 
 // MARK: - Voicemail

@@ -11,9 +11,9 @@ class AriaUITestCase: XCTestCase {
     }
 
     @discardableResult
-    func launch(_ scene: String) -> XCUIApplication {
+    func launch(_ scene: String, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestMode", "-FixtureScene", scene]
+        app.launchArguments = ["-UITestMode", "-FixtureScene", scene] + extra
         app.launch()
         self.app = app
         return app
@@ -21,6 +21,19 @@ class AriaUITestCase: XCTestCase {
 
     func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier].firstMatch
+    }
+
+    /// Whether the app recorded fixture event `name` (what a fixture backend
+    /// was asked to do), waiting briefly for it.
+    func fixtureEvent(_ name: String, timeout: TimeInterval = 5) -> Bool {
+        let marker = element("fixture.holdForMe")
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if marker.exists, let value = marker.value as? String,
+               value.split(separator: ",").contains(Substring(name)) { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        } while Date() < deadline
+        return false
     }
 
     /// The tab bar's buttons in order: Dialer, History, Contacts, Voicemail,
