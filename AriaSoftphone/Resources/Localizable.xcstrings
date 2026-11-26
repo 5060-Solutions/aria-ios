@@ -7058,7 +7058,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ellos"
+            "value" : "Otra parte"
           }
         },
         "de" : {
@@ -9098,6 +9098,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Assistant"
+          }
+        }
+      }
+    },
+    "holdForMe.speaker.caller" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Them"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ellos"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gegenüber"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interlocuteur"
           }
         }
       }

@@ -147,6 +147,7 @@ enum HoldReturnLabel {
 /// above Decline and Answer when the transcript is not empty.
 struct HoldReturnTranscript: View {
     let lines: [TranscriptLine]
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
@@ -166,14 +167,20 @@ struct HoldReturnTranscript: View {
         }
         .padding(Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .background {
+            // Solid with Reduce Transparency, so the text keeps its contrast.
+            if reduceTransparency {
+                RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.black.opacity(0.85))
+            }
+        }
+        .glassEffect(reduceTransparency ? .identity : .regular, in: .rect(cornerRadius: 20))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("holdReturn.transcript")
     }
 
     private func row(_ line: TranscriptLine) -> some View {
         let speaker = line.speaker == "assistant"
-            ? String(localized: "Assistant") : String(localized: "Them")
+            ? String(localized: "Assistant") : String(localized: "holdForMe.speaker.caller", defaultValue: "Them")
         return VStack(alignment: .leading, spacing: 0) {
             Text(speaker)
                 .ariaFont(.label)

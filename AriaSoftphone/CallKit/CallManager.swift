@@ -271,6 +271,9 @@ class CallManager: NSObject, ObservableObject {
             if let id = offer.holdReturnId {
                 $0.holdReturnId = id
                 $0.holdReturnName = offer.holdReturnName ?? $0.holdReturnName
+                // Already answered before the offer arrived: the window runs
+                // from the connect.
+                if $0.joinedAt == nil { $0.joinedAt = $0.connectedAt }
             }
         }
     }

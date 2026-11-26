@@ -194,10 +194,18 @@ final class HoldForMeServiceTests: XCTestCase {
         }
         func cancel(callId: String, action: String) async throws -> HoldWait { wait }
         var stillOnHoldCalls: [String] = []
-        var stillOnHoldDelay: UInt64 = 0
+        /// When set, Still on hold waits for it to be resumed.
+        var stillOnHoldGate: CheckedContinuation<Void, Never>?
+        var stillOnHoldEntered: (() -> Void)?
         func stillOnHold(callId: String) async throws -> HoldWait {
             stillOnHoldCalls.append(callId)
-            if stillOnHoldDelay > 0 { try await Task.sleep(nanoseconds: stillOnHoldDelay) }
+            if let entered = stillOnHoldEntered {
+                stillOnHoldEntered = nil
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    stillOnHoldGate = c
+                    entered()
+                }
+            }
             if let error { throw error }
             return wait
         }
@@ -225,12 +233,14 @@ final class HoldForMeServiceTests: XCTestCase {
 
     func testStillOnHoldIgnoresDoubleTapsWhileOneIsInFlight() async throws {
         let backend = StubBackend(wait: try sampleWait())
-        backend.stillOnHoldDelay = 100_000_000
+        let entered = expectation(description: "first call is at the PBX")
+        backend.stillOnHoldEntered = { entered.fulfill() }
         let model = model(backend)
         model.handle(.state(try sampleWait(), transcript: []))
         async let first = model.stillOnHold("hw-1")
-        try await Task.sleep(nanoseconds: 20_000_000)
+        await fulfillment(of: [entered], timeout: 5)
         let second = await model.stillOnHold("hw-1")
+        backend.stillOnHoldGate?.resume()
         let ranFirst = await first
         XCTAssertTrue(ranFirst)
         XCTAssertFalse(second, "a tap while one is in flight is ignored")
@@ -238,6 +248,21 @@ final class HoldForMeServiceTests: XCTestCase {
         let third = await model.stillOnHold("hw-1")
         XCTAssertTrue(third, "a later tap goes through")
         XCTAssertEqual(backend.stillOnHoldCalls.count, 2)
+    }
+
+    @MainActor
+    func testAnOfferThatArrivesAfterTheAnswerStillStartsTheStillOnHoldWindow() {
+        let manager = CallManager.shared
+        defer { manager.loadFixture(calls: []) }
+        var call = ActiveCall(uuid: UUID(), callToken: "tok-hr-5", remoteUri: "+18005550100", remoteName: nil,
+                              direction: .inbound, state: .connected)
+        let connected = Date()
+        call.connectedAt = connected
+        manager.loadFixture(calls: [call])
+        manager.offerReceived(CallOffer(
+            callToken: "tok-hr-5", callerUri: "+18005550100", callerName: nil, sdpOffer: "",
+            moveId: nil, holdReturnId: "hw-1", holdReturnName: nil))
+        XCTAssertEqual(manager.registry.call(callToken: "tok-hr-5")?.joinedAt, connected)
     }
 
     func testStillOnHoldRefusedByThePbxIsQuiet() async throws {
