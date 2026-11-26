@@ -90,6 +90,8 @@ private final class FakeEngine: AriaMobileEngine {
     }
 
     override func notifyNetworkChange() { networkChanges += 1 }
+    /// A network change hands the core the system's DNS servers first.
+    override func setDnsServers(servers: [String]) {}
     override func currentGateway() -> String? { gateway }
     override func getActiveCall() -> CallInfo? { nil }
 }
