@@ -48,4 +48,20 @@ final class HoldForMeUITests: AriaUITestCase {
         XCTAssertTrue(fixtureEvent("holdForMe.stillOnHold"))
         XCTAssertTrue(element("call.stillOnHold").waitForNonExistence(timeout: 5), "the ringing call ends")
     }
+
+    func testSettingsShowsTheGreetingOnlyWithTheFlag() {
+        launch("settings")
+        let picker = element("settings.holdForMeGreeting")
+        for _ in 0..<6 where !picker.exists { app.swipeUp() }
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "offered with the flag")
+        picker.tap()
+        app.buttons["Silence"].firstMatch.tap()
+        XCTAssertTrue(fixtureEvent("holdForMe.greeting:silence"))
+        app.terminate()
+
+        launch("settings", extra: ["-FixtureNoHoldForMe"])
+        XCTAssertTrue(tab(4).waitForExistence(timeout: 5))
+        for _ in 0..<6 { app.swipeUp() }
+        XCTAssertFalse(element("settings.holdForMeGreeting").exists, "hidden without the flag")
+    }
 }

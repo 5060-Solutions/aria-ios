@@ -213,8 +213,12 @@ final class HoldForMeServiceTests: XCTestCase {
         func settings() async throws -> HoldSettings {
             HoldSettings(greeting: .line, assistantAvailable: true, maxWaitSecs: 10800)
         }
+        var greetingError: Error?
+        var savedGreetings: [HoldGreeting] = []
         func setGreeting(_ greeting: HoldGreeting) async throws -> HoldSettings {
-            HoldSettings(greeting: greeting, assistantAvailable: true, maxWaitSecs: 10800)
+            savedGreetings.append(greeting)
+            if let greetingError { throw greetingError }
+            return HoldSettings(greeting: greeting, assistantAvailable: true, maxWaitSecs: 10800)
         }
     }
 
@@ -674,5 +678,93 @@ final class HoldForMeServiceTests: XCTestCase {
         model.fetchIdentity = { try self.identity(#"{}"#) }
         await model.becameActive()
         XCTAssertEqual(facade.ended, ["hw-1"])
+    }
+
+    // MARK: Settings greeting and notifications
+
+    func testSettingsGreetingRoundTrips() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        await model.loadSettings()
+        XCTAssertEqual(model.settings?.greeting, .line)
+
+        await model.setGreeting(.silence)
+        XCTAssertEqual(backend.savedGreetings, [.silence])
+        XCTAssertEqual(model.settings?.greeting, .silence)
+        XCTAssertNil(model.settingsError)
+
+        // A 500 puts the saved value back.
+        backend.greetingError = HoldRequestError(status: 500, reason: nil)
+        await model.setGreeting(.assistant)
+        XCTAssertEqual(backend.savedGreetings, [.silence, .assistant])
+        XCTAssertEqual(model.settings?.greeting, .silence, "reverted")
+        XCTAssertNotNil(model.settingsError)
+
+        // The PUT body is the contract's.
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(200, #"{"greeting":"silence","assistant_available":true,"max_wait_secs":600}"#)
+        _ = try await client().setHoldForMeGreeting(jwt: "jwt", .silence)
+        XCTAssertEqual(StubURLProtocol.requests.first?.body?["greeting"] as? String, "silence")
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(500, "{}")
+        do {
+            _ = try await client().setHoldForMeGreeting(jwt: "jwt", .line)
+            XCTFail("expected an error")
+        } catch {}
+    }
+
+    func testTheAssistantIsRefusedWhenUnavailable() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        await model.loadSettings()
+        model.applySettings(HoldSettings(greeting: .line, assistantAvailable: false, maxWaitSecs: 10800))
+        await model.setGreeting(.assistant)
+        XCTAssertTrue(backend.savedGreetings.isEmpty, "nothing is sent")
+        XCTAssertEqual(model.settings?.greeting, .line)
+    }
+
+    func testHoldWaitNotificationParses() {
+        let info: [AnyHashable: Any] = [
+            "aps": ["alert": ["title": "Acme Bank picked up while you were away", "body": "x"], "category": "HOLD_WAIT"],
+            "type": "hold_wait", "event": "missed", "hold_wait_id": "hw-1", "call_id": "c-1",
+            "remote_number": "+18005550100", "remote_name": "Acme Bank",
+        ]
+        let parsed = HoldWaitNotification.parse(userInfo: info)
+        XCTAssertEqual(parsed?.event, "missed")
+        XCTAssertEqual(parsed?.remoteNumber, "+18005550100")
+        XCTAssertEqual(parsed?.remoteName, "Acme Bank")
+
+        var noName = info
+        noName["remote_name"] = ""
+        XCTAssertEqual(HoldWaitNotification.parse(userInfo: noName)?.remoteName, "")
+        XCTAssertEqual(HoldWaitNotice(event: "missed", remoteNumber: "+18005550100", remoteName: "").displayName, "+18005550100")
+        XCTAssertEqual(HoldWaitNotice(event: "missed", remoteNumber: "+1", remoteName: "Acme Bank").displayName, "Acme Bank")
+
+        var other = info
+        other["type"] = "sms"
+        XCTAssertNil(HoldWaitNotification.parse(userInfo: other))
+        var noNumber = info
+        noNumber["remote_number"] = ""
+        XCTAssertNil(HoldWaitNotification.parse(userInfo: noNumber))
+    }
+
+    func testTheCategoryIsRegisteredWithCallAgain() {
+        let categories = LocalNotifications.categories()
+        let hold = categories.first { $0.identifier == "HOLD_WAIT" }
+        XCTAssertNotNil(hold)
+        XCTAssertEqual(hold?.actions.map(\.identifier), ["CALL_AGAIN"])
+        XCTAssertEqual(hold?.actions.first?.title, "Call again")
+        XCTAssertEqual(hold?.actions.first?.options, [.foreground])
+    }
+
+    @MainActor
+    func testTappingTheNotificationShowsTheBannerEvenBeforeAvailable() throws {
+        let model = HoldForMeModel(backend: StubBackend(wait: try sampleWait()))
+        XCTAssertFalse(model.available)
+        let note = HoldWaitNotice(event: "missed", remoteNumber: "+18005550100", remoteName: "")
+        model.showNotice(note)
+        XCTAssertEqual(model.notice, note)
+        model.dismissNotice()
+        XCTAssertNil(model.notice)
     }
 }

@@ -127,6 +127,27 @@ enum HoldRefusal: Equatable {
     }
 }
 
+/// The alert push for a wait that ended (C5): `data.type == "hold_wait"`.
+enum HoldWaitNotification {
+    /// Nil unless this is a `hold_wait` payload with a number to call.
+    static func parse(userInfo: [AnyHashable: Any]) -> (event: String, remoteNumber: String, remoteName: String)? {
+        guard userInfo["type"] as? String == "hold_wait",
+              let number = userInfo["remote_number"] as? String, !number.isEmpty else { return nil }
+        return (userInfo["event"] as? String ?? "", number, userInfo["remote_name"] as? String ?? "")
+    }
+}
+
+/// What the banner shows after a tapped `hold_wait` notification.
+struct HoldWaitNotice: Equatable {
+    let event: String
+    let remoteNumber: String
+    /// May be empty.
+    let remoteName: String
+
+    /// What to call them: the name, else the number.
+    var displayName: String { remoteName.isEmpty ? remoteNumber : remoteName }
+}
+
 // MARK: - Backend
 
 protocol HoldForMeBackend {
@@ -195,6 +216,11 @@ final class HoldForMeModel: ObservableObject {
     /// The latest refusal, to show as a banner and then clear.
     @Published var banner: HoldRefusal?
     @Published private(set) var settings: HoldSettings?
+    /// Why the last greeting save failed; cleared by the next save.
+    @Published var settingsError: String?
+    /// A tapped `hold_wait` notification: shown whether or not the flag has
+    /// been read yet.
+    @Published private(set) var notice: HoldWaitNotice?
     /// The wait the user asked to cancel (the card's Cancel, or the Live
     /// Activity's link); the card asks Rejoin now or Hang up.
     @Published var cancelRequest: String?
@@ -242,6 +268,8 @@ final class HoldForMeModel: ObservableObject {
         transcripts = [:]
         banner = nil
         settings = nil
+        settingsError = nil
+        notice = nil
         cancelRequest = nil
         isStarting = false
         stillOnHoldInFlight = []
@@ -297,6 +325,30 @@ final class HoldForMeModel: ObservableObject {
     func loadSettings() async {
         if let loaded = try? await backend.settings() { settings = loaded }
     }
+
+    func applySettings(_ new: HoldSettings) { settings = new }
+
+    /// Save the default greeting. The change shows at once and is put back
+    /// when the PBX refuses it, like `Proximity.update`. The assistant is
+    /// not sent when the account has none.
+    func setGreeting(_ greeting: HoldGreeting) async {
+        guard let previous = settings else { return }
+        guard greeting != .assistant || previous.assistantAvailable else { return }
+        settingsError = nil
+        settings = HoldSettings(
+            greeting: greeting, assistantAvailable: previous.assistantAvailable, maxWaitSecs: previous.maxWaitSecs)
+        do {
+            settings = try await backend.setGreeting(greeting)
+        } catch {
+            settings = previous
+            settingsError = String(localized: "The setting could not be saved.")
+        }
+    }
+
+    // MARK: Notifications
+
+    func showNotice(_ hold: HoldWaitNotice) { notice = hold }
+    func dismissNotice() { notice = nil }
 
     // MARK: Actions
 

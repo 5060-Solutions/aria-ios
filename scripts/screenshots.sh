@@ -43,6 +43,9 @@ number() {
     # Extras: variants of a review screen take its number.
     case "$1" in
         in-call-unencrypted) printf "05"; return ;;
+        hold-waiting) printf "02b"; return ;;
+        incoming-hold-return) printf "04b"; return ;;
+        in-call-hold-for-me) printf "05b"; return ;;
     esac
     echo "unknown scene: $1" >&2
     exit 1

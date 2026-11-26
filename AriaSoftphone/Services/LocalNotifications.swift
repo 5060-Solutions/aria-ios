@@ -9,6 +9,26 @@ import UserNotifications
 /// there is something to notify about, rather than at first launch.
 enum LocalNotifications {
     static let missedCallCategory = "MISSED_CALL"
+    /// The alert push for a Hold for me wait that ended without the user
+    /// rejoining (the push's `aps.category`). Registered always; it does
+    /// nothing unless a PBX that supports Hold for me sends such a push.
+    static let holdWaitCategory = "HOLD_WAIT"
+    static let callAgainAction = "CALL_AGAIN"
+
+    /// The notification categories with actions. "Call again" opens the app
+    /// (CallKit needs it in the foreground to place the call).
+    static func categories() -> Set<UNNotificationCategory> {
+        let callAgain = UNNotificationAction(
+            identifier: callAgainAction, title: String(localized: "Call again"), options: [.foreground]
+        )
+        return [UNNotificationCategory(
+            identifier: holdWaitCategory, actions: [callAgain], intentIdentifiers: [], options: []
+        )]
+    }
+
+    static func registerCategories(center: UNUserNotificationCenter = .current()) {
+        center.setNotificationCategories(categories())
+    }
 
     /// Ask for alert, sound and badge permission if it has never been asked.
     static func requestAuthorizationIfNeeded(center: UNUserNotificationCenter = .current()) {

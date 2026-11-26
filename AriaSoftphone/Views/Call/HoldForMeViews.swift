@@ -97,7 +97,7 @@ struct HoldForMeSheet: View {
         .accessibilityIdentifier("holdForMe.greeting.\(greeting.rawValue)")
     }
 
-    private static func title(_ greeting: HoldGreeting) -> LocalizedStringKey {
+    static func title(_ greeting: HoldGreeting) -> LocalizedStringKey {
         switch greeting {
         case .silence: return "Silence"
         case .line: return "Short message"
@@ -191,5 +191,76 @@ struct HoldReturnTranscript: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+
+/// Settings "Hold for me": the greeting used when a wait starts without a
+/// choice. Shown only when the PBX offers Hold for me.
+struct HoldForMeSection: View {
+    @ObservedObject private var model = HoldForMeModel.shared
+
+    var body: some View {
+        if model.available {
+            SectionCard(title: Text("Hold for me"), footer: model.settingsError.map { Text($0) }) {
+                Picker("Hold for me greeting", selection: selection) {
+                    ForEach(HoldGreeting.allCases, id: \.self) { greeting in
+                        Text(HoldForMeSheet.title(greeting))
+                            .tag(greeting)
+                            .disabled(greeting == .assistant && !assistantAvailable)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(AriaColor.primary)
+                .frame(minHeight: ComponentSize.iconButton)
+                .accessibilityIdentifier("settings.holdForMeGreeting")
+            }
+            .disabled(model.settings == nil)
+            .task { await model.loadSettings() }
+        }
+    }
+
+    private var assistantAvailable: Bool { model.settings?.assistantAvailable ?? false }
+
+    private var selection: Binding<HoldGreeting> {
+        Binding(
+            get: { model.settings?.greeting ?? .line },
+            set: { greeting in Task { await model.setGreeting(greeting) } }
+        )
+    }
+}
+
+/// The banner a tapped `hold_wait` notification opens the app to: who picked
+/// up, and Call again. Shown whether or not the flag has been read yet.
+struct HoldWaitNoticeBanner: View {
+    let notice: HoldWaitNotice
+    @ObservedObject private var model = HoldForMeModel.shared
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Space.s) {
+            Image(systemName: "hourglass")
+                .foregroundStyle(AriaColor.primary)
+                .accessibilityHidden(true)
+            Text("\(notice.displayName) picked up while you were away")
+                .ariaFont(.body)
+                .foregroundStyle(AriaColor.onSurface)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            AriaButton("Call again", kind: .prominent) {
+                CallManager.shared.startOutgoingCall(uri: notice.remoteNumber)
+                model.dismissNotice()
+            }
+            .accessibilityIdentifier("holdNotice.callAgain")
+            Button("Cancel", systemImage: "xmark") { model.dismissNotice() }
+                .labelStyle(.iconOnly)
+                .frame(minWidth: ComponentSize.iconButton, minHeight: ComponentSize.iconButton)
+                .accessibilityIdentifier("holdNotice.dismiss")
+        }
+        .padding(Space.m)
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.card, style: .continuous))
+        .padding(.horizontal, Space.screenMargin)
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("holdNotice.banner")
     }
 }

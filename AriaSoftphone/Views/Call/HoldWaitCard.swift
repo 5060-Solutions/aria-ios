@@ -105,6 +105,7 @@ struct HoldWaitCards: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let notice = model.notice { HoldWaitNoticeBanner(notice: notice) }
             ForEach(model.openWaits, id: \.holdWaitId) { HoldWaitCard(wait: $0) }
         }
     }

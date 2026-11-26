@@ -65,6 +65,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Local notifications (missed calls) are shown in the foreground
         // too. Permission is asked for after sign-in, not here.
         UNUserNotificationCenter.current().delegate = self
+        LocalNotifications.registerCategories()
 
         // The regular APNs token, for text-message alerts (PushKit above stays
         // the call path). Needs no permission: whether an alert shows is the
@@ -140,6 +141,19 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        if let parsed = HoldWaitNotification.parse(userInfo: userInfo) {
+            let hold = HoldWaitNotice(event: parsed.event, remoteNumber: parsed.remoteNumber, remoteName: parsed.remoteName)
+            let action = response.actionIdentifier
+            Task { @MainActor in
+                if action == LocalNotifications.callAgainAction {
+                    CallManager.shared.startOutgoingCall(uri: hold.remoteNumber)
+                } else if action == UNNotificationDefaultActionIdentifier {
+                    HoldForMeModel.shared.showNotice(hold)
+                }
+            }
+            completionHandler()
+            return
+        }
         let tenantId = UserDefaults.standard.string(forKey: AccountSettings.Key.tenantId) ?? ""
         if let target = SmsNotificationTarget.parse(userInfo, tenantId: tenantId) {
             Task { @MainActor in await MessagingService.shared.openFromNotification(target) }
