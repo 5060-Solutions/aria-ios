@@ -209,7 +209,15 @@ final class HoldForMeServiceTests: XCTestCase {
             if let error { throw error }
             return wait
         }
-        func openWaits() async throws -> [HoldWait] { open }
+        var openWaitsCalls = 0
+        /// Runs after each open-waits answer, to change what the PBX lists next.
+        var afterOpenWaits: (() -> Void)?
+        func openWaits() async throws -> [HoldWait] {
+            openWaitsCalls += 1
+            let listed = open
+            afterOpenWaits?()
+            return listed
+        }
         func settings() async throws -> HoldSettings {
             HoldSettings(greeting: .line, assistantAvailable: true, maxWaitSecs: 10800)
         }
@@ -885,6 +893,65 @@ final class HoldForMeServiceTests: XCTestCase {
         XCTAssertEqual(maxWait.announcement(name: name), "Acme Bank")
         XCTAssertFalse(maxWait.showsStillOnHold)
         XCTAssertFalse(maxWait.showsTapToRejoin)
+    }
+
+    func testOnlyAPersonIsBackOnTheSystemsIncomingScreen() throws {
+        XCTAssertEqual(HoldReturnRing.theyreBack.callKitName(holdReturnName: "Acme Bank", callerName: nil,
+                                                             callerUri: "+18005550100"),
+                       "They're back — Acme Bank")
+        XCTAssertEqual(HoldReturnRing.rejoin.callKitName(holdReturnName: "Acme Bank", callerName: nil,
+                                                         callerUri: "+18005550100"),
+                       "Acme Bank")
+        XCTAssertEqual(HoldReturnRing.maxWait(hours: 3).callKitName(holdReturnName: nil, callerName: nil,
+                                                                    callerUri: "+18005550100"),
+                       "+18005550100")
+    }
+
+    @MainActor
+    func testAKnownRingReasonRelabelsTheSystemRingOnce() throws {
+        let manager = CallManager.shared
+        var updates: [CXCallUpdate] = []
+        manager.onIncomingReport = { updates.append($0) }
+        defer {
+            manager.onIncomingReport = nil
+            manager.loadFixture(calls: [])
+        }
+        manager.reportPushIncomingCall(
+            uuid: UUID(), callToken: "tok-hr-relabel", callerUri: "+18005550100", callerName: nil,
+            holdReturnId: "hw-1", holdReturnName: "Acme Bank"
+        ) { _ in }
+        XCTAssertEqual(updates.map(\.localizedCallerName), ["They're back — Acme Bank"])
+
+        // A person: the push's label stands, nothing is reported again.
+        manager.relabelHoldReturnRings(waits: ["hw-1": try wait("ringing", ringReason: "human")])
+        XCTAssertEqual(updates.count, 1)
+
+        // The maximum wait: the plain name, reported once.
+        let maxWait = ["hw-1": try wait("ringing", ringReason: "max_wait")]
+        manager.relabelHoldReturnRings(waits: maxWait)
+        manager.relabelHoldReturnRings(waits: maxWait)
+        XCTAssertEqual(updates.map(\.localizedCallerName), ["They're back — Acme Bank", "Acme Bank"])
+    }
+
+    func testAnUnansweredRingLooksAgainWhileThePbxStillRings() async throws {
+        let backend = StubBackend(wait: try wait("ringing", ringReason: "human"))
+        // The PBX ends the wait after its "unavailable" line.
+        backend.afterOpenWaits = { backend.open = [] }
+        let model = model(backend)
+        model.fetchIdentity = { try self.identity(#"{"features":["hold_for_me"]}"#) }
+        model.unansweredRecheckDelay = 0
+        await model.reconcileAfterUnansweredRing()
+        XCTAssertEqual(backend.openWaitsCalls, 2, "a second look after the ring")
+        XCTAssertNil(model.waits["hw-1"], "the ended wait is gone")
+
+        // Already ended at the first look: no second one.
+        let ended = StubBackend(wait: try sampleWait())
+        ended.open = []
+        let other = self.model(ended)
+        other.fetchIdentity = { try self.identity(#"{"features":["hold_for_me"]}"#) }
+        other.unansweredRecheckDelay = 0
+        await other.reconcileAfterUnansweredRing()
+        XCTAssertEqual(ended.openWaitsCalls, 1)
     }
 
     func testTheMaxWaitHoursAreRoundedAndAtLeastOne() throws {

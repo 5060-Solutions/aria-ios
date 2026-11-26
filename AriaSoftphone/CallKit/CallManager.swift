@@ -44,6 +44,9 @@ class CallManager: NSObject, ObservableObject {
     /// and Live Activity up to date; tests record it.
     var onUnansweredHoldReturn: (String) -> Void = { _ in HoldForMeModel.reconcileAfterUnansweredRing() }
     private let callController = CXCallController()
+    /// The name last given to CallKit for each ringing hold-return call, so
+    /// a relabel is reported once.
+    private var holdReturnKitNames: [UUID: String] = [:]
 
     /// Tokens of incoming calls that have ended here (declined, missed,
     /// answered and hung up, refused as busy). A repeat push or a late
@@ -114,6 +117,25 @@ class CallManager: NSObject, ObservableObject {
     private func refreshAudioRoute() {
         let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
         isSpeakerOn = outputs.contains { $0.portType == .builtInSpeaker }
+    }
+
+    /// The waits are known (or have changed): a ringing hold-return call
+    /// rung for anything other than a person (Rejoin now, the maximum wait)
+    /// loses "They're back" on the system's incoming screen. The push carries
+    /// no ring reason, so the first report cannot know.
+    func relabelHoldReturnRings(waits: [String: HoldWait]) {
+        let ringing = registry.calls.filter { $0.state == .incoming && $0.holdReturnId != nil }
+        holdReturnKitNames = holdReturnKitNames.filter { entry in ringing.contains { $0.uuid == entry.key } }
+        for call in ringing {
+            guard let id = call.holdReturnId else { continue }
+            let name = HoldReturnRing(wait: waits[id]).callKitName(
+                holdReturnName: call.holdReturnName, callerName: call.remoteName, callerUri: call.remoteUri)
+            guard holdReturnKitNames[call.uuid] != name else { continue }
+            holdReturnKitNames[call.uuid] = name
+            let update = Self.callUpdate(remoteUri: call.remoteUri, remoteName: name)
+            onIncomingReport?(update)
+            provider.reportCall(with: call.uuid, updated: update)
+        }
     }
 
     // MARK: - Incoming Call (from push notification)
@@ -242,6 +264,7 @@ class CallManager: NSObject, ObservableObject {
             incoming.holdReturnId = holdReturnId
             incoming.holdReturnName = holdReturnName
             registry.add(incoming)
+            if holdReturnId != nil, let kitName { holdReturnKitNames[uuid] = kitName }
             reportIncomingCall(uuid: uuid, callerUri: callerUri, callerName: kitName) { [weak self] error in
                 guard let self = self else { return }
                 if let error = error {

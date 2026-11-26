@@ -7,7 +7,7 @@ import WidgetKit
 struct HoldWaitLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: HoldWaitAttributes.self) { context in
-            HoldWaitActivityContent(attributes: context.attributes, state: context.state)
+            HoldWaitActivityContent(attributes: context.attributes, state: context.state, isStale: context.isStale)
                 .padding(16)
                 .activityBackgroundTint(Color(.systemBackground).opacity(0.6))
                 .accessibilityElement(children: .contain)
@@ -15,7 +15,7 @@ struct HoldWaitLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.center) {
-                    HoldWaitActivityContent(attributes: context.attributes, state: context.state)
+                    HoldWaitActivityContent(attributes: context.attributes, state: context.state, isStale: context.isStale)
                 }
             } compactLeading: {
                 Image(systemName: "hourglass")
@@ -48,6 +48,9 @@ private struct HoldWaitTimer: View {
 private struct HoldWaitActivityContent: View {
     let attributes: HoldWaitAttributes
     let state: HoldWaitAttributes.ContentState
+    /// Past the stale date (a ring that has had its time): what is
+    /// happening is no longer known, so no status line is claimed.
+    let isStale: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -57,7 +60,7 @@ private struct HoldWaitActivityContent: View {
             Text("Waiting on hold · \(Text(timerInterval: attributes.startedAt...Date.distantFuture, countsDown: false))")
                 .font(.subheadline)
                 .monospacedDigit()
-            if let line = state.statusLine {
+            if !isStale, let line = state.statusLine {
                 Text(line)
                     .font(.subheadline.weight(.semibold))
             }

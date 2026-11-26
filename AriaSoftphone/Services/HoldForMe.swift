@@ -229,7 +229,10 @@ final class HoldForMeModel: ObservableObject {
     }
     /// Open and just-ended waits, by `hold_wait_id`.
     @Published private(set) var waits: [String: HoldWait] = [:] {
-        didSet { syncActivities() }
+        didSet {
+            syncActivities()
+            onWaitsChanged(waits)
+        }
     }
     @Published private(set) var transcripts: [String: [TranscriptLine]] = [:]
     /// The latest refusal, to show as a banner and then clear.
@@ -255,6 +258,9 @@ final class HoldForMeModel: ObservableObject {
     /// Starts the call-move socket when it is not running (it carries
     /// `hold_wait_state`).
     var startSocket: () -> Void = { CallMoveModel.shared.ensureListening() }
+    /// Sees every change to `waits`: relabels a hold-return ring on the
+    /// system's incoming screen once its ring reason is known.
+    var onWaitsChanged: ([String: HoldWait]) -> Void = { CallManager.shared.relabelHoldReturnRings(waits: $0) }
     /// Places a call through the app's one dial path.
     var dial: (String) -> Void = { CallManager.shared.startOutgoingCall(uri: $0) }
     private var isStarting = false
@@ -472,12 +478,27 @@ final class HoldForMeModel: ObservableObject {
     /// A hold-return ring ended here without being answered (declined,
     /// missed, or the PBX stopped ringing): bring the card and the Live
     /// Activity up to date, with time granted in the background.
+    ///
+    /// On the last round the PBX plays its "unavailable" line (or silence)
+    /// before it ends the wait, so the first look may still see it ringing;
+    /// one more look follows after `unansweredRecheckDelay`.
     nonisolated static func reconcileAfterUnansweredRing() {
         Task { @MainActor in
             let task = BackgroundTask(name: "HoldForMe.reconcile")
-            await shared.becameActive()
+            await shared.reconcileAfterUnansweredRing()
             task.end()
         }
+    }
+
+    /// How long after an unanswered ring to look again at a wait the PBX
+    /// still listed as ringing; within the background time iOS grants.
+    var unansweredRecheckDelay: TimeInterval = 20
+
+    func reconcileAfterUnansweredRing() async {
+        await becameActive()
+        guard waits.values.contains(where: { $0.state == "ringing" || $0.state == "human_detected" }) else { return }
+        try? await Task.sleep(for: .seconds(unansweredRecheckDelay))
+        await becameActive()
     }
 
     /// The far party is back (a hold-return push): make sure the socket and

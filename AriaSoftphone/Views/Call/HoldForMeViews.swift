@@ -197,6 +197,15 @@ enum HoldReturnRing: Equatable {
         self == .theyreBack ? String(localized: "They're back, \(name)") : name
     }
 
+    /// The name on the system's incoming screen: "They're back — <name>"
+    /// only for a person; a Rejoin now or maximum-wait ring shows the plain
+    /// name (the app's own screen says why it rings).
+    func callKitName(holdReturnName: String?, callerName: String?, callerUri: String) -> String {
+        self == .theyreBack
+            ? HoldReturnLabel.callKitName(holdReturnName: holdReturnName, callerName: callerName, callerUri: callerUri)
+            : HoldReturnLabel.name(holdReturnName: holdReturnName, callerName: callerName, callerUri: callerUri)
+    }
+
     var showsTapToRejoin: Bool { self == .theyreBack }
 
     /// Still on hold only makes sense when a person was (or may have been)
