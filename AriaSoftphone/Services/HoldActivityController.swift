@@ -13,12 +13,19 @@ protocol ActivityFacade {
 }
 
 extension HoldWait {
-    /// Who is being waited on: the business name, else its number.
+    /// Who is being waited on: the business name, else its number as the
+    /// app shows numbers.
     var displayName: String {
-        for candidate in [remote.name, remote.number] {
-            if let text = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+        if let name = remote.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return name }
+        if let number = remote.number?.trimmingCharacters(in: .whitespacesAndNewlines), !number.isEmpty {
+            return PhoneFormat(country: DefaultCountry.cached).listed(number)
         }
         return ""
+    }
+
+    /// What the card and the activity show for it: nil when not shown.
+    var shownState: HoldWaitAttributes.ContentState? {
+        HoldWaitPresentation.shownState(state).map { .init(state: $0, stateSince: stateSince) }
     }
 }
 
@@ -33,20 +40,34 @@ final class HoldActivityController {
     /// How long past the maximum wait an activity may stay before the system
     /// marks it out of date.
     static let staleGraceSecs: TimeInterval = 300
+    /// How long "Someone answered" or "Ringing you…" can be true: the PBX
+    /// rings 3 rounds of 30 s, plus a margin. A ring that is missed while
+    /// the app is away is then shown as out of date, not counted for hours.
+    static let ringBudgetSecs: TimeInterval = 3 * 30 + 60
+
+    /// When the activity for `wait` goes out of date.
+    static func staleDate(for wait: HoldWait) -> Date {
+        switch wait.state {
+        case "ringing", "human_detected":
+            return wait.stateSince.addingTimeInterval(ringBudgetSecs)
+        default:
+            return wait.startedAt.addingTimeInterval(TimeInterval(wait.maxWaitSecs) + staleGraceSecs)
+        }
+    }
 
     init(facade: ActivityFacade) {
         self.facade = facade
     }
 
-    /// Make the activities match `waits`: start one for each open wait that
-    /// has none, update a changed state, and end every other activity,
+    /// Make the activities match `waits`: start one for each shown wait
+    /// (`HoldWaitPresentation`: open and not joined) that has none, update a changed state, and end every other activity,
     /// whether it belongs to an ended wait or to one this app no longer
     /// knows (it was killed while waiting).
     ///
     /// `endUnknown` false keeps activities this controller has not itself
     /// started or updated: right after a launch they may be a live wait's.
     func sync(_ waits: [HoldWait], endUnknown: Bool = true) {
-        let open = waits.filter(\.isOpen)
+        let open = waits.filter(\.isShown)
         let openIds = Set(open.map(\.holdWaitId))
         let existing = Set(facade.existingIds())
 
@@ -55,9 +76,8 @@ final class HoldActivityController {
             sent[id] = nil
         }
         for wait in open {
-            let state = HoldWaitAttributes.ContentState(
-                state: wait.state == "requested" ? "waiting" : wait.state, stateSince: wait.stateSince)
-            let stale = wait.startedAt.addingTimeInterval(TimeInterval(wait.maxWaitSecs) + Self.staleGraceSecs)
+            guard let state = wait.shownState else { continue }
+            let stale = Self.staleDate(for: wait)
             if !existing.contains(wait.holdWaitId) {
                 facade.start(
                     HoldWaitAttributes(holdWaitId: wait.holdWaitId, callId: wait.callId, startedAt: wait.startedAt,

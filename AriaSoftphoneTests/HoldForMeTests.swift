@@ -516,6 +516,7 @@ final class HoldForMeServiceTests: XCTestCase {
         func update(id: String, state: HoldWaitAttributes.ContentState, staleDate: Date) {
             updated.append(id)
             live[id] = state
+            staleDates[id] = staleDate
         }
         func end(id: String) {
             ended.append(id)
@@ -523,11 +524,12 @@ final class HoldForMeServiceTests: XCTestCase {
         }
     }
 
-    private func wait(_ state: String, id: String = "hw-1") throws -> HoldWait {
+    private func wait(_ state: String, id: String = "hw-1", ringReason: String? = nil, maxWaitSecs: Int = 10800,
+                      stateSince: Date? = nil, remote: UserCall.Remote? = nil) throws -> HoldWait {
         let base = try sampleWait()
         return HoldWait(holdWaitId: id, callId: base.callId, state: state, greeting: .line,
-                        startedAt: base.startedAt, stateSince: base.stateSince, maxWaitSecs: 10800,
-                        falseAlarms: 0, remote: base.remote, ringReason: nil,
+                        startedAt: base.startedAt, stateSince: stateSince ?? base.stateSince, maxWaitSecs: maxWaitSecs,
+                        falseAlarms: 0, remote: remote ?? base.remote, ringReason: ringReason,
                         endedReason: state == "ended" ? "hung_up" : nil)
     }
 
@@ -619,8 +621,10 @@ final class HoldForMeServiceTests: XCTestCase {
 
     func testTheCancelLinkIsParsedAndOpensTheChoice() async throws {
         XCTAssertEqual(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1?action=cancel")!), .holdCancel("hw-1"))
-        XCTAssertNil(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1")!))
+        XCTAssertEqual(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1")!), .holdOpen("hw-1"),
+                       "a tap on the activity only opens the app")
         XCTAssertNil(DeepLink.parse(URL(string: "aria://hold-for-me/hw-1?action=other")!))
+        XCTAssertEqual(HoldWaitAttributes.openURL("hw-1").absoluteString, "aria://hold-for-me/hw-1")
         XCTAssertEqual(HoldWaitAttributes.cancelURL("hw-1").absoluteString, "aria://hold-for-me/hw-1?action=cancel")
 
         let model = model(StubBackend(wait: try wait("waiting")))
@@ -788,5 +792,235 @@ final class HoldForMeServiceTests: XCTestCase {
         XCTAssertEqual(model.notice, note)
         model.dismissNotice()
         XCTAssertNil(model.notice)
+    }
+
+    // MARK: Final review fixes
+
+    private func userCall(_ id: String, number: String?, registration: String = "reg-phone") -> UserCall {
+        UserCall(id: id, state: "active", direction: "outbound", remote: .init(number: number, name: nil),
+                 startedAt: Date(), device: .init(registrationId: registration, label: nil, userAgent: nil, transport: nil),
+                 sipCallId: nil)
+    }
+
+    private func local(_ uri: String, direction: ActiveCall.CallDirection = .outbound) -> ActiveCall {
+        var call = ActiveCall(uuid: UUID(), callToken: nil, remoteUri: uri, remoteName: nil,
+                              direction: direction, state: .connected)
+        call.connectedAt = Date()
+        return call
+    }
+
+    func testThePbxCallIsMatchedByTheFarPartyNotTakenFirst() {
+        // Call waiting: two calls on this phone's registration.
+        let calls = [userCall("pbx-a", number: "+14155550100"), userCall("pbx-b", number: "+18005550199")]
+        XCTAssertEqual(HoldForMeModel.pbxCall(for: local("18005550199"), in: calls, ownRegistrationId: "reg-phone")?.id,
+                       "pbx-b", "B is held, never A")
+        XCTAssertEqual(HoldForMeModel.pbxCall(for: local("sip:4155550100@pbx.example.com"), in: calls,
+                                              ownRegistrationId: "reg-phone")?.id, "pbx-a")
+        XCTAssertNil(HoldForMeModel.pbxCall(for: local("+12125550123"), in: calls, ownRegistrationId: "reg-phone"),
+                     "no match")
+        let twice = calls + [userCall("pbx-c", number: "8005550199")]
+        XCTAssertNil(HoldForMeModel.pbxCall(for: local("18005550199"), in: twice, ownRegistrationId: "reg-phone"),
+                     "two matches: not guessed")
+        // Another device's call to the same number is not this phone's.
+        let elsewhere = [userCall("pbx-d", number: "+18005550199", registration: "reg-desk"),
+                         userCall("pbx-b", number: "+18005550199")]
+        XCTAssertEqual(HoldForMeModel.pbxCall(for: local("18005550199"), in: elsewhere, ownRegistrationId: "reg-phone")?.id,
+                       "pbx-b")
+        // Registration unknown: every call is considered.
+        XCTAssertEqual(HoldForMeModel.pbxCall(for: local("18005550199"), in: calls, ownRegistrationId: nil)?.id, "pbx-b")
+        XCTAssertNil(HoldForMeModel.pbxCall(for: local("18005550199"), in: elsewhere, ownRegistrationId: nil))
+        XCTAssertNil(HoldForMeModel.pbxCall(for: local("1001"), in: [userCall("pbx-e", number: nil)], ownRegistrationId: nil))
+    }
+
+    func testOnePresentationMapsEveryState() {
+        XCTAssertEqual(HoldWaitPresentation.shownState("requested"), "waiting")
+        XCTAssertEqual(HoldWaitPresentation.shownState("waiting"), "waiting")
+        XCTAssertEqual(HoldWaitPresentation.shownState("human_detected"), "human_detected")
+        XCTAssertEqual(HoldWaitPresentation.shownState("ringing"), "ringing")
+        XCTAssertNil(HoldWaitPresentation.shownState("joined"))
+        XCTAssertNil(HoldWaitPresentation.shownState("ended"))
+        XCTAssertEqual(HoldWaitPresentation.shownState("something_new"), "waiting")
+    }
+
+    func testAJoinedWaitIsNotShownButIsKeptForStillOnHold() async throws {
+        let facade = FakeFacade()
+        let controller = HoldActivityController(facade: facade)
+        controller.sync([try wait("ringing", ringReason: "human")])
+        XCTAssertEqual(facade.started.count, 1)
+        controller.sync([try wait("joined", ringReason: "human")])
+        XCTAssertEqual(facade.ended, ["hw-1"], "joining ends the activity")
+
+        let backend = StubBackend(wait: try wait("waiting"))
+        let model = HoldForMeModel(backend: backend, activities: HoldActivityController(facade: FakeFacade()))
+        model.setAvailable(true)
+        model.handle(.state(try wait("joined", ringReason: "human"), transcript: []))
+        XCTAssertTrue(model.openWaits.isEmpty, "no card while joined")
+        XCTAssertNotNil(model.waits["hw-1"], "kept for Still on hold")
+        await model.requestCancel("hw-1")
+        XCTAssertNil(model.cancelRequest, "no Cancel (hang up) on a joined call")
+        await model.stillOnHold("hw-1")
+        XCTAssertEqual(backend.stillOnHoldCalls, ["c-1"], "Still on hold after joining still works")
+    }
+
+    func testTheRingSaysTheyreBackOnlyForAPerson() throws {
+        let name = "Acme Bank"
+        XCTAssertEqual(HoldReturnRing(wait: nil), .theyreBack, "push only: the wait is unknown")
+        XCTAssertEqual(HoldReturnRing(wait: try wait("ringing", ringReason: "human")), .theyreBack)
+        XCTAssertEqual(HoldReturnRing(wait: try wait("waiting")), .theyreBack, "no reason yet")
+        XCTAssertEqual(HoldReturnRing(wait: try wait("ringing", ringReason: "rejoin")), .rejoin)
+        XCTAssertEqual(HoldReturnRing(wait: try wait("ringing", ringReason: "max_wait")), .maxWait(hours: 3))
+
+        XCTAssertEqual(HoldReturnRing.theyreBack.status(name: name), "They're back — Acme Bank")
+        XCTAssertEqual(HoldReturnRing.theyreBack.announcement(name: name), "They're back, Acme Bank")
+        XCTAssertTrue(HoldReturnRing.theyreBack.showsStillOnHold)
+        XCTAssertTrue(HoldReturnRing.theyreBack.showsTapToRejoin)
+
+        XCTAssertEqual(HoldReturnRing.rejoin.status(name: name), "Incoming call")
+        XCTAssertEqual(HoldReturnRing.rejoin.announcement(name: name), "Acme Bank")
+        XCTAssertFalse(HoldReturnRing.rejoin.showsStillOnHold)
+        XCTAssertFalse(HoldReturnRing.rejoin.showsTapToRejoin)
+
+        let maxWait = HoldReturnRing.maxWait(hours: 3)
+        XCTAssertEqual(maxWait.status(name: name), "Still waiting after 3 hours. Rejoin or hang up?")
+        XCTAssertEqual(maxWait.announcement(name: name), "Acme Bank")
+        XCTAssertFalse(maxWait.showsStillOnHold)
+        XCTAssertFalse(maxWait.showsTapToRejoin)
+    }
+
+    func testTheMaxWaitHoursAreRoundedAndAtLeastOne() throws {
+        XCTAssertEqual(HoldReturnRing.hours(maxWaitSecs: 600), 1, "10 minutes reads as 1 hour")
+        XCTAssertEqual(HoldReturnRing.hours(maxWaitSecs: 0), 1)
+        XCTAssertEqual(HoldReturnRing.hours(maxWaitSecs: 5400), 2, "1.5 h rounds up")
+        XCTAssertEqual(HoldReturnRing.hours(maxWaitSecs: 9000), 3)
+        XCTAssertEqual(HoldReturnRing.hours(maxWaitSecs: 14400), 4)
+        XCTAssertEqual(HoldReturnRing(wait: try wait("ringing", ringReason: "max_wait", maxWaitSecs: 600)),
+                       .maxWait(hours: 1))
+    }
+
+    func testStartSendsOnlyAnExplicitGreeting() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        let model = model(backend)
+        await model.start(call: call(), greeting: nil)
+        XCTAssertEqual(backend.started.count, 1)
+        XCTAssertNil(backend.started.first?.greeting, "no pick: the PBX uses the saved default")
+    }
+
+    func testTheActivityGoesStaleAfterTheRingBudget() throws {
+        let since = Date(timeIntervalSince1970: 1_800_000_000)
+        let waiting = try wait("waiting", stateSince: since)
+        XCTAssertEqual(HoldActivityController.staleDate(for: waiting),
+                       waiting.startedAt.addingTimeInterval(10800 + 300))
+        for state in ["ringing", "human_detected"] {
+            XCTAssertEqual(HoldActivityController.staleDate(for: try wait(state, stateSince: since)),
+                           since.addingTimeInterval(150), state)
+        }
+
+        let facade = FakeFacade()
+        let controller = HoldActivityController(facade: facade)
+        controller.sync([waiting])
+        controller.sync([try wait("ringing", stateSince: since)])
+        XCTAssertEqual(facade.staleDates["hw-1"], since.addingTimeInterval(150))
+    }
+
+    func testAnUnansweredHoldReturnRingReconciles() {
+        let manager = CallManager.shared
+        var reconciled: [String] = []
+        manager.onUnansweredHoldReturn = { reconciled.append($0) }
+        defer {
+            manager.onUnansweredHoldReturn = { _ in HoldForMeModel.reconcileAfterUnansweredRing() }
+            manager.loadFixture(calls: [])
+        }
+        var ringing = ActiveCall(uuid: UUID(), callToken: "tok-hr-miss", remoteUri: "+18005550100", remoteName: nil,
+                                 direction: .inbound, state: .incoming)
+        ringing.holdReturnId = "hw-1"
+        manager.loadFixture(calls: [ringing])
+        manager.updateCallState(info: CallInfo(
+            callId: "incoming-tok-hr-miss", remoteUri: "+18005550100", remoteName: nil, state: .ended,
+            direction: .inbound, muted: false, onHold: false, durationSecs: 0, endReason: .callerCancelled))
+        XCTAssertEqual(reconciled, ["hw-1"])
+
+        // Answered, then ended: not a missed ring.
+        var answered = ActiveCall(uuid: UUID(), callToken: "tok-hr-ans", remoteUri: "+18005550100", remoteName: nil,
+                                  direction: .inbound, state: .connected)
+        answered.holdReturnId = "hw-1"
+        answered.callId = "engine-hr-ans"
+        answered.connectedAt = Date()
+        manager.loadFixture(calls: [answered])
+        manager.updateCallState(info: CallInfo(
+            callId: "engine-hr-ans", remoteUri: "+18005550100", remoteName: nil, state: .ended,
+            direction: .inbound, muted: false, onHold: false, durationSecs: 5, endReason: .remoteHangup))
+        XCTAssertEqual(reconciled, ["hw-1"])
+    }
+
+    func testStillOnHoldOnAnUnknownWaitLooksItUpFirst() async throws {
+        // The push came before the socket: the PBX lists the wait.
+        let backend = StubBackend(wait: try wait("ringing", ringReason: "human"))
+        let model = model(backend)
+        model.setAvailable(true)
+        XCTAssertNil(model.waits["hw-1"])
+        let ran = await model.stillOnHold("hw-1")
+        XCTAssertTrue(ran)
+        XCTAssertEqual(backend.stillOnHoldCalls, ["c-1"], "the PBX is told")
+
+        // Still unknown after the lookup: the ring ends without a request.
+        let empty = StubBackend(wait: try sampleWait())
+        empty.open = []
+        let other = self.model(empty)
+        let ended = await other.stillOnHold("hw-1")
+        XCTAssertTrue(ended)
+        XCTAssertTrue(empty.stillOnHoldCalls.isEmpty)
+    }
+
+    func testStillOnHoldIsBoundedWhenThePbxIsSlow() async throws {
+        let backend = StubBackend(wait: try sampleWait())
+        backend.stillOnHoldEntered = {}
+        let model = model(backend)
+        model.stillOnHoldBound = 0.2
+        model.handle(.state(try sampleWait(), transcript: []))
+        let started = Date()
+        let ran = await model.stillOnHold("hw-1")
+        XCTAssertTrue(ran, "the ring ends regardless")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        backend.stillOnHoldGate?.resume()
+    }
+
+    func testAHoldReturnRingPostsNoLocalMissedCall() {
+        var ring = ActiveCall(uuid: UUID(), callToken: "t", remoteUri: "+18005550100", remoteName: nil,
+                              direction: .inbound, state: .incoming)
+        XCTAssertTrue(CallManager.notifiesMissedCall(ring, outcome: .missed))
+        ring.holdReturnId = "hw-1"
+        XCTAssertFalse(CallManager.notifiesMissedCall(ring, outcome: .missed), "the PBX sends its own alert")
+        XCTAssertFalse(CallManager.notifiesMissedCall(ring, outcome: .rejected))
+    }
+
+    func testARejoinedCallCanBeHeldAgain() throws {
+        let model = model(StubBackend(wait: try sampleWait()))
+        model.setAvailable(true)
+        var rejoined = call(direction: .inbound)
+        XCTAssertFalse(model.canHoldForMe(rejoined))
+        rejoined.holdReturnId = "hw-1"
+        XCTAssertTrue(model.canHoldForMe(rejoined), "still the original outgoing call on the PBX")
+        var ringing = rejoined
+        ringing.connectedAt = nil
+        XCTAssertFalse(model.canHoldForMe(ringing), "not answered yet")
+    }
+
+    func testANumberOnlyWaitShowsTheFormattedNumber() throws {
+        let numberOnly = try wait("waiting", remote: .init(number: "+18005550100", name: nil))
+        let expected = PhoneFormat(country: DefaultCountry.cached).listed("+18005550100")
+        XCTAssertEqual(numberOnly.displayName, expected)
+        XCTAssertNotEqual(numberOnly.displayName, "+18005550100")
+        XCTAssertEqual(try wait("waiting").displayName, "Acme Bank")
+
+        let facade = FakeFacade()
+        HoldActivityController(facade: facade).sync([numberOnly])
+        XCTAssertEqual(facade.started.first?.remoteName, expected)
+    }
+
+    func testAnUnknownGreetingDoesNotFailTheList() throws {
+        let newer = waitJSON.replacingOccurrences(of: #""greeting":"line""#, with: #""greeting":"whisper""#)
+        let waits = try PbxApiClient.jsonDecoder.decode([HoldWait].self, from: Data("[\(newer),\(waitJSON)]".utf8))
+        XCTAssertEqual(waits.count, 2)
+        XCTAssertEqual(waits[0].greeting, .line)
     }
 }

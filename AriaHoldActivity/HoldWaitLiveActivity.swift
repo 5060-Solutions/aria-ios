@@ -27,7 +27,8 @@ struct HoldWaitLiveActivity: Widget {
                 Image(systemName: "hourglass")
                     .accessibilityLabel(Text("Hold for me"))
             }
-            .widgetURL(HoldWaitAttributes.cancelURL(context.attributes.holdWaitId))
+            // A tap opens the app; only the explicit Cancel asks to stop.
+            .widgetURL(HoldWaitAttributes.openURL(context.attributes.holdWaitId))
         }
     }
 }

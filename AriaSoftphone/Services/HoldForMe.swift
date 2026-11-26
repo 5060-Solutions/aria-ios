@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 // Hold for me: the PBX waits on hold on the user's behalf and rings them
 // when a person answers. Wire shapes are the shared contract's C2 and C3.
@@ -10,6 +11,14 @@ import Foundation
 /// What the far party hears when they pick up before the user is back.
 enum HoldGreeting: String, CaseIterable, Codable {
     case silence, line, assistant
+
+    /// Lenient: a greeting this app does not know yet (from a newer PBX)
+    /// reads as the short message, so one unknown value never fails a whole
+    /// list of waits.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = HoldGreeting(rawValue: raw) ?? .line
+    }
 }
 
 /// A Hold for me wait (C2 `HoldWait`).
@@ -30,6 +39,10 @@ struct HoldWait: Decodable, Equatable {
     let endedReason: String?
 
     var isOpen: Bool { state != "ended" }
+
+    /// Whether the card and the Live Activity show this wait: not once the
+    /// user has joined, nor once it has ended (`HoldWaitPresentation`).
+    var isShown: Bool { HoldWaitPresentation.shownState(state) != nil }
 
     enum CodingKeys: String, CodingKey {
         case holdWaitId = "hold_wait_id"
@@ -252,11 +265,12 @@ final class HoldForMeModel: ObservableObject {
         self.activities = activities
     }
 
-    /// The open waits, oldest first: what the card and the activities show.
-    /// Nothing at all while the feature is off.
+    /// The waits the card and the activities show, oldest first: open and
+    /// not joined (`HoldWaitPresentation`). `waits` keeps a joined wait, for
+    /// Still on hold. Nothing at all while the feature is off.
     var openWaits: [HoldWait] {
         guard available else { return [] }
-        return waits.values.filter(\.isOpen).sorted { ($0.startedAt, $0.holdWaitId) < ($1.startedAt, $1.holdWaitId) }
+        return waits.values.filter(\.isShown).sorted { ($0.startedAt, $0.holdWaitId) < ($1.startedAt, $1.holdWaitId) }
     }
 
     /// Whether the PBX's answer (open waits, or "not offered") has been seen
@@ -324,8 +338,13 @@ final class HoldForMeModel: ObservableObject {
     /// Hold for me for `call`: the flag, an outgoing call that has been
     /// answered, and no local conference. Whether the PBX lists the call is
     /// found out when it starts.
+    ///
+    /// A rejoined call (the far party came back) rings in here, but on the
+    /// PBX it is still the original outgoing call, so it qualifies too; the
+    /// PBX's 409 `not_outgoing` stays the last word.
     func canHoldForMe(_ call: ActiveCall) -> Bool {
-        available && call.direction == .outbound && call.isConnected && !isInConference()
+        available && (call.direction == .outbound || call.holdReturnId != nil)
+            && call.isConnected && !isInConference()
     }
 
     // MARK: Settings
@@ -374,7 +393,9 @@ final class HoldForMeModel: ObservableObject {
         return String(name.prefix(64))
     }
 
-    func start(call: ActiveCall, greeting: HoldGreeting) async {
+    /// Start a wait. `greeting` is the user's explicit pick; nil leaves it out
+    /// of the request, and the PBX uses the saved default.
+    func start(call: ActiveCall, greeting: HoldGreeting?) async {
         guard !isStarting else { return }
         isStarting = true
         defer { isStarting = false }
@@ -392,7 +413,7 @@ final class HoldForMeModel: ObservableObject {
     /// the Live Activity) is looked up first.
     func requestCancel(_ id: String) async {
         if !available || waits[id] == nil { await becameActive() }
-        guard available, waits[id]?.isOpen == true else { return }
+        guard available, waits[id]?.isShown == true else { return }
         cancelRequest = id
     }
 
@@ -405,20 +426,58 @@ final class HoldForMeModel: ObservableObject {
         }
     }
 
-    /// "Still on hold" after joining: the person is not there yet.
-    /// False when a tap is ignored because one is still in flight. An unknown
-    /// wait, a refusal (409) or a network failure are quiet: the call simply
-    /// goes on.
+    /// How long Still on hold waits for each of the PBX's answers (the open
+    /// waits, then the request itself) before the ring is ended anyway.
+    var stillOnHoldBound: TimeInterval = 3
+
+    /// "Still on hold", on the ring or after joining: the person is not
+    /// there yet. False when a tap is ignored because one is still in
+    /// flight. A wait this phone has not heard of yet (the push came before
+    /// the socket) is looked up first, for at most `stillOnHoldBound`; one
+    /// still unknown, a refusal (409) or a network failure are quiet: the
+    /// caller ends the ring regardless.
     @discardableResult
     func stillOnHold(_ id: String) async -> Bool {
         guard !stillOnHoldInFlight.contains(id) else { return false }
-        guard let wait = waits[id] else { return true }
         stillOnHoldInFlight.insert(id)
         defer { stillOnHoldInFlight.remove(id) }
-        if let updated = try? await backend.stillOnHold(callId: wait.callId) {
-            waits[id] = updated
+        if waits[id] == nil {
+            await Self.bounded(stillOnHoldBound) { await self.reconcile() }
+        }
+        guard let wait = waits[id] else { return true }
+        await Self.bounded(stillOnHoldBound) {
+            if let updated = try? await self.backend.stillOnHold(callId: wait.callId) {
+                self.waits[id] = updated
+            }
         }
         return true
+    }
+
+    /// Run `operation`, waiting for it at most `seconds`. One that takes
+    /// longer finishes on its own afterwards.
+    static func bounded(_ seconds: TimeInterval, _ operation: @escaping @MainActor () async -> Void) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = ResumeOnce(continuation)
+            Task { @MainActor in
+                await operation()
+                once.resume()
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                once.resume()
+            }
+        }
+    }
+
+    /// A hold-return ring ended here without being answered (declined,
+    /// missed, or the PBX stopped ringing): bring the card and the Live
+    /// Activity up to date, with time granted in the background.
+    nonisolated static func reconcileAfterUnansweredRing() {
+        Task { @MainActor in
+            let task = BackgroundTask(name: "HoldForMe.reconcile")
+            await shared.becameActive()
+            task.end()
+        }
     }
 
     /// The far party is back (a hold-return push): make sure the socket and
@@ -448,12 +507,59 @@ final class HoldForMeModel: ObservableObject {
 
     // MARK: Resolving the PBX call
 
-    /// The PBX's call this phone holds the leg of, as moving a call finds it.
+    /// The PBX's call for `call`, from its active calls fetched now.
     static func resolveLive(_ call: ActiveCall) async -> String? {
         guard let calls = try? await LiveCallMoveBackend().activeCalls() else { return nil }
-        let moves = CallMoveModel.shared
-        return CallMoveRules.ownCall(
-            in: calls, ownRegistrationId: await moves.ownRegistration(), ownCallIds: moves.ownCallIds()
+        return pbxCall(
+            for: call, in: calls, ownRegistrationId: await CallMoveModel.shared.ownRegistration()
         )?.id
+    }
+
+    /// The PBX call that is `call`: among this registration's calls (all of
+    /// the user's when the registration is not known), the one whose far
+    /// party is `call`'s. With two calls here (call waiting) the other one
+    /// must never be put on hold, so no match, or more than one, is nil.
+    static func pbxCall(for call: ActiveCall, in calls: [UserCall], ownRegistrationId: String?) -> UserCall? {
+        let mine = ownRegistrationId.map { own in calls.filter { $0.device.registrationId == own } } ?? calls
+        let matches = mine.filter { candidate in
+            guard let number = candidate.remote.number, !number.isEmpty else { return false }
+            return CallRecord.sameParty(number, call.remoteUri)
+        }
+        return matches.count == 1 ? matches[0] : nil
+    }
+}
+
+/// Resumes a continuation once, whichever side of a race gets there first.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(_ continuation: CheckedContinuation<Void, Never>) { self.continuation = continuation }
+
+    func resume() {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume()
+    }
+}
+
+/// Background time from `UIApplication`, ended once: when the work is done,
+/// or when the system says time is up.
+@MainActor
+private final class BackgroundTask {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init(name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
     }
 }

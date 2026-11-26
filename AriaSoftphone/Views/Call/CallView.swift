@@ -446,17 +446,20 @@ struct CallView: View {
         }
     }
 
+    /// Why a hold-return call is ringing, from its wait when known.
+    private func holdReturnRing(_ shown: ActiveCall) -> HoldReturnRing {
+        HoldReturnRing(wait: shown.holdReturnId.flatMap { holdForMe.waits[$0] })
+    }
+
     /// The far party of a Hold for me wait is back. After the maximum wait
-    /// the ring says so instead, and asks what to do.
+    /// the ring says so instead and asks what to do; Rejoin now rings like
+    /// any incoming call.
     @ViewBuilder
     private func holdReturnStatus(_ shown: ActiveCall) -> some View {
-        let wait = shown.holdReturnId.flatMap { holdForMe.waits[$0] }
-        if wait?.ringReason == "max_wait", let wait {
-            statusText(String(localized: "Still waiting after \(wait.maxWaitSecs / 3600) hours. Rejoin or hang up?"),
-                       systemImage: "hourglass", ringing: true)
-        } else {
-            statusText(String(localized: "They're back — \(shown.holdReturnLabelName)"),
-                       systemImage: "antenna.radiowaves.left.and.right", ringing: true)
+        let ring = holdReturnRing(shown)
+        let systemImage = ring == .theyreBack || ring == .rejoin ? "antenna.radiowaves.left.and.right" : "hourglass"
+        statusText(ring.status(name: shown.holdReturnLabelName), systemImage: systemImage, ringing: true)
+        if ring.showsTapToRejoin {
             Text("Tap to rejoin")
                 .ariaFont(.label)
                 .foregroundStyle(.white.opacity(0.7))
@@ -583,11 +586,12 @@ struct CallView: View {
     @ViewBuilder
     private func holdReturnExtras(_ shown: ActiveCall) -> some View {
         if let id = shown.holdReturnId {
+            let showsStillOnHold = holdReturnRing(shown).showsStillOnHold
             if phase(of: shown) == .incoming {
                 let lines = holdForMe.transcripts[id] ?? []
                 if !lines.isEmpty { HoldReturnTranscript(lines: lines) }
-                stillOnHoldButton(shown, waitId: id, endsCall: true)
-            } else if let joinedAt = shown.joinedAt {
+                if showsStillOnHold { stillOnHoldButton(shown, waitId: id, endsCall: true) }
+            } else if showsStillOnHold, let joinedAt = shown.joinedAt {
                 // Re-drawn at the boundary, so the button goes on time.
                 TimelineView(.explicit([joinedAt, joinedAt.addingTimeInterval(HoldReturnRules.stillOnHoldWindow)])) { _ in
                     if HoldReturnRules.showsStillOnHold(joinedAt: joinedAt, now: Date()) {
@@ -686,10 +690,12 @@ struct CallView: View {
         }
     }
 
-    /// A hold-return ring is announced to VoiceOver by name.
+    /// A hold-return ring is announced to VoiceOver by name: "They're back"
+    /// only when a person is (or may be) there.
     private func announceBack(_ shown: ActiveCall?) {
         guard let shown, shown.holdReturnId != nil, phase(of: shown) == .incoming else { return }
-        AccessibilityNotification.Announcement(String(localized: "They're back, \(shown.holdReturnLabelName)")).post()
+        let text = holdReturnRing(shown).announcement(name: shown.holdReturnLabelName)
+        AccessibilityNotification.Announcement(text).post()
     }
 
     private func announce(_ state: ActiveCall.ActiveCallState?) {

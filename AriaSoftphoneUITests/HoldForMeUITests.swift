@@ -7,10 +7,24 @@ final class HoldForMeUITests: AriaUITestCase {
         element("call.more").tap()
         element("call.holdForMe").tap()
         XCTAssertTrue(element("holdForMe.greeting.silence").waitForExistence(timeout: 5))
-        element("holdForMe.greeting.assistant").tap()
+        // The assistant row is enabled once the settings have loaded.
+        let assistant = element("holdForMe.greeting.assistant")
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: assistant)
+        waitForExpectations(timeout: 5)
+        assistant.tap()
         element("holdForMe.start").tap()
         XCTAssertTrue(fixtureEvent("holdForMe.started:assistant"))
         XCTAssertTrue(element("holdForMe.start").waitForNonExistence(timeout: 5), "the sheet closes")
+    }
+
+    func testStartingWithoutAPickLeavesTheGreetingToThePbx() {
+        launch("in-call-hold-for-me")
+        XCTAssertTrue(element("call.screen").waitForExistence(timeout: 5))
+        element("call.more").tap()
+        element("call.holdForMe").tap()
+        XCTAssertTrue(element("holdForMe.start").waitForExistence(timeout: 5))
+        element("holdForMe.start").tap()
+        XCTAssertTrue(fixtureEvent("holdForMe.started:default"), "no greeting sent: the saved default applies")
     }
 
     func testHoldForMeIsHiddenWithoutTheFlag() {

@@ -39,6 +39,10 @@ class CallManager: NSObject, ObservableObject {
     /// Sees each update reported to CallKit for an incoming call; tests
     /// record it to read the name the system would show.
     var onIncomingReport: ((CXCallUpdate) -> Void)?
+    /// A hold-return ring ended here unanswered (declined, missed, or the
+    /// PBX stopped ringing); given the wait's id. Brings the Hold for me card
+    /// and Live Activity up to date; tests record it.
+    var onUnansweredHoldReturn: (String) -> Void = { _ in HoldForMeModel.reconcileAfterUnansweredRing() }
     private let callController = CXCallController()
 
     /// Tokens of incoming calls that have ended here (declined, missed,
@@ -214,7 +218,8 @@ class CallManager: NSObject, ObservableObject {
                 if error == nil {
                     self.provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
                 }
-                self.recordMissedCall(remoteUri: callerUri, remoteName: callerName)
+                self.recordMissedCall(remoteUri: callerUri, remoteName: callerName, notify: holdReturnId == nil)
+                if let holdReturnId { self.onUnansweredHoldReturn(holdReturnId) }
                 DispatchQueue.global(qos: .utility).async {
                     try? SipEngineManager.shared.ensureReady()
                     try? SipEngineManager.shared.rejectCall(callToken: callToken)
@@ -739,8 +744,11 @@ class CallManager: NSObject, ObservableObject {
         if let callId = call.callId {
             RecordingsStore.shared.finish(callId: callId, path: nil)
         }
-        if outcome == .missed {
+        if Self.notifiesMissedCall(call, outcome: outcome) {
             LocalNotifications.postMissedCall(remoteUri: call.remoteUri, remoteName: call.remoteName)
+        }
+        if let holdReturnId = call.holdReturnId, call.connectedAt == nil {
+            onUnansweredHoldReturn(holdReturnId)
         }
 
         // Runs on its own queue and only if the user opted in, so a slow
@@ -762,9 +770,16 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
+    /// Whether a call that ended with `outcome` gets a local "Missed call"
+    /// notification. Not a hold-return ring: the PBX rings up to three rounds
+    /// and sends its own Hold for me alert when nobody answered.
+    static func notifiesMissedCall(_ call: ActiveCall, outcome: CallOutcome) -> Bool {
+        outcome == .missed && call.holdReturnId == nil
+    }
+
     /// Record an incoming call that never became one of ours.
-    private func recordMissedCall(remoteUri: String, remoteName: String?) {
-        LocalNotifications.postMissedCall(remoteUri: remoteUri, remoteName: remoteName)
+    private func recordMissedCall(remoteUri: String, remoteName: String?, notify: Bool = true) {
+        if notify { LocalNotifications.postMissedCall(remoteUri: remoteUri, remoteName: remoteName) }
         CallHistoryStore.shared.add(CallRecord(
             direction: .inbound,
             remoteUri: remoteUri,

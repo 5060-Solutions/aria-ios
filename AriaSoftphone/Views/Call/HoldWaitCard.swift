@@ -39,10 +39,8 @@ struct HoldWaitCard: View {
     }
 
     private func card(elapsed: String) -> some View {
-        let state = HoldWaitAttributes.ContentState(
-            state: wait.state == "requested" ? "waiting" : wait.state, stateSince: wait.stateSince)
         let waiting = String(localized: "Waiting on hold · \(elapsed)")
-        let status = state.statusLine
+        let status = wait.shownState?.statusLine
         let label = ([wait.displayName, waiting] + [status.map { String(localized: $0) }].compactMap { $0 })
             .filter { !$0.isEmpty }
             .joined(separator: ", ")

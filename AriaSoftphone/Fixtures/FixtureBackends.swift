@@ -118,8 +118,9 @@ struct FixtureHoldForMeBackend: HoldForMeBackend {
     }
 
     func start(callId: String, greeting: HoldGreeting?, displayName: String?) async throws -> HoldWait {
+        // No greeting sent: the PBX uses the saved default.
         let used = greeting ?? saved.greeting
-        await record("holdForMe.started:\(used.rawValue)")
+        await record("holdForMe.started:\(greeting?.rawValue ?? "default")")
         return wait(callId: callId, greeting: used, name: displayName)
     }
 

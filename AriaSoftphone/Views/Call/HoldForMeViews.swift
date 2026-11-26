@@ -7,15 +7,20 @@ struct HoldForMeSheet: View {
 
     @ObservedObject private var model = HoldForMeModel.shared
     @Environment(\.dismiss) private var dismiss
+    /// The row the user picked here; nil until they pick one.
     @State private var chosen: HoldGreeting?
 
-    private var assistantAvailable: Bool { model.settings?.assistantAvailable ?? true }
+    /// False until the settings have loaded: the assistant row stays off
+    /// until the account is known to have it.
+    private var assistantAvailable: Bool { model.settings?.assistantAvailable ?? false }
 
-    /// The row picked, else the user's saved greeting; an assistant the
-    /// account does not have reads as the short message.
-    private var selection: HoldGreeting {
-        let wanted = chosen ?? model.settings?.greeting ?? .line
-        return wanted == .assistant && !assistantAvailable ? .line : wanted
+    /// The row shown as selected: the one picked, else the saved greeting
+    /// once it has loaded (an assistant the account does not have reads as
+    /// the short message); nil while nothing is known.
+    private var selection: HoldGreeting? {
+        if let chosen { return chosen }
+        guard let saved = model.settings?.greeting else { return nil }
+        return saved == .assistant && !assistantAvailable ? .line : saved
     }
 
     var body: some View {
@@ -43,7 +48,9 @@ struct HoldForMeSheet: View {
                     }
 
                     AriaButton("Start holding", kind: .prominent, size: .primary, fullWidth: true) {
-                        let greeting = selection
+                        // Only an explicit pick is sent; without one the PBX
+                        // uses the saved default.
+                        let greeting = chosen
                         Task { await model.start(call: call, greeting: greeting) }
                         dismiss()
                     }
@@ -66,6 +73,8 @@ struct HoldForMeSheet: View {
 
     private func row(_ greeting: HoldGreeting) -> some View {
         let disabled = greeting == .assistant && !assistantAvailable
+        // "Not available" only once the settings say so, not while loading.
+        let unavailable = disabled && model.settings != nil
         let selected = selection == greeting
         return Button {
             chosen = greeting
@@ -75,7 +84,7 @@ struct HoldForMeSheet: View {
                     Text(Self.title(greeting))
                         .ariaFont(.body)
                         .foregroundStyle(AriaColor.onSurface)
-                    Text(disabled ? LocalizedStringKey("Not available on this account") : Self.detail(greeting))
+                    Text(unavailable ? LocalizedStringKey("Not available on this account") : Self.detail(greeting))
                         .ariaFont(.bodySmall)
                         .foregroundStyle(AriaColor.onSurfaceVariant)
                         .fixedSize(horizontal: false, vertical: true)
@@ -143,6 +152,58 @@ enum HoldReturnLabel {
     }
 }
 
+/// What a hold-return ring says, by why the PBX is ringing (C4: every ring
+/// round, Rejoin now, and the final ring at the maximum wait all carry the
+/// hold-return header).
+enum HoldReturnRing: Equatable {
+    /// A person answered, or the reason is not known yet (the push came
+    /// before the socket): "They're back — <name>".
+    case theyreBack
+    /// Rejoin now: an ordinary incoming call to the business.
+    case rejoin
+    /// The maximum wait passed and nobody answered: ask what to do.
+    case maxWait(hours: Int)
+
+    /// From the wait, when this phone knows it. A known wait rung for any
+    /// reason other than a person reads as the plain name.
+    init(wait: HoldWait?) {
+        guard let wait, let reason = wait.ringReason, reason != "human" else {
+            self = .theyreBack
+            return
+        }
+        if reason == "max_wait" {
+            self = .maxWait(hours: Self.hours(maxWaitSecs: wait.maxWaitSecs))
+        } else {
+            self = .rejoin
+        }
+    }
+
+    /// The maximum wait in whole hours, at least one.
+    static func hours(maxWaitSecs: Int) -> Int {
+        max(1, Int((Double(maxWaitSecs) / 3600).rounded()))
+    }
+
+    /// The status line under the name.
+    func status(name: String) -> String {
+        switch self {
+        case .theyreBack: return String(localized: "They're back — \(name)")
+        case .rejoin: return String(localized: "Incoming call")
+        case .maxWait(let hours): return String(localized: "Still waiting after \(hours) hours. Rejoin or hang up?")
+        }
+    }
+
+    /// What VoiceOver announces when it starts ringing.
+    func announcement(name: String) -> String {
+        self == .theyreBack ? String(localized: "They're back, \(name)") : name
+    }
+
+    var showsTapToRejoin: Bool { self == .theyreBack }
+
+    /// Still on hold only makes sense when a person was (or may have been)
+    /// detected.
+    var showsStillOnHold: Bool { self == .theyreBack }
+}
+
 /// What the far party said while the assistant held the line (C3): shown
 /// above Decline and Answer when the transcript is not empty.
 struct HoldReturnTranscript: View {
@@ -174,6 +235,8 @@ struct HoldReturnTranscript: View {
             }
         }
         .glassEffect(reduceTransparency ? .identity : .regular, in: .rect(cornerRadius: 20))
+        // The screen's standard margin, like the cards elsewhere.
+        .padding(.horizontal, Space.screenMargin)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("holdReturn.transcript")
     }
