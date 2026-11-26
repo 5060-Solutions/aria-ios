@@ -250,11 +250,12 @@ final class FavoriteContacts: ObservableObject {
 struct ContactRow: View {
     let contact: ContactEntry
     let onCall: (String) -> Void
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
 
     var body: some View {
         AriaListRow(
             title: Text(contact.name),
-            subtitle: contact.phoneNumbers.first.map { Text($0) }
+            subtitle: contact.phoneNumbers.first.map { Text(DialFormatter.format($0, country: defaultCountry.country)) }
         ) {
             Avatar(name: contact.name, imageData: contact.thumbnailData)
         } trailing: {
@@ -277,6 +278,7 @@ struct ContactRow: View {
 // MARK: - Detail
 
 struct ContactDetailView: View {
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
     let contact: ContactEntry
     let onCall: (String) -> Void
     @ObservedObject private var favorites = FavoriteContacts.shared
@@ -297,7 +299,7 @@ struct ContactDetailView: View {
                 SectionCard(title: Text("Numbers")) {
                     ForEach(Array(contact.phoneNumbers.enumerated()), id: \.offset) { index, number in
                         HStack(spacing: Space.s) {
-                            Text(number)
+                            Text(DialFormatter.format(number, country: defaultCountry.country))
                                 .ariaFont(.body)
                                 .foregroundStyle(AriaColor.onSurface)
                                 .textSelection(.enabled)

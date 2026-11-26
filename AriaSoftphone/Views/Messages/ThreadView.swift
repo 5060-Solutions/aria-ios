@@ -8,6 +8,7 @@ struct ThreadView: View {
 
     @EnvironmentObject var callManager: CallManager
     @ObservedObject private var service = MessagingService.shared
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
     @State private var text = ""
     @State private var attachment: PbxApiClient.MessagingAttachment?
     @State private var attachmentPreview: UIImage?
@@ -51,7 +52,7 @@ struct ThreadView: View {
             composer
         }
         .background(AriaColor.background)
-        .navigationTitle(DialFormatter.format(key.remoteNumber))
+        .navigationTitle(DialFormatter.format(key.remoteNumber, country: defaultCountry.country))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

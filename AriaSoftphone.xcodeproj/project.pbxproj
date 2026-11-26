@@ -30,6 +30,7 @@
 		1F276A327DABF6B12B8D0322 /* CallMoveViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B57D43FCE1F9F05864FECC1 /* CallMoveViews.swift */; };
 		1FD14DC256026BDBBD9B7B42 /* AriaSoftphoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA044334FE5693D4A72D2DB2 /* AriaSoftphoneApp.swift */; };
 		22DC926F77D2695161AA16B0 /* CallerNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3725B4A968B21A006B806EF /* CallerNames.swift */; };
+		23B071F30D5513D3A6685481 /* PhoneFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2661676109903C5CE918ED67 /* PhoneFormat.swift */; };
 		286151679C9D90210BFB06D8 /* FixtureData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F97BB4AF45FE5EAB1592B4E7 /* FixtureData.swift */; };
 		289B3EDDD1262B0884CCAFAD /* Figtree-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4559786832E4AC511A2D5CA0 /* Figtree-SemiBold.ttf */; };
 		28D6781BE0E6B406D6798509 /* LocalNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD136F883471E79C252749B7 /* LocalNotifications.swift */; };
@@ -93,6 +94,7 @@
 		9223B14C13B80FC194F9C1C8 /* ProvisioningFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FDA7AC1B4EEFB1DC5DCBF07 /* ProvisioningFlowView.swift */; };
 		941A49FAE2FB27EA5E0659F1 /* ThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41424CCA1F3ECA5BBA0A80C2 /* ThreadView.swift */; };
 		94947B1A5C8E6F318A53E6D6 /* KeychainMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 997DB051E23D4E120FF4CE70 /* KeychainMigrationTests.swift */; };
+		95C3B1D7480EA7F1F19981EB /* PhoneFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0DCB9F6264A60C9317A60D /* PhoneFormatTests.swift */; };
 		9A0BD44B814D30BD47AAAB50 /* Banner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61A866AA7CCBD9158452698 /* Banner.swift */; };
 		9E36868952B9A025D214772E /* DesignSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD66021B6BD28240DCC2EED /* DesignSystemTests.swift */; };
 		9E3E98FBB80CBA28AC8288B6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977335B2802A80180636380B /* SettingsView.swift */; };
@@ -134,6 +136,7 @@
 		EAE0B2670FFC393C7066FF2A /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70BD257DEA8C77B7FCC1F88 /* Avatar.swift */; };
 		EB0DC0E6B79631E00D3825EE /* ConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F417E48E79AC5552D6F060B /* ConnectionSheet.swift */; };
 		EE9FADDB11605BDADFAD4689 /* ActivityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3EF068B7199B2FE8D0C28B /* ActivityRefresher.swift */; };
+		F14A5BA64EDC32FDCA25CA17 /* PhoneNumberKit in Frameworks */ = {isa = PBXBuildFile; productRef = A9BB8CFA39E3042312860562 /* PhoneNumberKit */; };
 		F19CA286DA66AD0D21D004F0 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6B96E5828C9B4D4BB38550 /* StubURLProtocol.swift */; };
 		F26E4313EF82C2E03C7CC06B /* FixtureEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216C23B5CF220D5FF02B4D4A /* FixtureEvents.swift */; };
 		F891814AFF53997FE76EAFE2 /* GatewayTokenRenewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF1D09026AEB6AD0B4D98388 /* GatewayTokenRenewer.swift */; };
@@ -174,6 +177,7 @@
 		216C23B5CF220D5FF02B4D4A /* FixtureEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureEvents.swift; sourceTree = "<group>"; };
 		244C9E498E95F1F3C1A7EC17 /* Figtree-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Bold.ttf"; sourceTree = "<group>"; };
 		265BDE95990C3BC0D9B732D0 /* AriaMobileCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AriaMobileCore.xcframework; sourceTree = "<group>"; };
+		2661676109903C5CE918ED67 /* PhoneFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneFormat.swift; sourceTree = "<group>"; };
 		2A8EE9B3D1D770D8075DC90B /* CodecSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodecSettingsView.swift; sourceTree = "<group>"; };
 		2B38590F217DB8452C47ADF6 /* AccountSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSession.swift; sourceTree = "<group>"; };
 		2D059E703016AAB4C883B40E /* AriaButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AriaButton.swift; sourceTree = "<group>"; };
@@ -215,6 +219,7 @@
 		6543A3ADEA1BFA74052AC847 /* FeatureFormStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFormStyles.swift; sourceTree = "<group>"; };
 		6845D56A3352CC31954CAE9A /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
 		69917C126F3D6E94542ECD66 /* Figtree-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Figtree-Light.ttf"; sourceTree = "<group>"; };
+		6A0DCB9F6264A60C9317A60D /* PhoneFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneFormatTests.swift; sourceTree = "<group>"; };
 		74546B33F0820C01FC71E527 /* IPadLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadLayoutTests.swift; sourceTree = "<group>"; };
 		7CA2AE0E2E641848CF492A08 /* ManualSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSetupView.swift; sourceTree = "<group>"; };
 		7D5964705C3AAA855E92E512 /* DialPadMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialPadMetrics.swift; sourceTree = "<group>"; };
@@ -310,6 +315,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E8B63C7CA74C0374F1190497 /* AriaMobileCore.xcframework in Frameworks */,
+				F14A5BA64EDC32FDCA25CA17 /* PhoneNumberKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -419,6 +425,7 @@
 				48B632B22EA9CBA7C639DAA8 /* NetworkMonitorTests.swift */,
 				84AE8762E3CE45753FE29CD5 /* NetworkRecoveryTests.swift */,
 				BE1D86D8CDD1F53430813252 /* PbxApiDecodingTests.swift */,
+				6A0DCB9F6264A60C9317A60D /* PhoneFormatTests.swift */,
 				2FB34ABE1C7520F9D8062AC2 /* ProvisioningTests.swift */,
 				FCBADA62E2FA3D21F5E028BD /* ProximityTests.swift */,
 				CE483FBDA8027F4A03B49787 /* PushGatewayTests.swift */,
@@ -480,6 +487,7 @@
 				30EEFD37BBE7F4C7BAB2EEA0 /* PbxApiClient.swift */,
 				CF6B562922F5CE76B23AE5A5 /* PbxApiClient+Proximity.swift */,
 				2D985033888E69896F0701B4 /* PbxSession.swift */,
+				2661676109903C5CE918ED67 /* PhoneFormat.swift */,
 				0A6201649E44BED8F10220D5 /* Proximity.swift */,
 				ACF21325E1CE3B995317606A /* RecordingsStore.swift */,
 				F91DF635F6790BD0BEE5A8DF /* SelfService.swift */,
@@ -700,6 +708,7 @@
 			);
 			name = AriaSoftphone;
 			packageProductDependencies = (
+				A9BB8CFA39E3042312860562 /* PhoneNumberKit */,
 			);
 			productName = AriaSoftphone;
 			productReference = 557297B649EDAE0B0C3B837E /* AriaSoftphone.app */;
@@ -752,6 +761,9 @@
 			);
 			mainGroup = EE50315A76A6DDA4D1F24E08;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E9B3F961FF52190394F97005 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1E1162A619C283414BA43EFA /* Products */;
 			projectDirPath = "";
@@ -836,6 +848,7 @@
 				BFDB396080906CC7971C5BDD /* NetworkMonitorTests.swift in Sources */,
 				482DDF2723C58D758DCA1302 /* NetworkRecoveryTests.swift in Sources */,
 				087D69935A1FC3EE02E1224D /* PbxApiDecodingTests.swift in Sources */,
+				95C3B1D7480EA7F1F19981EB /* PhoneFormatTests.swift in Sources */,
 				1AC1F17DB93780A10AC66F65 /* ProvisioningTests.swift in Sources */,
 				165CD65CDAD738D1EB69CFAA /* ProximityTests.swift in Sources */,
 				C0ACA95616AB1C59C2494CB3 /* PushGatewayTests.swift in Sources */,
@@ -914,6 +927,7 @@
 				5AF70B6B68486EEE013FA88E /* PbxApiClient+Proximity.swift in Sources */,
 				A128F9C70AF1A7237467820D /* PbxApiClient.swift in Sources */,
 				3446FFC3AFDFCBD191801367 /* PbxSession.swift in Sources */,
+				23B071F30D5513D3A6685481 /* PhoneFormat.swift in Sources */,
 				9223B14C13B80FC194F9C1C8 /* ProvisioningFlowView.swift in Sources */,
 				52A18BEC94142B24C45ADA99 /* Proximity.swift in Sources */,
 				BDF6DCE8A5DBABD3726D886B /* PushHandler.swift in Sources */,
@@ -1259,6 +1273,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E9B3F961FF52190394F97005 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PhoneNumberKit/PhoneNumberKit";
+			requirement = {
+				kind = exactVersion;
+				version = 5.0.15;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A9BB8CFA39E3042312860562 /* PhoneNumberKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E9B3F961FF52190394F97005 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */;
+			productName = PhoneNumberKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B4A707710EEB2195642159DC /* Project object */;
 }

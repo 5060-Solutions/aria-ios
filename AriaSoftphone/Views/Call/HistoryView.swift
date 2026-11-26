@@ -187,13 +187,14 @@ enum HistoryGrouping {
 // MARK: - Row
 
 struct CallHistoryRow: View {
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
     let record: CallRecord
     let onCall: () -> Void
     let onInfo: () -> Void
 
     var body: some View {
         AriaListRow(
-            title: Text(record.remoteName.flatMap { $0.isEmpty ? nil : $0 } ?? DialFormatter.format(record.remoteUri)),
+            title: Text(record.remoteName.flatMap { $0.isEmpty ? nil : $0 } ?? DialFormatter.format(record.remoteUri, country: defaultCountry.country)),
             subtitle: subtitle,
             titleColor: record.isMissed ? AriaColor.error : AriaColor.onSurface
         ) {
@@ -261,6 +262,7 @@ extension CallRecord {
 
 /// One call: who, when, how it went, and Call back.
 struct CallDetailView: View {
+    @ObservedObject private var defaultCountry = DefaultCountry.shared
     let record: CallRecord
     let onCall: () -> Void
 
@@ -275,7 +277,7 @@ struct CallDetailView: View {
                         .multilineTextAlignment(.center)
                         .accessibilityAddTraits(.isHeader)
                     if record.remoteName != nil {
-                        Text(DialFormatter.format(record.remoteUri))
+                        Text(DialFormatter.format(record.remoteUri, country: defaultCountry.country))
                             .ariaFont(.bodySmall)
                             .foregroundStyle(AriaColor.onSurfaceVariant)
                     }

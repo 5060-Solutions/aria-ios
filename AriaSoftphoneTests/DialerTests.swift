@@ -4,26 +4,6 @@ import XCTest
 final class DialerTests: XCTestCase {
     // MARK: Formatting
 
-    func testNorthAmericanNumbersGroupAsTyped() {
-        XCTAssertEqual(DialFormatter.format(""), "")
-        XCTAssertEqual(DialFormatter.format("4"), "4")
-        XCTAssertEqual(DialFormatter.format("1042"), "1042", "extensions stay as typed")
-        XCTAssertEqual(DialFormatter.format("55501"), "555-01")
-        XCTAssertEqual(DialFormatter.format("5550142"), "555-0142")
-        XCTAssertEqual(DialFormatter.format("41555501"), "(415) 555-01")
-        XCTAssertEqual(DialFormatter.format("4155550142"), "(415) 555-0142")
-        XCTAssertEqual(DialFormatter.format("14155550142"), "1 (415) 555-0142")
-    }
-
-    func testInternationalAndSpecialStringsStayAsTyped() {
-        XCTAssertEqual(DialFormatter.format("+14155550142"), "+1 415 555 0142")
-        XCTAssertEqual(DialFormatter.format("+1415"), "+1 415")
-        XCTAssertEqual(DialFormatter.format("+33155500127"), "+33155500127")
-        XCTAssertEqual(DialFormatter.format("*97"), "*97")
-        XCTAssertEqual(DialFormatter.format("4155550142#"), "4155550142#")
-        XCTAssertEqual(DialFormatter.format("011441234567890"), "011441234567890")
-    }
-
     // MARK: Matching
 
     func testMatchesAcrossFormats() {
