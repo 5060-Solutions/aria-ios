@@ -38,8 +38,9 @@ struct DiagnosticsView: View {
                 SectionCard(title: Text("Media")) {
                     row("Codec", value: s.codec ?? (s.preferredCodecs.first.map { String(localized: "\($0) (preferred)") } ?? "—"))
                     if s.callId != nil {
-                        row("Encryption", value: s.srtp == true ? String(localized: "SRTP on") : String(localized: "Off"),
-                            color: s.srtp == true ? AriaColor.success : AriaColor.onSurfaceVariant)
+                        row("Encryption",
+                            value: s.srtp == true ? String(localized: "SRTP on") : String(localized: "None (unencrypted)"),
+                            color: s.srtp == true ? AriaColor.success : AriaColor.warning)
                         if let stats = s.stats {
                             row("Packets", value: "↑ \(stats.packetsSent)  ↓ \(stats.packetsReceived)")
                             row("Loss", value: "\(stats.packetLoss)")

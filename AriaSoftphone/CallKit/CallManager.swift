@@ -766,6 +766,9 @@ class CallManager: NSObject, ObservableObject {
             $0.inConference = info.inConference
             $0.isRecording = info.recording
             if let codec = info.codec { $0.codec = codec }
+            if let encrypted = CallEncryption.reported(state: info.state, encrypted: info.encrypted) {
+                $0.isEncrypted = encrypted
+            }
             if $0.isConnected {
                 $0.setHeld(info.onHold || info.state == .onHold)
             }
@@ -1154,6 +1157,10 @@ struct ActiveCall: Identifiable {
     var inConference: Bool = false
     /// Being recorded to a WAV file.
     var isRecording: Bool = false
+    /// Whether the call's media is encrypted (SRTP to the PBX), from its
+    /// call-state events (`CallInfo.encrypted`); nil until the core has
+    /// reported it on `Connected`. See `CallEncryption`.
+    var isEncrypted: Bool?
     /// The negotiated codec by its SDP name (`PCMU`, `PCMA`, `opus`,
     /// `G729`), once there is media.
     var codec: String?
@@ -1689,6 +1696,7 @@ extension CallManager {
                               direction: .outbound, state: .connected)
         call.callId = "fx-\(call.uuid.uuidString.prefix(8))"
         call.connectedAt = Date()
+        call.isEncrypted = true
         registry.add(call)
         return .placed
     }

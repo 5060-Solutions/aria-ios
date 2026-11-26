@@ -45,7 +45,8 @@ final class ConnectionDetails: ObservableObject {
         var lastError: () -> String?
         var network: () -> NetworkPath?
         var activeCallId: () -> String?
-        var isEncrypted: (String) -> Bool
+        /// Nil when the core has not reported it yet.
+        var isEncrypted: (String) -> Bool?
         var mediaStats: (String) -> MediaStats?
         /// The gateway instance in use, when known; nil means the
         /// configured host.
@@ -161,7 +162,7 @@ extension ConnectionDetails.Source {
         lastError: { SipEngineManager.shared.registrationError },
         network: { SipEngineManager.shared.currentNetworkPath },
         activeCallId: { CallManager.shared.activeCall?.callId },
-        isEncrypted: { SipEngineManager.shared.callIsEncrypted(callId: $0) },
+        isEncrypted: { CallManager.shared.registry.call(engineCallId: $0)?.isEncrypted },
         mediaStats: { SipEngineManager.shared.getMediaStats(callId: $0) },
         gatewayNode: { SipEngineManager.shared.currentGateway() },
         codec: { callId in

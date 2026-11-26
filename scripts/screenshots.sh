@@ -40,6 +40,10 @@ number() {
         if [ "$s" = "$1" ]; then printf "%02d" $i; return; fi
         i=$((i + 1))
     done
+    # Extras: variants of a review screen take its number.
+    case "$1" in
+        in-call-unencrypted) printf "05"; return ;;
+    esac
     echo "unknown scene: $1" >&2
     exit 1
 }

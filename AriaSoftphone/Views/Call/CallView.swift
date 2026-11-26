@@ -114,18 +114,41 @@ struct CallView: View {
         view
             .task(id: shown?.callId) {
                 while !Task.isCancelled {
-                    link = CallLinkStatus.current(callId: shown?.callId, engine: sipEngine)
+                    refreshLink(shown)
                     try? await Task.sleep(for: .seconds(2))
                 }
             }
             .onAppear { nameFocused = true }
-            .onChange(of: shown?.state) { _, state in announce(state) }
+            .onChange(of: shown?.state) { _, state in
+                announce(state)
+                refreshLink(shown)
+            }
+            // Every call-state event carries the call's encryption; a change
+            // mid-call arrives with the state unchanged.
+            .onChange(of: shown?.isEncrypted) { refreshLink(shown) }
             .onChange(of: shown?.isRecording) { old, recording in
                 guard old != nil, let recording else { return }
                 AccessibilityNotification.Announcement(
                     recording ? String(localized: "Recording started") : String(localized: "Recording stopped")
                 ).post()
             }
+    }
+
+    /// Re-read the call's encryption and quality, and give the one-time
+    /// notice if the call is (or has just become) unencrypted.
+    private func refreshLink(_ shown: ActiveCall?) {
+        link = CallLinkStatus.current(call: shown, engine: sipEngine)
+        let notices = CallEncryptionNotices.shared
+        notices.retain(only: Set(callManager.registry.calls.map(\.uuid)))
+        if let shown, notices.shouldNotify(call: shown.uuid, encryption: link.encryption) {
+            showUnencryptedExplanation()
+        }
+    }
+
+    /// The banner (announced as it appears) explaining an unencrypted call:
+    /// the one-time notice, and again when the capsule is tapped.
+    private func showUnencryptedExplanation() {
+        banner = .warning(CallEncryption.unencryptedExplanation)
     }
 
     // MARK: - Layout
@@ -205,8 +228,22 @@ struct CallView: View {
 
     private func topBar(_ shown: ActiveCall?) -> some View {
         HStack(spacing: Space.xs) {
-            if shown?.isConnected == true, link.isEncrypted || link.quality != nil {
-                linkChip
+            if shown?.isConnected == true, link.encryption != .unknown || link.quality != nil {
+                if link.encryption == .unencrypted {
+                    Button(action: showUnencryptedExplanation) {
+                        // A 44 pt target around the slimmer capsule.
+                        linkChip
+                            .frame(minHeight: ComponentSize.iconButton)
+                            .contentShape(.rect)
+                    }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(linkAccessibilityText))
+                        .accessibilityHint(Text("Explains why this call isn't encrypted"))
+                        .accessibilityIdentifier("call.notEncrypted")
+                } else {
+                    linkChip
+                        .accessibilityIdentifier(link.encryption == .encrypted ? "call.encrypted" : "call.link")
+                }
             }
             Spacer(minLength: 0)
             if let shown, shown.isConnected {
@@ -220,15 +257,28 @@ struct CallView: View {
     /// the overflow match wherever the gradient has drifted.
     static let topBarGlass = Glass.regular.tint(AriaColor.callMesh[1].opacity(0.55))
 
-    /// One glass capsule: the SRTP lock and the call quality.
+    /// One glass capsule: the SRTP lock and the call quality. A call that is
+    /// not encrypted gets a solid amber capsule with an open lock instead,
+    /// never the look of an encrypted one, for as long as it lasts.
     private var linkChip: some View {
-        HStack(spacing: Space.s) {
-            if link.isEncrypted {
+        let unencrypted = link.encryption == .unencrypted
+        return HStack(spacing: Space.s) {
+            switch link.encryption {
+            case .encrypted:
                 Label("Encrypted", systemImage: "lock.fill")
+            case .unencrypted:
+                Label {
+                    Text("Not encrypted")
+                } icon: {
+                    Image(systemName: "lock.open.fill")
+                        .foregroundStyle(AriaColor.warning)
+                }
+            case .unknown:
+                EmptyView()
             }
-            if link.isEncrypted, link.quality != nil {
+            if link.encryption != .unknown, link.quality != nil {
                 Rectangle()
-                    .fill(.white.opacity(0.3))
+                    .fill(unencrypted ? AriaColor.onWarningContainer.opacity(0.4) : .white.opacity(0.3))
                     .frame(width: 1, height: Space.m)
             }
             if let quality = link.quality {
@@ -243,17 +293,29 @@ struct CallView: View {
         .ariaFont(.label)
         .lineLimit(1)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .foregroundStyle(.white)
+        .foregroundStyle(unencrypted ? AriaColor.onWarningContainer : .white)
         .padding(.horizontal, Space.s)
         .frame(minHeight: ComponentSize.iconButton - Space.xs)
-        .glassEffect(Self.topBarGlass, in: .capsule)
+        .background {
+            // Solid, not glass: the label keeps its contrast wherever the
+            // gradient behind it has drifted.
+            if unencrypted {
+                Capsule().fill(AriaColor.warningContainer)
+            }
+        }
+        .glassEffect(unencrypted ? .identity : Self.topBarGlass, in: .capsule)
+        .contentShape(.capsule)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(linkAccessibilityText))
     }
 
     private var linkAccessibilityText: String {
         var parts: [String] = []
-        if link.isEncrypted { parts.append(String(localized: "Encrypted call")) }
+        switch link.encryption {
+        case .encrypted: parts.append(String(localized: "Encrypted call"))
+        case .unencrypted: parts.append(String(localized: "Call not encrypted"))
+        case .unknown: break
+        }
         if let quality = link.quality { parts.append(String(localized: "Call quality, \(quality.label)")) }
         return parts.joined(separator: ", ")
     }

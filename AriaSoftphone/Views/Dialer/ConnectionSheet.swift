@@ -46,9 +46,13 @@ struct ConnectionSheet: View {
                             }
                         }
                         if let srtp = snapshot.srtp {
-                            SectionRow(title: Text("Call encryption"), systemImage: "lock.shield") {
-                                value(srtp ? String(localized: "SRTP") : String(localized: "Off"))
+                            SectionRow(title: Text("Call encryption"), systemImage: srtp ? "lock.shield" : "lock.open") {
+                                // Never hidden: an unencrypted call says so,
+                                // in amber.
+                                value(srtp ? String(localized: "SRTP") : String(localized: "None (unencrypted)"))
+                                    .foregroundStyle(srtp ? AriaColor.onSurfaceVariant : AriaColor.warning)
                             }
+                            .accessibilityIdentifier(srtp ? "connection.encrypted" : "connection.notEncrypted")
                         }
                         SectionRow(title: Text("Network"), systemImage: "wifi", showsDivider: false) {
                             value(snapshot.network)

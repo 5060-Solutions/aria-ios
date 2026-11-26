@@ -107,6 +107,9 @@ enum FixtureData {
             return [incoming()]
         case .inCall:
             return [connected(activeCaller, id: "fx-call-1", since: now.addingTimeInterval(-207))]
+        case .inCallUnencrypted:
+            // The phone system declined SRTP.
+            return [connected(activeCaller, id: "fx-call-1", since: now.addingTimeInterval(-207), encrypted: false)]
         case .inCallTwoCalls:
             var held = connected(activeCaller, id: "fx-call-1", since: now.addingTimeInterval(-412))
             held.setHeld(true)
@@ -127,13 +130,15 @@ enum FixtureData {
         _ party: (name: String, uri: String),
         id: String,
         since: Date,
-        direction: ActiveCall.CallDirection = .outbound
+        direction: ActiveCall.CallDirection = .outbound,
+        encrypted: Bool = true
     ) -> ActiveCall {
         var call = ActiveCall(uuid: UUID(), callToken: direction == .inbound ? "tok-\(id)" : nil,
                               remoteUri: party.uri, remoteName: party.name,
                               direction: direction, state: .connected)
         call.callId = id
         call.connectedAt = since
+        call.isEncrypted = encrypted
         return call
     }
 }

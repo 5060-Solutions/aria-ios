@@ -163,3 +163,37 @@ final class ConferenceUITests: AriaUITestCase {
         XCTAssertTrue(element("call.merge").waitForExistence(timeout: 3), "split: Merge is offered again")
     }
 }
+
+final class CallEncryptionUITests: AriaUITestCase {
+    /// A call whose media is not encrypted is called out: the amber capsule
+    /// (read as "Call not encrypted"), the one-time notice, and the notice
+    /// again when the capsule is tapped.
+    func testAnUnencryptedCallIsCalledOut() {
+        launch("in-call-unencrypted")
+        XCTAssertTrue(element("call.screen").waitForExistence(timeout: 5))
+        let notice = element("banner.warning")
+        XCTAssertTrue(notice.waitForExistence(timeout: 5), "the call connected unencrypted: the notice shows")
+
+        let capsule = element("call.notEncrypted")
+        XCTAssertTrue(capsule.waitForExistence(timeout: 3))
+        XCTAssertTrue(capsule.label.hasPrefix("Call not encrypted"), capsule.label)
+        XCTAssertFalse(element("call.encrypted").exists, "never the encrypted look")
+
+        // Once per call: dismissed, it does not come back by itself.
+        notice.buttons.firstMatch.tap()
+        XCTAssertTrue(notice.waitForNonExistence(timeout: 3))
+        XCTAssertFalse(notice.waitForExistence(timeout: 3))
+
+        // The capsule explains it again.
+        capsule.tap()
+        XCTAssertTrue(notice.waitForExistence(timeout: 3), "tapping the capsule explains")
+    }
+
+    func testAnEncryptedCallShowsNoWarning() {
+        launch("in-call")
+        XCTAssertTrue(element("call.screen").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("call.encrypted").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("call.notEncrypted").exists)
+        XCTAssertFalse(element("banner.warning").exists)
+    }
+}

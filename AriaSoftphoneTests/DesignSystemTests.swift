@@ -11,6 +11,7 @@ final class DesignSystemTests: XCTestCase {
         "SecondaryContainer", "Tertiary", "Error", "OnError", "ErrorContainer", "Success",
         "Background", "Surface", "SurfaceContainerHigh", "OnSurface", "OnSurfaceVariant",
         "OutlineVariant", "CallHangup", "CallAnswer", "CallBackdrop",
+        "Warning", "WarningContainer", "OnWarningContainer",
     ]
 
     private func color(_ name: String, _ style: UIUserInterfaceStyle) throws -> UIColor {
@@ -75,6 +76,8 @@ final class DesignSystemTests: XCTestCase {
             ("OnSurfaceVariant", "Background"), ("OnSurfaceVariant", "Surface"),
             ("OnPrimary", "Primary"), ("OnPrimaryContainer", "PrimaryContainer"),
             ("OnError", "Error"), ("Primary", "Background"), ("Primary", "Surface"),
+            ("Warning", "Background"), ("Warning", "Surface"), ("Warning", "SurfaceContainerHigh"),
+            ("Warning", "WarningContainer"), ("OnWarningContainer", "WarningContainer"),
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (fg, bg) in textPairs {
@@ -92,6 +95,17 @@ final class DesignSystemTests: XCTestCase {
         for style in [UIUserInterfaceStyle.light, .dark] {
             XCTAssertGreaterThanOrEqual(contrast(.white, try color("CallBackdrop", style)), 4.5)
         }
+    }
+
+    /// The call screen is dark in both appearances, and its "Not encrypted"
+    /// capsule is a solid warning container, so its label and open lock
+    /// hold their contrast wherever the gradient has drifted.
+    func testTheUnencryptedCapsuleIsLegibleOnTheCallScreen() throws {
+        let container = try color("WarningContainer", .dark)
+        XCTAssertGreaterThanOrEqual(contrast(try color("OnWarningContainer", .dark), container), 4.5)
+        XCTAssertGreaterThanOrEqual(contrast(try color("Warning", .dark), container), 3)
+        // Amber, never the green of "Encrypted".
+        XCTAssertNotEqual(hex(try color("Warning", .dark)), hex(try color("Success", .dark)))
     }
 
     // MARK: Typography

@@ -3,8 +3,8 @@ import Foundation
 
 extension ConnectionDetails.Source {
     /// A healthy connection for fixture mode and the connection-sheet
-    /// screenshot: registered over Wi-Fi, a call on Opus with SRTP and
-    /// plausible media stats.
+    /// screenshot: registered over Wi-Fi, a call on Opus with SRTP (without,
+    /// in the unencrypted in-call scene) and plausible media stats.
     static let fixture = ConnectionDetails.Source(
         state: { SipEngineManager.shared.connectionState },
         account: { AccountSettings.load() },
@@ -14,7 +14,7 @@ extension ConnectionDetails.Source {
             NetworkPath(isSatisfied: true, interfaces: ["en0"], addresses: ["192.168.1.42"])
         },
         activeCallId: { CallManager.shared.activeCall?.callId ?? "fixture-call" },
-        isEncrypted: { _ in true },
+        isEncrypted: { callId in CallManager.shared.registry.call(engineCallId: callId)?.isEncrypted ?? true },
         mediaStats: { _ in
             // Grows with time so the live view ticks like a real call.
             let seconds = UInt64(Date().timeIntervalSince(fixtureStart))

@@ -45,17 +45,23 @@ enum CallQuality: Equatable {
 
 /// What the call screen's top bar shows about the media link.
 struct CallLinkStatus: Equatable {
-    var isEncrypted = false
+    var encryption: CallEncryption = .unknown
     var quality: CallQuality?
 
+    /// The link of `call`: encryption from its last call-state event,
+    /// quality from the core's media statistics.
     @MainActor
-    static func current(callId: String?, engine: SipEngineManager) -> CallLinkStatus {
+    static func current(call: ActiveCall?, engine: SipEngineManager) -> CallLinkStatus {
+        guard let call else { return CallLinkStatus() }
+        let encryption = CallEncryption(call)
         #if DEBUG
-        if FixtureMode.isActive { return CallLinkStatus(isEncrypted: true, quality: .good) }
+        if FixtureMode.isActive {
+            return CallLinkStatus(encryption: encryption, quality: call.isConnected ? .good : nil)
+        }
         #endif
-        guard let callId else { return CallLinkStatus() }
+        guard let callId = call.callId else { return CallLinkStatus(encryption: encryption) }
         return CallLinkStatus(
-            isEncrypted: engine.callIsEncrypted(callId: callId),
+            encryption: encryption,
             quality: engine.getMediaStats(callId: callId).map(CallQuality.init)
         )
     }

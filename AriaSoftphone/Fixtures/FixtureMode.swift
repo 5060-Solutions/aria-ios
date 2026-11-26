@@ -95,9 +95,14 @@ enum FixtureScene: String, CaseIterable {
     case settings
     case forwarding
     case connectionSheet = "connection-sheet"
+    /// Extra: the in-call screen for a call whose media is not encrypted
+    /// (the amber capsule and the one-time notice).
+    case inCallUnencrypted = "in-call-unencrypted"
 
-    /// The DESIGN.md §8 file number, e.g. "05".
+    /// The DESIGN.md §8 file number, e.g. "05". An extra takes the number of
+    /// the screen it is a variant of.
     var number: String {
+        if self == .inCallUnencrypted { return Self.inCall.number }
         let index = Self.allCases.firstIndex(of: self)! + 1
         return String(format: "%02d", index)
     }

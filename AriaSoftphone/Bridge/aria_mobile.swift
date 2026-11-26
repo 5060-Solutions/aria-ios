@@ -2374,6 +2374,15 @@ public struct CallInfo {
      * `G729`), once the call has media; null before then.
      */
     public var codec: String?
+    /**
+     * Call audio is SRTP-encrypted to the PBX, as actually negotiated:
+     * set on `Connected` and carried on every later event, and re-reported
+     * whenever it changes (a media re-offer after a network change). False
+     * before `Connected` and whenever the far side declined SRTP: the app
+     * must then say the call is not encrypted. Same value as
+     * `call_is_encrypted`. See "Media encryption" in the README.
+     */
+    public var encrypted: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2392,7 +2401,15 @@ public struct CallInfo {
         /**
          * The negotiated audio codec by its SDP name (`PCMU`, `PCMA`, `opus`,
          * `G729`), once the call has media; null before then.
-         */codec: String? = nil) {
+         */codec: String? = nil, 
+        /**
+         * Call audio is SRTP-encrypted to the PBX, as actually negotiated:
+         * set on `Connected` and carried on every later event, and re-reported
+         * whenever it changes (a media re-offer after a network change). False
+         * before `Connected` and whenever the far side declined SRTP: the app
+         * must then say the call is not encrypted. Same value as
+         * `call_is_encrypted`. See "Media encryption" in the README.
+         */encrypted: Bool = false) {
         self.callId = callId
         self.remoteUri = remoteUri
         self.remoteName = remoteName
@@ -2405,6 +2422,7 @@ public struct CallInfo {
         self.inConference = inConference
         self.recording = recording
         self.codec = codec
+        self.encrypted = encrypted
     }
 }
 
@@ -2448,6 +2466,9 @@ extension CallInfo: Equatable, Hashable {
         if lhs.codec != rhs.codec {
             return false
         }
+        if lhs.encrypted != rhs.encrypted {
+            return false
+        }
         return true
     }
 
@@ -2464,6 +2485,7 @@ extension CallInfo: Equatable, Hashable {
         hasher.combine(inConference)
         hasher.combine(recording)
         hasher.combine(codec)
+        hasher.combine(encrypted)
     }
 }
 
@@ -2486,7 +2508,8 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
                 endReason: FfiConverterOptionTypeEndReason.read(from: &buf), 
                 inConference: FfiConverterBool.read(from: &buf), 
                 recording: FfiConverterBool.read(from: &buf), 
-                codec: FfiConverterOptionString.read(from: &buf)
+                codec: FfiConverterOptionString.read(from: &buf), 
+                encrypted: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -2503,6 +2526,7 @@ public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
         FfiConverterBool.write(value.inConference, into: &buf)
         FfiConverterBool.write(value.recording, into: &buf)
         FfiConverterOptionString.write(value.codec, into: &buf)
+        FfiConverterBool.write(value.encrypted, into: &buf)
     }
 }
 

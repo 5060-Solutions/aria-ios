@@ -90,6 +90,8 @@ private final class FakeEngine: AriaMobileEngine {
     }
 
     override func notifyNetworkChange() { networkChanges += 1 }
+    /// A network change hands the core the system's DNS servers first.
+    override func setDnsServers(servers: [String]) {}
     override func currentGateway() -> String? { gateway }
     override func getActiveCall() -> CallInfo? { nil }
 }
@@ -139,9 +141,12 @@ final class GatewayDeviceIdTests: XCTestCase {
         let manager = SipEngineManager.shared
         manager.installEngineForTesting(engine, registeredDeviceId: "gw-a")
         for _ in 0..<5 { manager.networkChanged(.interfaceChanged) }
-        let settled = expectation(description: "debounced")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { settled.fulfill() }
-        wait(for: [settled], timeout: 3)
+        // Wait for the debounced notification rather than a fixed time, so
+        // a loaded machine does not fail it; then allow past the debounce
+        // delay for any extra one to land.
+        let notified = expectation(for: NSPredicate { _, _ in engine.networkChanges >= 1 }, evaluatedWith: nil)
+        wait(for: [notified], timeout: 5)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
         XCTAssertEqual(engine.networkChanges, 1)
     }
 
