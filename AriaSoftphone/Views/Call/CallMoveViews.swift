@@ -29,7 +29,7 @@ struct CallMoveOverlays: ViewModifier {
                             call: suggested,
                             title: String(localized: "Continue this call here"),
                             actionTitle: String(localized: "Continue"),
-                            isBusy: moves.isMoving,
+                            isBusy: moves.isBusy,
                             onAction: { Task { await proximity.acceptSuggestion() } },
                             onDismiss: { proximity.dismissSuggestion() }
                         )
@@ -39,7 +39,7 @@ struct CallMoveOverlays: ViewModifier {
                             call: call,
                             title: CallMoveText.bannerTitle(call),
                             actionTitle: String(localized: "Move here"),
-                            isBusy: moves.isMoving,
+                            isBusy: moves.isBusy,
                             onAction: { Task { await moves.moveHere(call) } },
                             onDismiss: { moves.dismissBanner() }
                         )
@@ -125,7 +125,7 @@ struct MoveToView: View {
                     } label: {
                         Label(device.displayName, systemImage: "iphone.gen3.radiowaves.left.and.right")
                     }
-                    .disabled(moves.isMoving)
+                    .disabled(moves.isBusy)
                 }
                 if let message = moves.errorMessage {
                     Text(message).foregroundStyle(AriaColor.error)

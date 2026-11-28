@@ -309,6 +309,8 @@ final class CallMoveModel: ObservableObject {
     @Published private(set) var isMoving = false
     /// A move the PBX accepted (202) and has not yet settled.
     @Published private(set) var pendingMove: PendingMove?
+    /// Whether a new move must wait: one is being asked for or is unsettled.
+    var isBusy: Bool { isMoving || pendingMove != nil }
     @Published var errorMessage: String?
     @Published var notice: MovedNotice?
 
@@ -452,6 +454,7 @@ final class CallMoveModel: ObservableObject {
     func registerMove(moveId: String, callId: String) {
         let call = call(withId: callId)
         pending.register(moveId: moveId, callStartedAt: call?.startedAt ?? Date(), fromLabel: call?.deviceLabel ?? "")
+        trackMove(moveId: moveId, callId: callId)
     }
 
     func loadDevices() async {
@@ -464,7 +467,7 @@ final class CallMoveModel: ObservableObject {
     /// "Move here": ask the PBX to bring `call` to this phone. The PBX's
     /// INVITE follows through the push gateway and is answered on arrival.
     func moveHere(_ call: UserCall) async {
-        guard !isMoving else { return }
+        guard !isBusy else { return }
         isMoving = true
         defer { isMoving = false }
         do {
@@ -482,7 +485,7 @@ final class CallMoveModel: ObservableObject {
 
     /// "Move to…": send the call this phone is on to `device`.
     func moveOwnCall(to device: UserDevice) async -> Bool {
-        guard !isMoving else { return false }
+        guard !isBusy else { return false }
         isMoving = true
         defer { isMoving = false }
         do {
@@ -508,12 +511,20 @@ final class CallMoveModel: ObservableObject {
     /// Watch a move the PBX accepted until it is moved, failed, the call
     /// ends, or `moveTimeout` passes. Poll errors never extend the timeout.
     private func trackMove(moveId: String, callId: String) {
+        if let old = pendingMove, old.moveId != moveId { pending.discard(moveId: old.moveId) }
         clearPendingMove()
         pendingMove = PendingMove(moveId: moveId, callId: callId)
         let sleeper = self.sleeper
         timeoutTask = Task { [weak self] in
             do { try await sleeper(Self.moveTimeout) } catch { return }
-            self?.moveFailed(moveId: moveId)
+            guard let self, self.pendingMove?.moveId == moveId else { return }
+            // One last look: the app may have been suspended while the move
+            // went through.
+            if let status = try? await self.backend.moveStatus(moveId: moveId), status.status == .moved {
+                self.moveSettled(moveId: moveId)
+            } else {
+                self.moveFailed(moveId: moveId)
+            }
         }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -593,7 +604,7 @@ final class CallMoveModel: ObservableObject {
                 leavingTo = nil
             }
         case .moveFailed(let callId, let moveId, _):
-            if let move = pendingMove, move.moveId == moveId || move.callId == callId {
+            if let move = pendingMove, moveId.map({ $0 == move.moveId }) ?? (move.callId == callId) {
                 moveFailed(moveId: move.moveId)
             }
         case .moved(let callId, let from, let to):

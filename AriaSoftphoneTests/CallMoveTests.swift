@@ -474,4 +474,67 @@ final class CallMoveTests: XCTestCase {
         XCTAssertEqual(sent.method, "GET")
         XCTAssertEqual(sent.url.path, "/api/v1/me/moves/m-1")
     }
+
+    @MainActor func testStaleFailureForAnotherMoveOnTheSameCallIsIgnored() async {
+        let model = await movingHere(FakeBackend(), FakeClock(), PendingMoveStore())
+        model.handle(.moveFailed(callId: "c1", moveId: "m-0", detail: nil))
+        XCTAssertNotNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+        model.handle(.moveFailed(callId: "c1", moveId: nil, detail: nil))
+        XCTAssertNil(model.pendingMove, "without a move id the call id decides")
+    }
+
+    @MainActor func testASecondMoveWaitsForThePendingOne() async {
+        let backend = FakeBackend()
+        let model = await movingHere(backend, FakeClock(), PendingMoveStore())
+        XCTAssertTrue(model.isBusy)
+        backend.moveResult = .success("m-2")
+        await model.moveHere(call(id: "c1"))
+        XCTAssertEqual(model.pendingMove?.moveId, "m-1")
+        XCTAssertEqual(backend.moved.count, 1)
+        let target = UserDevice(registrationId: "r-x", label: nil, userAgent: nil, transport: nil, online: true)
+        let ok = await model.moveOwnCall(to: target)
+        XCTAssertFalse(ok)
+        XCTAssertEqual(backend.moved.count, 1)
+    }
+
+    @MainActor func testReplacingAMoveDiscardsTheOldStoreEntry() async {
+        let store = PendingMoveStore()
+        let model = await movingHere(FakeBackend(), FakeClock(), store)
+        model.registerMove(moveId: "m-2", callId: "c1")
+        XCTAssertEqual(model.pendingMove?.moveId, "m-2")
+        XCTAssertNil(store.consume(moveId: "m-1"))
+        XCTAssertNotNil(store.consume(moveId: "m-2"))
+    }
+
+    @MainActor func testTimeoutStillCountsAMoveThatFinishedMeanwhile() async {
+        let backend = FakeBackend()
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 29)
+        XCTAssertNotNil(model.pendingMove)
+        backend.statuses = [.success(.init(status: .moved, detail: nil))]
+        await clock.advance(by: 1)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    @MainActor func testTimeoutFinalLookErrorIsAFailure() async {
+        let backend = FakeBackend()
+        backend.statuses = [.failure(PbxApiClient.ApiError.httpError(statusCode: 500, message: ""))]
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 30)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+    }
+
+    @MainActor func testAutoMoveFromTheTriggerIsTrackedAndTimesOut() async {
+        let clock = FakeClock()
+        let model = model(FakeBackend(), store: PendingMoveStore(), clock: clock)
+        model.registerMove(moveId: "m-7", callId: "c1")
+        XCTAssertEqual(model.pendingMove, .init(moveId: "m-7", callId: "c1"))
+        await clock.advance(by: 30)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+    }
 }
