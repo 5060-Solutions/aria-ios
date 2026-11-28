@@ -189,17 +189,68 @@ final class CallMoveTests: XCTestCase {
             moved.append((callId, registrationId))
             return try moveResult.get()
         }
+        var statuses: [Result<MoveStatus, Error>] = []
+        var polls = 0
+        func moveStatus(moveId: String) async throws -> MoveStatus {
+            polls += 1
+            guard !statuses.isEmpty else { return MoveStatus(status: .pending, detail: nil) }
+            return try (statuses.count > 1 ? statuses.removeFirst() : statuses[0]).get()
+        }
         func eventStreamRequest() async throws -> URLRequest? { nil }
     }
 
-    @MainActor private func model(_ backend: FakeBackend, store: PendingMoveStore) -> CallMoveModel {
-        let model = CallMoveModel(backend: backend, pending: store)
+    /// A clock the test advances; sleepers wake when it passes their deadline.
+    @MainActor private final class FakeClock {
+        private var now: TimeInterval = 0
+        private var waiters: [(id: Int, deadline: TimeInterval, cont: CheckedContinuation<Void, Never>)] = []
+        private var nextId = 0
+
+        func sleep(_ seconds: TimeInterval) async throws {
+            let id = nextId
+            nextId += 1
+            let deadline = now + seconds
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { cont in
+                    waiters.append((id, deadline, cont))
+                }
+            } onCancel: {
+                Task { @MainActor in self.wake { $0.id == id } }
+            }
+            try Task.checkCancellation()
+        }
+
+        /// Move time forward 1 s at a time, letting woken tasks run.
+        func advance(by seconds: Int) async {
+            await settle()
+            for _ in 0..<seconds {
+                now += 1
+                wake { $0.deadline <= self.now }
+                await settle()
+            }
+        }
+
+        func settle() async {
+            for _ in 0..<30 { await Task.yield() }
+        }
+
+        private func wake(_ matches: ((id: Int, deadline: TimeInterval, cont: CheckedContinuation<Void, Never>)) -> Bool) {
+            let due = waiters.filter(matches)
+            waiters.removeAll { w in due.contains { $0.id == w.id } }
+            for w in due { w.cont.resume() }
+        }
+    }
+
+    @MainActor private func model(_ backend: FakeBackend, store: PendingMoveStore, clock: FakeClock) -> CallMoveModel {
+        let model = CallMoveModel(backend: backend, pending: store, sleeper: { try await clock.sleep($0) })
         model.hasLocalCall = { false }
         model.deviceId = { "6f1c2a9e-1111-4222-8333-944455556666" }
         model.isSignedIn = { true }
         return model
     }
 
+    @MainActor private func model(_ backend: FakeBackend, store: PendingMoveStore) -> CallMoveModel {
+        model(backend, store: store, clock: FakeClock())
+    }
     @MainActor func testRefreshOffersOnlyOtherDevicesCalls() async {
         let backend = FakeBackend()
         backend.calls = [call(id: "mine", reg: "r-me", sip: nil), call(id: "theirs", reg: "r-desk")]
@@ -278,5 +329,212 @@ final class CallMoveTests: XCTestCase {
         let model = model(FakeBackend(), store: PendingMoveStore())
         model.showMoved(to: "iPad")
         XCTAssertEqual(model.notice?.message, "Moved to iPad")
+    }
+
+    // MARK: Pending move
+
+    private static let failedText = "Couldn't move the call"
+
+    /// "Move here" accepted with move id m-1 on call c1.
+    @MainActor private func movingHere(_ backend: FakeBackend, _ clock: FakeClock, _ store: PendingMoveStore) async -> CallMoveModel {
+        let model = model(backend, store: store, clock: clock)
+        await model.moveHere(call(id: "c1"))
+        XCTAssertEqual(model.pendingMove, .init(moveId: "m-1", callId: "c1"))
+        return model
+    }
+
+    @MainActor func testPollSeesFailedAndClears() async {
+        let backend = FakeBackend()
+        backend.statuses = [.success(.init(status: .ringing, detail: nil)),
+                            .success(.init(status: .failed, detail: "no answer"))]
+        let clock = FakeClock(), store = PendingMoveStore()
+        let model = await movingHere(backend, clock, store)
+        await clock.advance(by: 2)
+        XCTAssertNotNil(model.pendingMove, "ringing is not an outcome")
+        XCTAssertNil(model.errorMessage)
+        await clock.advance(by: 2)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+        XCTAssertEqual(backend.polls, 2)
+        XCTAssertNil(store.consume(moveId: "m-1"), "a late INVITE for it must ring, not auto-answer")
+        let polls = backend.polls
+        await clock.advance(by: 40)
+        XCTAssertEqual(backend.polls, polls, "polling stopped")
+    }
+
+    @MainActor func testPollSeesMovedAndClearsQuietly() async {
+        let backend = FakeBackend()
+        backend.statuses = [.success(.init(status: .moved, detail: nil))]
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 2)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+        await clock.advance(by: 40)
+        XCTAssertNil(model.errorMessage, "the timeout was cancelled with the move")
+        XCTAssertEqual(backend.polls, 1)
+    }
+
+    @MainActor func testWebSocketFailureClearsAndStopsPolling() async {
+        let backend = FakeBackend()
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 2)
+        model.handle(.moveFailed(callId: "c1", moveId: "m-1", detail: "refused"))
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+        let polls = backend.polls
+        await clock.advance(by: 40)
+        XCTAssertEqual(backend.polls, polls)
+    }
+
+    @MainActor func testWebSocketFailureOfAnotherMoveIsIgnored() async {
+        let clock = FakeClock()
+        let model = await movingHere(FakeBackend(), clock, PendingMoveStore())
+        model.handle(.moveFailed(callId: "c9", moveId: "m-9", detail: nil))
+        XCTAssertNotNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    @MainActor func testCallEndedEndsThePendingMoveWithoutAMessage() async {
+        let clock = FakeClock(), store = PendingMoveStore()
+        let model = await movingHere(FakeBackend(), clock, store)
+        model.handle(.ended(callId: "c1"))
+        XCTAssertNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(store.consume(moveId: "m-1"))
+    }
+
+    @MainActor func testTimeoutAfter30SecondsEvenWhenPollsFail() async {
+        let backend = FakeBackend()
+        backend.statuses = [.failure(PbxApiClient.ApiError.httpError(statusCode: 500, message: "boom"))]
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 29)
+        XCTAssertNotNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertGreaterThan(backend.polls, 5, "kept polling through the errors")
+        await clock.advance(by: 1)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+        let polls = backend.polls
+        await clock.advance(by: 20)
+        XCTAssertEqual(backend.polls, polls)
+    }
+
+    @MainActor func testMoveToTracksTheMoveToo() async {
+        let backend = FakeBackend()
+        backend.calls = [call(id: "c1", reg: "r-me", sip: nil)]
+        backend.statuses = [.success(.init(status: .failed, detail: nil))]
+        let clock = FakeClock()
+        let model = model(backend, store: PendingMoveStore(), clock: clock)
+        let target = UserDevice(registrationId: "r-desk", label: "Desk", userAgent: nil, transport: nil, online: true)
+        let ok = await model.moveOwnCall(to: target)
+        XCTAssertTrue(ok)
+        XCTAssertEqual(model.pendingMove?.callId, "c1")
+        await clock.advance(by: 2)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+        XCTAssertNil(model.takeMovedAway(), "the call never left, so no 'Moved to' notice")
+    }
+
+    @MainActor func testPostErrorsStartNoPendingMove() async {
+        let backend = FakeBackend()
+        backend.moveResult = .failure(PbxApiClient.ApiError.httpError(statusCode: 422, message: "x"))
+        let model = model(backend, store: PendingMoveStore(), clock: FakeClock())
+        await model.moveHere(call(id: "c1"))
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, "That device is offline")
+    }
+
+    func testPostErrorMapping() {
+        func text(_ code: Int) -> String {
+            CallMoveModel.describe(PbxApiClient.ApiError.httpError(statusCode: code, message: ""))
+        }
+        XCTAssertEqual(text(422), "That device is offline")
+        XCTAssertEqual(text(409), "The call can't be moved right now")
+        XCTAssertEqual(text(404), "That call has ended")
+    }
+
+    func testParsesMoveFailedAndStatus() throws {
+        XCTAssertEqual(
+            CallMoveEvent.parse(#"{"type":"call_move_failed","call_id":"c1","move_id":"m-1","detail":"declined"}"#),
+            .moveFailed(callId: "c1", moveId: "m-1", detail: "declined"))
+        let status = try PbxApiClient.jsonDecoder.decode(MoveStatus.self, from: Data(#"{"status":"failed","detail":"no answer"}"#.utf8))
+        XCTAssertEqual(status, MoveStatus(status: .failed, detail: "no answer"))
+    }
+
+    func testMoveStatusRequestPath() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(200, #"{"status":"ringing"}"#)
+        let client = PbxApiClient(baseUrl: "https://api.example.com", session: StubURLProtocol.session())
+        let status = try await client.moveStatus(jwt: "jwt", moveId: "m-1")
+        XCTAssertEqual(status.status, .ringing)
+        let sent = try XCTUnwrap(StubURLProtocol.requests.first)
+        XCTAssertEqual(sent.method, "GET")
+        XCTAssertEqual(sent.url.path, "/api/v1/me/moves/m-1")
+    }
+
+    @MainActor func testStaleFailureForAnotherMoveOnTheSameCallIsIgnored() async {
+        let model = await movingHere(FakeBackend(), FakeClock(), PendingMoveStore())
+        model.handle(.moveFailed(callId: "c1", moveId: "m-0", detail: nil))
+        XCTAssertNotNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+        model.handle(.moveFailed(callId: "c1", moveId: nil, detail: nil))
+        XCTAssertNil(model.pendingMove, "without a move id the call id decides")
+    }
+
+    @MainActor func testASecondMoveWaitsForThePendingOne() async {
+        let backend = FakeBackend()
+        let model = await movingHere(backend, FakeClock(), PendingMoveStore())
+        XCTAssertTrue(model.isBusy)
+        backend.moveResult = .success("m-2")
+        await model.moveHere(call(id: "c1"))
+        XCTAssertEqual(model.pendingMove?.moveId, "m-1")
+        XCTAssertEqual(backend.moved.count, 1)
+        let target = UserDevice(registrationId: "r-x", label: nil, userAgent: nil, transport: nil, online: true)
+        let ok = await model.moveOwnCall(to: target)
+        XCTAssertFalse(ok)
+        XCTAssertEqual(backend.moved.count, 1)
+    }
+
+    @MainActor func testReplacingAMoveDiscardsTheOldStoreEntry() async {
+        let store = PendingMoveStore()
+        let model = await movingHere(FakeBackend(), FakeClock(), store)
+        model.registerMove(moveId: "m-2", callId: "c1")
+        XCTAssertEqual(model.pendingMove?.moveId, "m-2")
+        XCTAssertNil(store.consume(moveId: "m-1"))
+        XCTAssertNotNil(store.consume(moveId: "m-2"))
+    }
+
+    @MainActor func testTimeoutStillCountsAMoveThatFinishedMeanwhile() async {
+        let backend = FakeBackend()
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 29)
+        XCTAssertNotNil(model.pendingMove)
+        backend.statuses = [.success(.init(status: .moved, detail: nil))]
+        await clock.advance(by: 1)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    @MainActor func testTimeoutFinalLookErrorIsAFailure() async {
+        let backend = FakeBackend()
+        backend.statuses = [.failure(PbxApiClient.ApiError.httpError(statusCode: 500, message: ""))]
+        let clock = FakeClock()
+        let model = await movingHere(backend, clock, PendingMoveStore())
+        await clock.advance(by: 30)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
+    }
+
+    @MainActor func testAutoMoveFromTheTriggerIsTrackedAndTimesOut() async {
+        let clock = FakeClock()
+        let model = model(FakeBackend(), store: PendingMoveStore(), clock: clock)
+        model.registerMove(moveId: "m-7", callId: "c1")
+        XCTAssertEqual(model.pendingMove, .init(moveId: "m-7", callId: "c1"))
+        await clock.advance(by: 30)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertEqual(model.errorMessage, Self.failedText)
     }
 }

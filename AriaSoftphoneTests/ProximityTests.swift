@@ -165,6 +165,7 @@ final class ProximityTests: XCTestCase {
             UserDevice(registrationId: "r-me", label: nil, userAgent: nil, transport: nil, online: true)
         }
         func move(callId: String, to registrationId: String) async throws -> String { "m" }
+        func moveStatus(moveId: String) async throws -> MoveStatus { MoveStatus(status: .pending, detail: nil) }
         func eventStreamRequest() async throws -> URLRequest? { nil }
     }
 

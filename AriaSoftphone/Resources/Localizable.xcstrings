@@ -8420,68 +8420,90 @@
         }
       }
     },
-    "That call can't be moved right now." : {
+    "The call can't be moved right now" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieser Anruf kann gerade nicht verschoben werden."
+            "value" : "Der Anruf kann gerade nicht verschoben werden"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esa llamada no se puede mover ahora."
+            "value" : "La llamada no se puede mover ahora"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cet appel ne peut pas être déplacé pour le moment."
+            "value" : "L’appel ne peut pas être déplacé pour le moment"
           }
         }
       }
     },
-    "That call is no longer in progress." : {
+    "That call has ended" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieser Anruf läuft nicht mehr."
+            "value" : "Dieser Anruf wurde beendet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esa llamada ya no está en curso."
+            "value" : "Esa llamada ha terminado"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cet appel n’est plus en cours."
+            "value" : "Cet appel est terminé"
           }
         }
       }
     },
-    "That device is not available." : {
+    "That device is offline" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieses Gerät ist nicht verfügbar."
+            "value" : "Dieses Gerät ist offline"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ese dispositivo no está disponible."
+            "value" : "Ese dispositivo está sin conexión"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cet appareil n’est pas disponible."
+            "value" : "Cet appareil est hors ligne"
+          }
+        }
+      }
+    },
+    "Couldn't move the call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anruf konnte nicht verschoben werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo mover la llamada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de déplacer l’appel"
           }
         }
       }
