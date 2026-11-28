@@ -877,6 +877,13 @@ extension PbxApiClient {
         }
         return moveId
     }
+
+    /// GET /api/v1/me/moves/{move_id}: `pending`, `ringing`, `moved` or
+    /// `failed` (with a `detail`).
+    func moveStatus(jwt: String, moveId: String) async throws -> MoveStatus {
+        let data = try await send("GET", path: "/api/v1/me/moves/\(try pathSegment(moveId))", token: jwt)
+        return try decode(MoveStatus.self, from: data)
+    }
 }
 
 extension PbxApiClient.Identity {

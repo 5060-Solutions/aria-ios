@@ -89,6 +89,8 @@ enum CallMoveEvent: Equatable {
     case activeElsewhere(UserCall)
     case moved(callId: String, from: String, to: String)
     case ended(callId: String)
+    /// The PBX gave up on a move (`call_move_failed`); the call stays put.
+    case moveFailed(callId: String, moveId: String?, detail: String?)
 
     /// Parse one text frame; nil for any other event.
     static func parse(_ text: String) -> CallMoveEvent? {
@@ -109,10 +111,20 @@ enum CallMoveEvent: Equatable {
         case "call_ended":
             guard let callId = object["call_id"] as? String else { return nil }
             return .ended(callId: callId)
+        case "call_move_failed":
+            guard let callId = object["call_id"] as? String else { return nil }
+            return .moveFailed(callId: callId, moveId: object["move_id"] as? String, detail: object["detail"] as? String)
         default:
             return nil
         }
     }
+}
+
+/// `GET /me/moves/{move_id}`: how a move is going.
+struct MoveStatus: Decodable, Equatable {
+    enum State: String, Decodable { case pending, ringing, moved, failed }
+    let status: State
+    let detail: String?
 }
 
 // MARK: - Rules
@@ -201,6 +213,12 @@ final class PendingMoveStore {
         return entry
     }
 
+    /// Forget a move that failed, so a late INVITE for it rings normally.
+    func discard(moveId: String) {
+        lock.lock(); defer { lock.unlock() }
+        entries[moveId] = nil
+    }
+
     func reset() {
         lock.lock(); defer { lock.unlock() }
         entries = [:]
@@ -215,6 +233,8 @@ protocol CallMoveBackend {
     func currentDevice(sipInstance: String) async throws -> UserDevice
     /// POST /me/calls/{id}/move → the move id.
     func move(callId: String, to registrationId: String) async throws -> String
+    /// GET /me/moves/{move_id}.
+    func moveStatus(moveId: String) async throws -> MoveStatus
     func eventStreamRequest() async throws -> URLRequest?
 }
 
@@ -240,6 +260,10 @@ struct LiveCallMoveBackend: CallMoveBackend {
 
     func move(callId: String, to registrationId: String) async throws -> String {
         try await withClient { try await $0.moveCall(jwt: $1, callId: callId, toRegistrationId: registrationId) }
+    }
+
+    func moveStatus(moveId: String) async throws -> MoveStatus {
+        try await withClient { try await $0.moveStatus(jwt: $1, moveId: moveId) }
     }
 
     func eventStreamRequest() async throws -> URLRequest? {
@@ -273,12 +297,18 @@ struct MovedNotice: Identifiable, Equatable {
 final class CallMoveModel: ObservableObject {
     static let shared = CallMoveModel(backend: LiveCallMoveBackend())
     static let pollInterval: TimeInterval = 15
+    /// How often a pending move is asked about.
+    static let movePollInterval: TimeInterval = 2
+    /// A move the PBX never settles is given up on this long after its 202.
+    static let moveTimeout: TimeInterval = 30
 
     /// The call to offer in the banner.
     @Published private(set) var elsewhere: UserCall?
     /// The other devices a call here could move to.
     @Published private(set) var devices: [UserDevice] = []
     @Published private(set) var isMoving = false
+    /// A move the PBX accepted (202) and has not yet settled.
+    @Published private(set) var pendingMove: PendingMove?
     @Published var errorMessage: String?
     @Published var notice: MovedNotice?
 
@@ -290,8 +320,17 @@ final class CallMoveModel: ObservableObject {
     var deviceId: () -> String = { UserDefaults.standard.string(forKey: AccountSettings.Key.pbxDeviceId) ?? "" }
     var isSignedIn: () -> Bool = { AccountSettings.load().isProvisioned }
 
+    /// A move between the 202 and its outcome.
+    struct PendingMove: Equatable {
+        let moveId: String
+        let callId: String
+    }
+
     let pending: PendingMoveStore
     private let backend: CallMoveBackend
+    private let sleeper: (TimeInterval) async throws -> Void
+    private var pollTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
     private(set) var ownRegistrationId: String?
     private var calls: [UserCall] = []
     private var dismissed: Set<String> = []
@@ -301,9 +340,14 @@ final class CallMoveModel: ObservableObject {
     /// A move away from this phone in flight: the device it goes to.
     private var leavingTo: (name: String, since: Date)?
 
-    init(backend: CallMoveBackend, pending: PendingMoveStore = .shared) {
+    init(
+        backend: CallMoveBackend,
+        pending: PendingMoveStore = .shared,
+        sleeper: @escaping (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
+    ) {
         self.backend = backend
         self.pending = pending
+        self.sleeper = sleeper
     }
 
     // MARK: Lifecycle
@@ -343,6 +387,8 @@ final class CallMoveModel: ObservableObject {
         dismissed = []
         notice = nil
         errorMessage = nil
+        clearPendingMove()
+        leavingTo = nil
         pending.reset()
     }
 
@@ -428,6 +474,7 @@ final class CallMoveModel: ObservableObject {
             }
             let moveId = try await backend.move(callId: call.id, to: own)
             pending.register(moveId: moveId, callStartedAt: call.startedAt, fromLabel: call.deviceLabel)
+            trackMove(moveId: moveId, callId: call.id)
         } catch {
             errorMessage = Self.describe(error)
         }
@@ -446,13 +493,64 @@ final class CallMoveModel: ObservableObject {
                 errorMessage = String(localized: "The phone system does not show this call yet.")
                 return false
             }
-            _ = try await backend.move(callId: mine.id, to: device.registrationId)
+            let moveId = try await backend.move(callId: mine.id, to: device.registrationId)
             leavingTo = (device.displayName, Date())
+            trackMove(moveId: moveId, callId: mine.id)
             return true
         } catch {
             errorMessage = Self.describe(error)
             return false
         }
+    }
+
+    // MARK: Pending move
+
+    /// Watch a move the PBX accepted until it is moved, failed, the call
+    /// ends, or `moveTimeout` passes. Poll errors never extend the timeout.
+    private func trackMove(moveId: String, callId: String) {
+        clearPendingMove()
+        pendingMove = PendingMove(moveId: moveId, callId: callId)
+        let sleeper = self.sleeper
+        timeoutTask = Task { [weak self] in
+            do { try await sleeper(Self.moveTimeout) } catch { return }
+            self?.moveFailed(moveId: moveId)
+        }
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await sleeper(Self.movePollInterval) } catch { return }
+                guard let self, self.pendingMove?.moveId == moveId else { return }
+                guard let status = try? await self.backend.moveStatus(moveId: moveId),
+                      self.pendingMove?.moveId == moveId else { continue }
+                switch status.status {
+                case .moved: self.moveSettled(moveId: moveId)
+                case .failed: self.moveFailed(moveId: moveId)
+                case .pending, .ringing: continue
+                }
+            }
+        }
+    }
+
+    /// Stop watching: cancel both tasks and forget the move.
+    private func clearPendingMove() {
+        pollTask?.cancel()
+        pollTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        pendingMove = nil
+    }
+
+    private func moveSettled(moveId: String) {
+        guard pendingMove?.moveId == moveId else { return }
+        clearPendingMove()
+    }
+
+    /// The move did not happen: the call stays where it was.
+    private func moveFailed(moveId: String) {
+        guard pendingMove?.moveId == moveId else { return }
+        clearPendingMove()
+        pending.discard(moveId: moveId)
+        leavingTo = nil
+        errorMessage = String(localized: "Couldn't move the call")
     }
 
     /// When the PBX ends this phone's leg right after a move away, the
@@ -470,9 +568,9 @@ final class CallMoveModel: ObservableObject {
     nonisolated static func describe(_ error: Error) -> String {
         if case PbxApiClient.ApiError.httpError(let code, let message) = error {
             switch code {
-            case 404: return String(localized: "That call is no longer in progress.")
-            case 409: return String(localized: "That call can't be moved right now.")
-            case 422: return String(localized: "That device is not available.")
+            case 404: return String(localized: "That call has ended")
+            case 409: return String(localized: "The call can't be moved right now")
+            case 422: return String(localized: "That device is offline")
             default: return message.isEmpty ? String(localized: "The call could not be moved.") : message
             }
         }
@@ -489,7 +587,17 @@ final class CallMoveModel: ObservableObject {
         case .ended(let callId):
             calls.removeAll { $0.id == callId }
             dismissed.remove(callId)
+            if let move = pendingMove, move.callId == callId {
+                clearPendingMove()
+                pending.discard(moveId: move.moveId)
+                leavingTo = nil
+            }
+        case .moveFailed(let callId, let moveId, _):
+            if let move = pendingMove, move.moveId == moveId || move.callId == callId {
+                moveFailed(moveId: move.moveId)
+            }
         case .moved(let callId, let from, let to):
+            if let move = pendingMove, move.callId == callId { moveSettled(moveId: move.moveId) }
             calls.removeAll { $0.id == callId }
             if from == ownRegistrationId, notice == nil, leavingTo == nil,
                let target = devices.first(where: { $0.registrationId == to }) {
